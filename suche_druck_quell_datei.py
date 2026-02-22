@@ -545,7 +545,7 @@ def combine_html(suche_html: str, druck_html: str) -> str:
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Kunden-App &#8211; Suche &amp; Druck</title>
+<title>Kunden-App &#8211; Suche &amp; BLP-Druck</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 html,body{{height:100%;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif}}
@@ -572,7 +572,7 @@ iframe.active{{display:block}}
 <body>
 
 <nav class="topnav">
-  <span class="topnav-title">&#128203; Kunden-App</span>
+  <span class="topnav-title">&#1b66b3; Nordfrische Center - Kunden-App</span>
   <button class="nav-btn active" id="btn-suche" onclick="showArea('suche')">&#128269; Suche</button>
   <button class="nav-btn"        id="btn-druck" onclick="showArea('druck')">&#128424; Druckbereich</button>
 </nav>
