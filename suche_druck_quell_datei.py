@@ -591,7 +591,7 @@ iframe.active{{display:block}}
   <span class="topnav-title">NordFrischeCenter &ndash; Kunden App</span>
   <button class="nav-btn active" id="btn-suche" onclick="showArea('suche')">&#128269; Suche</button>
   <button class="nav-btn"        id="btn-druck" onclick="showArea('druck')">&#128424; BLP Druck</button>
-  <span class="topnav-stamp">{{last_updated}}</span>
+  <span class="topnav-stamp">{last_updated}</span>
 </nav>
 
 <div class="frame-wrap">
@@ -600,14 +600,14 @@ iframe.active{{display:block}}
 </div>
 
 <script>
-// ── Hilfsfunktion: Base64-Array → Blob-URL (UTF-8-sicher) ────────────────────
-function b64ArrayToUrl(chunks) {{
+// ── Base64-Chunks → UTF-8-String (funktioniert auch bei file://) ─────────────
+function b64ChunksToString(chunks) {{
   var b64 = chunks.join("");
-  // atob liefert binäre Bytes; Uint8Array bewahrt UTF-8
   var bin = atob(b64);
+  // Bin → UTF-8-String via TextDecoder
   var bytes = new Uint8Array(bin.length);
   for (var i = 0; i < bin.length; i++) {{ bytes[i] = bin.charCodeAt(i); }}
-  return URL.createObjectURL(new Blob([bytes], {{type: "text/html;charset=utf-8"}}));
+  return new TextDecoder("utf-8").decode(bytes);
 }}
 
 // ── Suche-HTML (Base64, {len(s_b64)} Zeichen) ────────────────────────────────
@@ -620,9 +620,9 @@ var DRUCK_CHUNKS = [
 {d_js}
 ];
 
-// ── iframes laden ─────────────────────────────────────────────────────────────
-document.getElementById("frame-suche").src = b64ArrayToUrl(SUCHE_CHUNKS);
-document.getElementById("frame-druck" ).src = b64ArrayToUrl(DRUCK_CHUNKS);
+// ── iframes per srcdoc laden (kein Blob, funktioniert mit file://) ────────────
+document.getElementById("frame-suche").srcdoc = b64ChunksToString(SUCHE_CHUNKS);
+document.getElementById("frame-druck" ).srcdoc = b64ChunksToString(DRUCK_CHUNKS);
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 function showArea(s) {{
