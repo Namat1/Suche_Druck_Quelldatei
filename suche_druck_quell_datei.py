@@ -525,75 +525,103 @@ def generate_druck_html(up, logo_up) -> str:
 # HTML KOMBINIEREN  →  app.html
 # =============================================================================
 
-def _esc_js(s: str) -> str:
-    """String fuer JS-Backtick-Template-Literal escapen."""
-    s = s.replace("\\", "\\\\")
-    s = s.replace("`",    "\\`")
-    s = s.replace("${", "\\${")
-    return s
-
-
 def combine_html(suche_html: str, druck_html: str) -> str:
-    s_esc = _esc_js(suche_html)
-    d_esc = _esc_js(druck_html)
-    return (
-        "<!DOCTYPE html>\n"
-        '<html lang="de">\n'
-        "<head>\n"
-        '<meta charset="UTF-8"/>\n'
-        '<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n'
-        "<title>Kunden-App &#8211; Suche &amp; Druck</title>\n"
-        "<style>\n"
-        "*{box-sizing:border-box;margin:0;padding:0}\n"
-        "html,body{height:100%;overflow:hidden;font-family:\'Segoe UI\',Arial,sans-serif}\n"
-        ".topnav{height:48px;background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%);"
-        "display:flex;align-items:center;padding:0 18px;gap:10px;"
-        "box-shadow:0 2px 10px rgba(0,0,0,.35);flex-shrink:0;}\n"
-        ".topnav-title{color:#fff;font-weight:800;font-size:15px;margin-right:8px;letter-spacing:.2px}\n"
-        ".nav-btn{padding:6px 20px;border-radius:20px;border:1px solid rgba(255,255,255,.35);"
-        "cursor:pointer;font-weight:700;font-size:12px;transition:all .15s ease;"
-        "background:rgba(255,255,255,.15);color:#fff;}\n"
-        ".nav-btn:hover:not(.active){background:rgba(255,255,255,.28)}\n"
-        ".nav-btn.active{background:#fff;color:#1e3a5f;box-shadow:0 2px 8px rgba(0,0,0,.18)}\n"
-        ".frame-wrap{height:calc(100vh - 48px);display:flex;flex-direction:column}\n"
-        "iframe{flex:1;width:100%;border:none;display:none}\n"
-        "iframe.active{display:block}\n"
-        "</style>\n"
-        "</head>\n"
-        "<body>\n"
-        "<nav class=\"topnav\">\n"
-        "  <span class=\"topnav-title\">&#128203; Kunden-App</span>\n"
-        "  <button class=\"nav-btn active\" id=\"btn-suche\" onclick=\"showArea(\'suche\')\">"
-        "&#128269; Suche</button>\n"
-        "  <button class=\"nav-btn\"        id=\"btn-druck\" onclick=\"showArea(\'druck\')\">"
-        "&#128424; Druckbereich</button>\n"
-        "</nav>\n"
-        "<div class=\"frame-wrap\">\n"
-        "  <iframe id=\"frame-suche\" class=\"active\" title=\"Kunden-Suche\"></iframe>\n"
-        "  <iframe id=\"frame-druck\"                title=\"Druckbereich\"></iframe>\n"
-        "</div>\n"
-        "<script>\n"
-        f"const SUCHE_HTML = `{s_esc}`;\n"
-        f"const DRUCK_HTML  = `{d_esc}`;\n"
-        "(function(){\n"
-        "  function mkUrl(h){return URL.createObjectURL(new Blob([h],{type:\"text/html;charset=utf-8\"}));}\n"
-        "  document.getElementById(\"frame-suche\").src = mkUrl(SUCHE_HTML);\n"
-        "  document.getElementById(\"frame-druck\" ).src = mkUrl(DRUCK_HTML);\n"
-        "})();\n"
-        "function showArea(s){\n"
-        "  [\"suche\",\"druck\"].forEach(function(id){\n"
-        "    document.getElementById(\"frame-\"+id).className = id===s?\"active\":\"\";\n"
-        "    document.getElementById(\"btn-\"+id).className   = \"nav-btn\"+(id===s?\" active\":\"\");\n"
-        "  });\n"
-        "}\n"
-        "window.addEventListener(\"message\",function(e){\n"
-        "  if(e.data===\"show-druck\") showArea(\"druck\");\n"
-        "  if(e.data===\"show-suche\") showArea(\"suche\");\n"
-        "});\n"
-        "</script>\n"
-        "</body>\n"
-        "</html>"
-    )
+    """
+    Bettet beide HTML-Seiten als Base64-Strings ins JS ein.
+    atob() dekodiert sie im Browser → KEIN Escaping-Problem,
+    egal welche Zeichen (Backticks, Backslashes, ${...}) im HTML stecken.
+    """
+    # Base64-kodieren (UTF-8 → bytes → base64-ASCII)
+    s_b64 = base64.b64encode(suche_html.encode("utf-8")).decode("ascii")
+    d_b64 = base64.b64encode(druck_html.encode("utf-8")).decode("ascii")
+
+    # Base64-String in 120-Zeichen-Zeilen umbrechen (lesbar, kein JS-Problem)
+    def wrap(b64: str, width: int = 120) -> str:
+        return "\n".join(b64[i:i+width] for i in range(0, len(b64), width))
+
+    s_b64_wrapped = wrap(s_b64)
+    d_b64_wrapped = wrap(d_b64)
+
+    return f"""<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Kunden-App &#8211; Suche &amp; Druck</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+html,body{{height:100%;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif}}
+.topnav{{
+  height:48px;
+  background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%);
+  display:flex;align-items:center;padding:0 18px;gap:10px;
+  box-shadow:0 2px 10px rgba(0,0,0,.35);flex-shrink:0;
+}}
+.topnav-title{{color:#fff;font-weight:800;font-size:15px;margin-right:8px;letter-spacing:.2px}}
+.nav-btn{{
+  padding:6px 20px;border-radius:20px;
+  border:1px solid rgba(255,255,255,.35);
+  cursor:pointer;font-weight:700;font-size:12px;
+  transition:all .15s ease;background:rgba(255,255,255,.15);color:#fff;
+}}
+.nav-btn:hover:not(.active){{background:rgba(255,255,255,.28)}}
+.nav-btn.active{{background:#fff;color:#1e3a5f;box-shadow:0 2px 8px rgba(0,0,0,.18)}}
+.frame-wrap{{height:calc(100vh - 48px);display:flex;flex-direction:column}}
+iframe{{flex:1;width:100%;border:none;display:none}}
+iframe.active{{display:block}}
+</style>
+</head>
+<body>
+
+<nav class="topnav">
+  <span class="topnav-title">&#128203; Kunden-App</span>
+  <button class="nav-btn active" id="btn-suche" onclick="showArea('suche')">&#128269; Suche</button>
+  <button class="nav-btn"        id="btn-druck" onclick="showArea('druck')">&#128424; Druckbereich</button>
+</nav>
+
+<div class="frame-wrap">
+  <iframe id="frame-suche" class="active" title="Kunden-Suche"></iframe>
+  <iframe id="frame-druck"                title="Druckbereich"></iframe>
+</div>
+
+<script>
+// ── Base64-kodierte HTML-Seiten ──────────────────────────────────────────────
+// Dekodierung mit atob() + TextDecoder (UTF-8-sicher)
+function b64ToBlob(b64) {{
+  var bin = atob(b64.replace(/\\s+/g, ""));
+  var bytes = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) {{ bytes[i] = bin.charCodeAt(i); }}
+  return URL.createObjectURL(new Blob([bytes], {{type: "text/html;charset=utf-8"}}));
+}}
+
+var SUCHE_B64 = [
+"{s_b64_wrapped}"
+].join("");
+
+var DRUCK_B64 = [
+"{d_b64_wrapped}"
+].join("");
+
+// iframes laden
+document.getElementById("frame-suche").src = b64ToBlob(SUCHE_B64);
+document.getElementById("frame-druck" ).src = b64ToBlob(DRUCK_B64);
+
+// ── Navigation ───────────────────────────────────────────────────────────────
+function showArea(s) {{
+  ["suche", "druck"].forEach(function(id) {{
+    document.getElementById("frame-" + id).className = (id === s) ? "active" : "";
+    document.getElementById("btn-"   + id).className = "nav-btn" + (id === s ? " active" : "");
+  }});
+}}
+
+window.addEventListener("message", function(e) {{
+  if (e.data === "show-druck") showArea("druck");
+  if (e.data === "show-suche") showArea("suche");
+}});
+</script>
+
+</body>
+</html>"""
 
 
 # =============================================================================
