@@ -31,7 +31,7 @@ DRUCK_HTML_TEMPLATE: str = base64.b64decode(_DRUCK_B64).decode("utf-8")
 # DRUCK – Konstanten & Hilfsfunktionen
 # =============================================================================
 
-PLAN_TYP = "Standard"
+PLAN_TYP = ""
 BEREICH  = "Alle Sortimente Fleischwerk"
 DAYS_DE  = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"]
 TOUR_COLS = {
@@ -521,7 +521,7 @@ def generate_druck_html(up, logo_up) -> str:
 # HTML KOMBINIEREN  →  app.html
 # =============================================================================
 
-def combine_html(suche_html: str, druck_html: str) -> str:
+def combine_html(suche_html: str, druck_html: str, last_updated: str = "") -> str:
     """
     Bettet beide HTML-Seiten als Base64-Strings ins JS ein.
     atob() dekodiert sie im Browser → KEIN Escaping-Problem,
@@ -550,21 +550,37 @@ def combine_html(suche_html: str, druck_html: str) -> str:
 *{{box-sizing:border-box;margin:0;padding:0}}
 html,body{{height:100%;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif}}
 .topnav{{
-  height:48px;
-  background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%);
-  display:flex;align-items:center;padding:0 18px;gap:10px;
-  box-shadow:0 2px 10px rgba(0,0,0,.35);flex-shrink:0;
+  height:52px;
+  background:#ffffff;
+  display:flex;align-items:center;padding:0 20px;gap:12px;
+  box-shadow:0 1px 4px rgba(0,0,0,.12);
+  border-bottom:3px solid #1b66b3;
+  flex-shrink:0;
 }}
-.topnav-title{{color:#fff;font-weight:800;font-size:15px;margin-right:8px;letter-spacing:.2px}}
+.topnav-title{{
+  color:#1b66b3;
+  font-weight:800;
+  font-size:16px;
+  margin-right:8px;
+  letter-spacing:.2px;
+  white-space:nowrap;
+}}
 .nav-btn{{
   padding:6px 20px;border-radius:20px;
-  border:1px solid rgba(255,255,255,.35);
+  border:2px solid #1b66b3;
   cursor:pointer;font-weight:700;font-size:12px;
-  transition:all .15s ease;background:rgba(255,255,255,.15);color:#fff;
+  transition:all .15s ease;background:#fff;color:#1b66b3;
 }}
-.nav-btn:hover:not(.active){{background:rgba(255,255,255,.28)}}
-.nav-btn.active{{background:#fff;color:#1e3a5f;box-shadow:0 2px 8px rgba(0,0,0,.18)}}
-.frame-wrap{{height:calc(100vh - 48px);display:flex;flex-direction:column}}
+.nav-btn:hover:not(.active){{background:#e8f0fb}}
+.nav-btn.active{{background:#1b66b3;color:#fff;box-shadow:0 2px 6px rgba(27,102,179,.35)}}
+.topnav-stamp{{
+  margin-left:auto;
+  font-size:11px;
+  font-weight:700;
+  color:#64748b;
+  white-space:nowrap;
+}}
+.frame-wrap{{height:calc(100vh - 52px);display:flex;flex-direction:column}}
 iframe{{flex:1;width:100%;border:none;display:none}}
 iframe.active{{display:block}}
 </style>
@@ -572,9 +588,10 @@ iframe.active{{display:block}}
 <body>
 
 <nav class="topnav">
-  <span class="topnav-title">&#128203; Kunden-App</span>
+  <span class="topnav-title">NordFrischeCenter &ndash; Kunden App</span>
   <button class="nav-btn active" id="btn-suche" onclick="showArea('suche')">&#128269; Suche</button>
-  <button class="nav-btn"        id="btn-druck" onclick="showArea('druck')">&#128424; Druckbereich</button>
+  <button class="nav-btn"        id="btn-druck" onclick="showArea('druck')">&#128424; BLP Druck</button>
+  <span class="topnav-stamp">{{last_updated}}</span>
 </nav>
 
 <div class="frame-wrap">
@@ -716,7 +733,11 @@ with c2:
 
 if suche_ok and druck_ok:
     with st.spinner("Kombiniere ..."):
-        app_html = combine_html(st.session_state.suche_html, st.session_state.druck_html)
+        app_html = combine_html(
+        st.session_state.suche_html,
+        st.session_state.druck_html,
+        last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
+    )
     st.download_button(
         label="⬇️  app.html herunterladen",
         data=app_html.encode("utf-8"),
