@@ -545,6 +545,7 @@ def combine_html(suche_html: str, druck_html: str, last_updated: str = "") -> st
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Kunden-App &#8211; Suche &amp; Druck</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 html,body{{height:100%;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif}}
@@ -582,6 +583,8 @@ html,body{{height:100%;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif}}
 .frame-wrap{{height:calc(100vh - 52px);display:flex;flex-direction:column}}
 iframe{{flex:1;width:100%;border:none;display:none}}
 iframe.active{{display:block}}
+.vz-day-btn{{padding:8px 20px;border:2px solid #1b66b3;background:#fff;color:#1b66b3;border-radius:20px;cursor:pointer;font-weight:800;font-size:13px;font-family:'Segoe UI',Arial,sans-serif;transition:all .15s}}
+.vz-day-btn:hover,.vz-day-btn.active{{background:#1b66b3;color:#fff}}
 </style>
 </head>
 <body>
@@ -590,12 +593,29 @@ iframe.active{{display:block}}
   <span class="topnav-title">NordFrischeCenter &ndash; Kunden App</span>
   <button class="nav-btn active" id="btn-suche" onclick="showArea('suche')">&#128269; Suche</button>
   <button class="nav-btn"        id="btn-druck" onclick="showArea('druck')">&#128424; BLP Druck</button>
+  <button class="nav-btn"        id="btn-vz"    onclick="showArea('vz')">&#9200; Versp&#228;tungstabelle</button>
   <span class="topnav-stamp">{last_updated}</span>
 </nav>
 
 <div class="frame-wrap">
   <iframe id="frame-suche" class="active" title="Kunden-Suche"></iframe>
   <iframe id="frame-druck"                title="Druckbereich"></iframe>
+  <div id="panel-vz" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#f4f6fa;font-family:'Segoe UI',Arial,sans-serif">
+    <div style="max-width:700px;margin:0 auto">
+      <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 6px 0">&#9200; Versp&#228;tungstabelle</h2>
+      <p style="color:#64748b;font-size:13px;margin:0 0 20px 0">Liefertag w&#228;hlen &#8594; Excel wird generiert</p>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px" id="vz-day-btns">
+        <button class="vz-day-btn" onclick="vzSelectDay('Montag')">Montag</button>
+        <button class="vz-day-btn" onclick="vzSelectDay('Dienstag')">Dienstag</button>
+        <button class="vz-day-btn" onclick="vzSelectDay('Mittwoch')">Mittwoch</button>
+        <button class="vz-day-btn" onclick="vzSelectDay('Donnerstag')">Donnerstag</button>
+        <button class="vz-day-btn" onclick="vzSelectDay('Freitag')">Freitag</button>
+        <button class="vz-day-btn" onclick="vzSelectDay('Samstag')">Samstag</button>
+      </div>
+      <div id="vz-status" style="color:#1b66b3;font-size:13px;font-weight:700;min-height:20px"></div>
+      <div id="vz-preview" style="margin-top:16px"></div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -625,16 +645,91 @@ document.getElementById("frame-druck" ).srcdoc = b64ChunksToString(DRUCK_CHUNKS)
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 function showArea(s) {{
-  ["suche", "druck"].forEach(function(id) {{
-    document.getElementById("frame-" + id).className = (id === s) ? "active" : "";
-    document.getElementById("btn-"   + id).className = "nav-btn" + (id === s ? " active" : "");
+  ["suche","druck"].forEach(function(id) {{
+    document.getElementById("frame-"+id).className = (id===s)?"active":"";
+    document.getElementById("btn-"+id).className = "nav-btn"+(id===s?" active":"");
   }});
+  var vzPanel = document.getElementById("panel-vz");
+  var vzBtn   = document.getElementById("btn-vz");
+  if(s==="vz"){{
+    vzPanel.style.display="block";
+    vzBtn.className="nav-btn active";
+  }} else {{
+    vzPanel.style.display="none";
+    vzBtn.className="nav-btn";
+  }}
 }}
 
 window.addEventListener("message", function(e) {{
   if (e.data === "show-druck") showArea("druck");
   if (e.data === "show-suche") showArea("suche");
+  if (e.data && e.data.type === "vz-data") vzHandleData(e.data.data);
 }});
+
+// ── Verspätungstabelle ────────────────────────────────────────────────────
+var vzSelectedDay = null;
+var vzAllData = null;
+
+function vzSelectDay(day) {{
+  vzSelectedDay = day;
+  document.querySelectorAll(".vz-day-btn").forEach(function(b) {{
+    b.classList.toggle("active", b.textContent.trim()===day);
+  }});
+  document.getElementById("vz-status").textContent = "Lade Daten...";
+  document.getElementById("frame-druck").contentWindow
+    .postMessage({{type:"request-vz-data"}}, "*");
+}}
+
+function vzHandleData(allData) {{
+  vzAllData = allData;
+  var day = vzSelectedDay;
+  var AREAS = ["direkt","mk","nms","malchow"];
+  var rows = [];
+  AREAS.forEach(function(area) {{
+    var areaData = allData[area] || {{}};
+    Object.keys(areaData).sort(function(a,b){{return (Number(a)||0)-(Number(b)||0);}}).forEach(function(knr) {{
+      var c = areaData[knr];
+      if(c.tours && c.tours[day] && c.tours[day].trim() && c.tours[day]!=="\u2014") {{
+        rows.push([knr, c.name || "", "", "", ""]);
+      }}
+    }});
+  }});
+  document.getElementById("vz-status").textContent =
+    rows.length + " Kunden mit Lieferung am " + day + " gefunden.";
+  vzRenderPreview(rows);
+  vzGenerateExcel(rows, day);
+}}
+
+function vzRenderPreview(rows) {{
+  var html = "<table style='width:100%;border-collapse:collapse;font-size:12px;margin-top:12px'>";
+  html += "<thead><tr style='background:#1b66b3;color:#fff'>";
+  ["SAP Kundennummer","Kundenname","Startzeit Soll","Startzeit Ist","Verz\u00f6gerung in Stunden"]
+    .forEach(function(h){{html+="<th style='padding:6px 10px;text-align:left'>"+h+"</th>";}});
+  html += "</tr></thead><tbody>";
+  rows.slice(0,10).forEach(function(r,i) {{
+    html += "<tr style='background:"+(i%2===0?"#f8fafc":"#fff")+"'>";
+    r.forEach(function(v){{html+="<td style='padding:5px 10px;border-bottom:1px solid #e2e8f0'>"+v+"</td>";}});
+    html += "</tr>";
+  }});
+  if(rows.length>10) html += "<tr><td colspan=5 style='padding:6px 10px;color:#64748b'>... und "+(rows.length-10)+" weitere</td></tr>";
+  html += "</tbody></table>";
+  document.getElementById("vz-preview").innerHTML = html;
+}}
+
+function vzGenerateExcel(rows, day) {{
+  if(typeof XLSX === "undefined") {{
+    document.getElementById("vz-status").textContent += " (SheetJS nicht geladen \u2013 bitte online \xf6ffnen)";
+    return;
+  }}
+  var wsData = [["SAP Kundennummer","Kundenname","Startzeit Soll","Startzeit Ist","Verz\u00f6gerung in Stunden"]];
+  rows.forEach(function(r){{wsData.push(r);}});
+  var wb = XLSX.utils.book_new();
+  var ws = XLSX.utils.aoa_to_sheet(wsData);
+  ws["!cols"] = [{{wch:18}},{{wch:35}},{{wch:14}},{{wch:12}},{{wch:24}}];
+  XLSX.utils.book_append_sheet(wb, ws, "Versp\u00e4tung "+day);
+  XLSX.writeFile(wb, "Verspaetung_"+day+".xlsx");
+  document.getElementById("vz-status").textContent += " \u2705 Excel heruntergeladen.";
+}}
 </script>
 
 </body>
