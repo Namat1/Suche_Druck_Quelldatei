@@ -676,8 +676,14 @@ function vzSelectDay(day) {{
     b.classList.toggle("active", b.textContent.trim()===day);
   }});
   document.getElementById("vz-status").textContent = "Lade Daten...";
-  document.getElementById("frame-druck").contentWindow
-    .postMessage({{type:"request-vz-data"}}, "*");
+  // Direkt auf ALL_DATA im Druck-iframe zugreifen (kein postMessage nötig)
+  try {{
+    var allData = document.getElementById("frame-druck").contentWindow.ALL_DATA;
+    if(!allData) throw new Error("ALL_DATA nicht verfügbar");
+    vzHandleData(allData);
+  }} catch(err) {{
+    document.getElementById("vz-status").textContent = "Fehler: " + err.message;
+  }}
 }}
 
 function vzHandleData(allData) {{
