@@ -496,6 +496,7 @@ def generate_druck_html(up, logo_up) -> str:
                 "plan_typ":    PLAN_TYP,
                 "bereich":     BEREICH,
                 "kunden_nr":   knr,
+                "sap_nummer":  norm_val(r.get("SAP-Nr.", "")),
                 "name":        norm_val(r.get("Name",        "")),
                 "strasse":     norm_val(r.get("Strasse",     "")),
                 "plz":         norm_val(r.get("Plz",         "")),
@@ -694,25 +695,40 @@ function vzHandleData(allData) {{
   vzAllData = allData;
   var day = vzSelectedDay;
   var AREAS = ["direkt","mk","nms","malchow"];
-  var tourSet = {{}};  // tourNr -> true (deduplizieren)
+  // tourMap: tourNr -> [{sap, name}]
+  var tourMap = {{}};
   AREAS.forEach(function(area) {{
     var areaData = allData[area] || {{}};
     Object.keys(areaData).forEach(function(knr) {{
       var c = areaData[knr];
       if(c.tours && c.tours[day]) {{
         var t = c.tours[day].toString().trim();
-        if(t && t !== "\u2014" && t !== "-") tourSet[t] = true;
+        if(t && t !== "\u2014" && t !== "-") {{
+          if(!tourMap[t]) tourMap[t] = [];
+          tourMap[t].push({{ sap: c.sap_nummer || c.kunden_nr || knr, name: c.name || "" }});
+        }}
       }}
     }});
   }});
-  // Aufsteigend nach Tournummer sortieren
-  var tours = Object.keys(tourSet).sort(function(a,b){{
+  // Touren aufsteigend sortieren
+  var tours = Object.keys(tourMap).sort(function(a,b){{
     return (parseInt(a,10)||0) - (parseInt(b,10)||0);
   }});
-  // Zeilen: [Tournummer, Soll Startzeit, Ist Startzeit, Verzögerung in Stunden]
-  var rows = tours.map(function(t){{ return [t, "", "", ""]; }});
+  // Zeilen aufbauen: Tour-Zeile + Kunden-Unterzeilen
+  var rows = [];
+  tours.forEach(function(t) {{
+    // Tour-Kopfzeile: Tournummer | Soll Startzeit | Ist Startzeit | Verzögerung
+    rows.push({{ type:"tour", tour:t, soll:"", ist:"", verz:"" }});
+    // Kunden nach SAP-Nr sortieren
+    tourMap[t].sort(function(a,b){{ return (parseInt(a.sap,10)||0)-(parseInt(b.sap,10)||0); }});
+    tourMap[t].forEach(function(k) {{
+      rows.push({{ type:"kunde", sap:k.sap, name:k.name }});
+    }});
+  }});
+  var tourCount = tours.length;
+  var kundeCount = rows.filter(function(r){{return r.type==="kunde";}}).length;
   document.getElementById("vz-status").textContent =
-    tours.length + " Touren am " + day + " gefunden.";
+    tourCount + " Touren, " + kundeCount + " Kunden am " + day;
   vzRenderPreview(rows);
   vzGenerateExcel(rows, day);
 }}
@@ -720,15 +736,30 @@ function vzHandleData(allData) {{
 function vzRenderPreview(rows) {{
   var html = "<table style='width:100%;border-collapse:collapse;font-size:12px;margin-top:12px'>";
   html += "<thead><tr style='background:#1b66b3;color:#fff'>";
-  ["Tournummer","Soll Startzeit","Ist Startzeit","Verz\u00f6gerung in Stunden"]
-    .forEach(function(h){{html+="<th style='padding:6px 10px;text-align:left'>"+h+"</th>";}});
+  ["Tournummer","SAP-Nr.","Kundenname","Soll Startzeit","Ist Startzeit","Verz\u00f6gerung"]
+    .forEach(function(h){{html+="<th style='padding:5px 8px;text-align:left'>"+h+"</th>";}});
   html += "</tr></thead><tbody>";
-  rows.slice(0,10).forEach(function(r,i) {{
-    html += "<tr style='background:"+(i%2===0?"#f8fafc":"#fff")+"'>";
-    r.forEach(function(v){{html+="<td style='padding:5px 10px;border-bottom:1px solid #e2e8f0'>"+v+"</td>";}});
-    html += "</tr>";
+  var shown=0;
+  rows.forEach(function(r) {{
+    if(shown>=20) return;
+    if(r.type==="tour") {{
+      html += "<tr style='background:#1e3a5f;color:#fff;font-weight:800'>";
+      html += "<td style='padding:4px 8px'>"+r.tour+"</td>";
+      html += "<td></td><td></td>";
+      html += "<td style='padding:4px 8px'>"+r.soll+"</td>";
+      html += "<td style='padding:4px 8px'>"+r.ist+"</td>";
+      html += "<td style='padding:4px 8px'>"+r.verz+"</td>";
+      html += "</tr>";
+    }} else {{
+      html += "<tr style='background:#f8fafc'>";
+      html += "<td style='padding:3px 8px;color:#64748b'></td>";
+      html += "<td style='padding:3px 8px;font-family:monospace'>"+r.sap+"</td>";
+      html += "<td style='padding:3px 8px'>"+r.name+"</td>";
+      html += "<td colspan=3></td></tr>";
+    }}
+    shown++;
   }});
-  if(rows.length>10) html += "<tr><td colspan=5 style='padding:6px 10px;color:#64748b'>... und "+(rows.length-10)+" weitere</td></tr>";
+  if(rows.length>20) html += "<tr><td colspan=6 style='padding:6px 8px;color:#64748b'>... und "+(rows.length-20)+" weitere Zeilen</td></tr>";
   html += "</tbody></table>";
   document.getElementById("vz-preview").innerHTML = html;
 }}
@@ -738,11 +769,17 @@ function vzGenerateExcel(rows, day) {{
     document.getElementById("vz-status").textContent += " (SheetJS nicht geladen \u2013 bitte online \xf6ffnen)";
     return;
   }}
-  var wsData = [["Tournummer","Soll Startzeit","Ist Startzeit","Verz\u00f6gerung in Stunden"]];
-  rows.forEach(function(r){{wsData.push(r);}});
+  var wsData = [["Tournummer","SAP-Nr.","Kundenname","Soll Startzeit","Ist Startzeit","Verz\u00f6gerung in Stunden"]];
+  rows.forEach(function(r) {{
+    if(r.type==="tour") {{
+      wsData.push([r.tour, "", "", r.soll, r.ist, r.verz]);
+    }} else {{
+      wsData.push(["", r.sap, r.name, "", "", ""]);
+    }}
+  }});
   var wb = XLSX.utils.book_new();
   var ws = XLSX.utils.aoa_to_sheet(wsData);
-  ws["!cols"] = [{{wch:14}},{{wch:16}},{{wch:14}},{{wch:26}}];
+  ws["!cols"] = [{{wch:14}},{{wch:14}},{{wch:35}},{{wch:16}},{{wch:14}},{{wch:26}}];
   XLSX.utils.book_append_sheet(wb, ws, "Versp\u00e4tung "+day);
   XLSX.writeFile(wb, "Verspaetung_"+day+".xlsx");
   document.getElementById("vz-status").textContent += " \u2705 Excel heruntergeladen.";
