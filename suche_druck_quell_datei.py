@@ -694,18 +694,25 @@ function vzHandleData(allData) {{
   vzAllData = allData;
   var day = vzSelectedDay;
   var AREAS = ["direkt","mk","nms","malchow"];
-  var rows = [];
+  var tourSet = {{}};  // tourNr -> true (deduplizieren)
   AREAS.forEach(function(area) {{
     var areaData = allData[area] || {{}};
-    Object.keys(areaData).sort(function(a,b){{return (Number(a)||0)-(Number(b)||0);}}).forEach(function(knr) {{
+    Object.keys(areaData).forEach(function(knr) {{
       var c = areaData[knr];
-      if(c.tours && c.tours[day] && c.tours[day].trim() && c.tours[day]!=="\u2014") {{
-        rows.push([knr, c.name || "", "", "", ""]);
+      if(c.tours && c.tours[day]) {{
+        var t = c.tours[day].toString().trim();
+        if(t && t !== "\u2014" && t !== "-") tourSet[t] = true;
       }}
     }});
   }});
+  // Aufsteigend nach Tournummer sortieren
+  var tours = Object.keys(tourSet).sort(function(a,b){{
+    return (parseInt(a,10)||0) - (parseInt(b,10)||0);
+  }});
+  // Zeilen: [Tournummer, Soll Startzeit, Ist Startzeit, Verzögerung in Stunden]
+  var rows = tours.map(function(t){{ return [t, "", "", ""]; }});
   document.getElementById("vz-status").textContent =
-    rows.length + " Kunden mit Lieferung am " + day + " gefunden.";
+    tours.length + " Touren am " + day + " gefunden.";
   vzRenderPreview(rows);
   vzGenerateExcel(rows, day);
 }}
@@ -713,7 +720,7 @@ function vzHandleData(allData) {{
 function vzRenderPreview(rows) {{
   var html = "<table style='width:100%;border-collapse:collapse;font-size:12px;margin-top:12px'>";
   html += "<thead><tr style='background:#1b66b3;color:#fff'>";
-  ["SAP Kundennummer","Kundenname","Startzeit Soll","Startzeit Ist","Verz\u00f6gerung in Stunden"]
+  ["Tournummer","Soll Startzeit","Ist Startzeit","Verz\u00f6gerung in Stunden"]
     .forEach(function(h){{html+="<th style='padding:6px 10px;text-align:left'>"+h+"</th>";}});
   html += "</tr></thead><tbody>";
   rows.slice(0,10).forEach(function(r,i) {{
@@ -731,11 +738,11 @@ function vzGenerateExcel(rows, day) {{
     document.getElementById("vz-status").textContent += " (SheetJS nicht geladen \u2013 bitte online \xf6ffnen)";
     return;
   }}
-  var wsData = [["SAP Kundennummer","Kundenname","Startzeit Soll","Startzeit Ist","Verz\u00f6gerung in Stunden"]];
+  var wsData = [["Tournummer","Soll Startzeit","Ist Startzeit","Verz\u00f6gerung in Stunden"]];
   rows.forEach(function(r){{wsData.push(r);}});
   var wb = XLSX.utils.book_new();
   var ws = XLSX.utils.aoa_to_sheet(wsData);
-  ws["!cols"] = [{{wch:18}},{{wch:35}},{{wch:14}},{{wch:12}},{{wch:24}}];
+  ws["!cols"] = [{{wch:14}},{{wch:16}},{{wch:14}},{{wch:26}}];
   XLSX.utils.book_append_sheet(wb, ws, "Versp\u00e4tung "+day);
   XLSX.writeFile(wb, "Verspaetung_"+day+".xlsx");
   document.getElementById("vz-status").textContent += " \u2705 Excel heruntergeladen.";
