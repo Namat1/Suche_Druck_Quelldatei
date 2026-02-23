@@ -695,7 +695,7 @@ function vzHandleData(allData) {{
   vzAllData = allData;
   var day = vzSelectedDay;
   var AREAS = ["direkt","mk","nms","malchow"];
-  // tourMap: tourNr -> [{sap, name}]
+  // tourMap: tourNr -> [{{sap, name}}]
   var tourMap = {{}};
   AREAS.forEach(function(area) {{
     var areaData = allData[area] || {{}};
