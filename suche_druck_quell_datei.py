@@ -817,8 +817,11 @@ function telPDF() {{
       body += "<div class='item'>";
       body += "<div class='iname'>" + p.name + "</div>";
       body += "<div class='itel'>&#128222; " + p.tel + "</div>";
-      if(p.mail && p.mail !== "Disponent" && p.mail !== "Chef") {{
-        body += "<div class='imail'>&#9993; " + p.mail + "</div>";
+      if(p.mail) {{
+        var isRole = (p.mail==="Disponent"||p.mail==="Chef");
+        body += isRole
+          ? "<div style='font-size:6.5pt;color:#dc2626;font-weight:700'>" + p.mail + "</div>"
+          : "<div class='imail'>&#9993; " + p.mail + "</div>";
       }}
       body += "</div>";
     }});
