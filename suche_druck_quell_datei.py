@@ -894,7 +894,7 @@ if suche_ok and druck_ok:
         type="primary",
     )
     st.caption(
-        f"Gesamtgroesse: ca. {len(suche_html)//1024} KB | "
+        f"Gesamtgroesse: ca. {len(app_html)//1024} KB | "
         "Navigation: Topbar + fixer Wechsel-Button in jeder Seite"
     )
 else:
