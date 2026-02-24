@@ -789,6 +789,9 @@ function telFilter(q) {{ telRender(q); }}
 function telCopy(tel) {{
   if(navigator.clipboard) navigator.clipboard.writeText(tel);
 }}
+function telHover(el, on) {{
+  el.style.background = on ? "#eff6ff" : "#fff";
+}}
 function telRender(q) {{
   q = q.toLowerCase().trim();
   var html = "";
@@ -805,12 +808,13 @@ function telRender(q) {{
     html += "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:6px'>";
     hits.forEach(function(p) {{
       var safetel = p.tel.replace(/'/g,"&#39;");
-      html += "<div onclick='telCopy(this.dataset.tel)' data-tel='" + safetel + "'"
+      html += "<div"
+            + " onclick='telCopy(this.dataset.tel)'"
+            + " onmouseover='telHover(this,true)'"
+            + " onmouseout='telHover(this,false)'"
+            + " data-tel='" + safetel + "'"
             + " title='Klicken zum Kopieren'"
-            + " style='cursor:pointer;background:#fff;border:1px solid #e2e8f0;"
-            + "border-radius:8px;padding:8px 12px;transition:background .12s'"
-            + " onmouseover='this.style.background="#eff6ff"'"
-            + " onmouseout='this.style.background="#fff"'>";
+            + " style='cursor:pointer;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;transition:background .12s'>";
       html += "<div style='font-weight:800;font-size:13px;color:#0b1220'>" + p.name + "</div>";
       html += "<div style='font-size:13px;color:#1b66b3;font-weight:700;margin-top:2px'>&#128222; " + p.tel + "</div>";
       if(p.mail) html += "<div style='font-size:11px;color:#64748b;margin-top:2px'>&#9993; " + p.mail + "</div>";
