@@ -621,9 +621,16 @@ iframe.active{{display:block}}
   <div id="panel-tel" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#f4f6fa;font-family:'Segoe UI',Arial,sans-serif">
     <div style="max-width:900px;margin:0 auto">
       <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128222; Telefonliste</h2>
-      <input id="tel-search" placeholder="Name suchen..." oninput="telFilter(this.value)"
-        style="width:100%;max-width:400px;padding:8px 14px;border:2px solid #1b66b3;border-radius:20px;
-               font-size:13px;font-family:inherit;outline:none;margin-bottom:20px;display:block">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+        <input id="tel-search" placeholder="Name suchen..." oninput="telFilter(this.value)"
+          style="flex:1;min-width:200px;max-width:400px;padding:8px 14px;border:2px solid #1b66b3;
+                 border-radius:20px;font-size:13px;font-family:inherit;outline:none">
+        <button onclick="telPDF()"
+          style="padding:8px 18px;background:#dc2626;border:none;color:#fff;border-radius:20px;
+                 font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap">
+          &#128196; PDF exportieren
+        </button>
+      </div>
       <div id="tel-content"></div>
     </div>
   </div>
@@ -786,6 +793,47 @@ var TEL_DATA = {tel_json};
 
 function telFilter(q) {{ telRender(q); }}
 
+function telPDF() {{
+  var w = window.open("","_blank","width=900,height=700");
+  var css = [
+    "body{{font-family:'Segoe UI',Arial,sans-serif;font-size:8pt;margin:10mm;color:#000}}",
+    "h1{{font-size:13pt;color:#1b66b3;margin:0 0 4mm 0;border-bottom:2px solid #1b66b3;padding-bottom:2mm}}",
+    ".gruppe{{font-size:8pt;font-weight:900;text-transform:uppercase;color:#1b66b3;",
+    "  margin:4mm 0 1.5mm 0;letter-spacing:.3px;border-bottom:1px solid #1b66b3;padding-bottom:0.5mm}}",
+    ".grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:1mm 3mm}}",
+    ".item{{padding:0.8mm 0;border-bottom:1px solid #eee;line-height:1.3}}",
+    ".iname{{font-weight:800;font-size:7.5pt}}",
+    ".itel{{color:#1b66b3;font-size:7.5pt}}",
+    ".imail{{color:#888;font-size:6.5pt;font-style:italic}}",
+    "@media print{{@page{{size:A4 portrait;margin:10mm}}body{{margin:0}}}}"
+  ].join("");
+
+  var body = "<h1>&#128222; Telefonliste</h1>";
+  TEL_DATA.forEach(function(g) {{
+    if(!g.personen.length) return;
+    body += "<div class='gruppe'>" + g.gruppe + " (" + g.personen.length + ")</div>";
+    body += "<div class='grid'>";
+    g.personen.forEach(function(p) {{
+      body += "<div class='item'>";
+      body += "<div class='iname'>" + p.name + "</div>";
+      body += "<div class='itel'>&#128222; " + p.tel + "</div>";
+      if(p.mail && p.mail !== "Disponent" && p.mail !== "Chef") {{
+        body += "<div class='imail'>&#9993; " + p.mail + "</div>";
+      }}
+      body += "</div>";
+    }});
+    body += "</div>";
+  }});
+
+  w.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'>");
+  w.document.write("<title>Telefonliste NordFrischeCenter</title>");
+  w.document.write("<style>" + css + "</style></head><body>");
+  w.document.write(body);
+  w.document.write("</body></html>");
+  w.document.close();
+  w.focus();
+  setTimeout(function(){{ w.print(); }}, 400);
+}}
 function telCopy(tel) {{
   if(navigator.clipboard) navigator.clipboard.writeText(tel);
 }}
