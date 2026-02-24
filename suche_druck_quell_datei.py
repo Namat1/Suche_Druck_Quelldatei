@@ -889,7 +889,7 @@ if suche_ok and druck_ok:
     st.download_button(
         label="⬇️  app.html herunterladen",
         data=app_html.encode("utf-8"),
-        file_name="app.html",
+        file_name="suche.html",
         mime="text/html",
         type="primary",
     )
