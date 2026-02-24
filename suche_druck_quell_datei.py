@@ -887,14 +887,14 @@ if suche_ok and druck_ok:
         last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
     )
     st.download_button(
-        label="⬇️  app.html herunterladen",
+        label="⬇️  suche.html herunterladen",
         data=app_html.encode("utf-8"),
         file_name="suche.html",
         mime="text/html",
         type="primary",
     )
     st.caption(
-        f"Gesamtgroesse: ca. {len(app_html)//1024} KB | "
+        f"Gesamtgroesse: ca. {len(suche_html)//1024} KB | "
         "Navigation: Topbar + fixer Wechsel-Button in jeder Seite"
     )
 else:
