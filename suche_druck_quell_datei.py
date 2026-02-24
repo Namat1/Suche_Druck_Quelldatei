@@ -521,7 +521,7 @@ def generate_druck_html(up, logo_up) -> str:
 # HTML KOMBINIEREN  →  app.html
 # =============================================================================
 
-def combine_html(suche_html: str, druck_html: str, last_updated: str = "") -> str:
+def combine_html(suche_html: str, druck_html: str, last_updated: str = "", tel_json: str = "[]") -> str:
     """
     Bettet beide HTML-Seiten als Base64-Strings ins JS ein.
     atob() dekodiert sie im Browser → KEIN Escaping-Problem,
@@ -595,6 +595,7 @@ iframe.active{{display:block}}
   <button class="nav-btn active" id="btn-suche" onclick="showArea('suche')">&#128269; Suche</button>
   <button class="nav-btn"        id="btn-druck" onclick="showArea('druck')">&#128424; BLP Druck</button>
   <button class="nav-btn"        id="btn-vz"    onclick="showArea('vz')">&#9200; Versp&#228;tungstabelle</button>
+  <button class="nav-btn"        id="btn-tel"   onclick="showArea('tel')">&#128222; Telefonliste</button>
   <span class="topnav-stamp">{last_updated}</span>
 </nav>
 
@@ -615,6 +616,15 @@ iframe.active{{display:block}}
       </div>
       <div id="vz-status" style="color:#1b66b3;font-size:13px;font-weight:700;min-height:20px"></div>
       <div id="vz-preview" style="margin-top:16px"></div>
+    </div>
+  </div>
+  <div id="panel-tel" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#f4f6fa;font-family:'Segoe UI',Arial,sans-serif">
+    <div style="max-width:900px;margin:0 auto">
+      <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128222; Telefonliste</h2>
+      <input id="tel-search" placeholder="Name suchen..." oninput="telFilter(this.value)"
+        style="width:100%;max-width:400px;padding:8px 14px;border:2px solid #1b66b3;border-radius:20px;
+               font-size:13px;font-family:inherit;outline:none;margin-bottom:20px;display:block">
+      <div id="tel-content"></div>
     </div>
   </div>
 </div>
@@ -653,11 +663,17 @@ function showArea(s) {{
   var vzPanel = document.getElementById("panel-vz");
   var vzBtn   = document.getElementById("btn-vz");
   if(s==="vz"){{
-    vzPanel.style.display="block";
-    vzBtn.className="nav-btn active";
+    vzPanel.style.display="block"; vzBtn.className="nav-btn active";
   }} else {{
-    vzPanel.style.display="none";
-    vzBtn.className="nav-btn";
+    vzPanel.style.display="none";  vzBtn.className="nav-btn";
+  }}
+  var telPanel = document.getElementById("panel-tel");
+  var telBtn   = document.getElementById("btn-tel");
+  if(s==="tel"){{
+    telPanel.style.display="block"; telBtn.className="nav-btn active";
+    if(!telPanel.dataset.loaded) {{ telRender(""); telPanel.dataset.loaded="1"; }}
+  }} else {{
+    telPanel.style.display="none";  telBtn.className="nav-btn";
   }}
 }}
 
@@ -764,6 +780,40 @@ function vzRenderPreview(rows) {{
   document.getElementById("vz-preview").innerHTML = html;
 }}
 
+
+// ── Telefonliste ──────────────────────────────────────────────────────────
+var TEL_DATA = {tel_json};
+
+function telFilter(q) {{ telRender(q); }}
+
+function telRender(q) {{
+  q = q.toLowerCase().trim();
+  var html = "";
+  TEL_DATA.forEach(function(g) {{
+    var hits = g.personen.filter(function(p) {{
+      return !q || p.name.toLowerCase().includes(q) || p.tel.includes(q);
+    }});
+    if(!hits.length) return;
+    html += "<div style='margin-bottom:18px'>";
+    html += "<div style='font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;"
+           +"color:#1b66b3;padding:4px 0;border-bottom:2px solid #1b66b3;margin-bottom:6px'>";
+    html += g.gruppe + " <span style='font-weight:500;color:#94a3b8'>(" + hits.length + ")</span></div>";
+    html += "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:6px'>";
+    hits.forEach(function(p) {{
+      html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;'";
+      html += " onclick=\"navigator.clipboard&&navigator.clipboard.writeText('" + p.tel + "')\"";
+      html += " title='Klicken zum Kopieren' style='cursor:pointer;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;transition:background .12s'";
+      html += " onmouseover=\"this.style.background='#eff6ff'\" onmouseout=\"this.style.background='#fff'\">";
+      html += "<div style='font-weight:800;font-size:13px;color:#0b1220'>" + p.name + "</div>";
+      html += "<div style='font-size:13px;color:#1b66b3;font-weight:700;margin-top:2px'>&#128222; " + p.tel + "</div>";
+      if(p.mail) html += "<div style='font-size:11px;color:#64748b;margin-top:2px'>&#9993; " + p.mail + "</div>";
+      html += "</div>";
+    }});
+    html += "</div></div>";
+  }});
+  if(!html) html = "<div style='color:#64748b;padding:20px'>Keine Ergebnisse.</div>";
+  document.getElementById("tel-content").innerHTML = html;
+}}
 function vzGenerateExcel(rows, day) {{
   if(typeof XLSX === "undefined") {{
     document.getElementById("vz-status").textContent += " (SheetJS nicht geladen \u2013 bitte online \xf6ffnen)";
@@ -869,15 +919,72 @@ with tab_druck:
 
 # ── Kombination & Download ─────────────────────────────────────────────────────
 st.divider()
+
+def parse_telefon_excel(up) -> str:
+    """Liest Telefonnummern.xlsx (Sheet 'aktuell') und gibt JSON-String zurück."""
+    import json as _json
+    try:
+        df = pd.read_excel(up, sheet_name="aktuell", dtype=str)
+        df.columns = ["name","vorname","vorwahl","nummer","mail","gruppe"]
+        df = df.fillna("")
+        groups, current_group, current_entries = [], "Eigene Fahrer", []
+        for _, r in df.iterrows():
+            name    = r["name"].strip()
+            vorname = r["vorname"].strip()
+            vorwahl = r["vorwahl"].strip()
+            nummer  = r["nummer"].strip()
+            mail    = r["mail"].strip()
+            gruppe  = r["gruppe"].strip()
+            if not name and not vorname and not vorwahl and not nummer:
+                if current_entries:
+                    groups.append({"gruppe": current_group, "personen": current_entries})
+                current_entries = []
+                continue
+            if gruppe:
+                if current_entries:
+                    groups.append({"gruppe": current_group, "personen": current_entries})
+                    current_entries = []
+                current_group = gruppe
+            tel = ""
+            if vorwahl and vorwahl.lower() not in ("nan","n.a.",""):
+                tel = vorwahl.strip()
+                if nummer and nummer.lower() not in ("nan","n.a.",""):
+                    tel += " " + nummer.strip()
+            elif nummer and nummer.lower() not in ("nan","n.a.",""):
+                tel = nummer.strip()
+            else:
+                tel = "n.a."
+            vname = " ".join(filter(None, [vorname, name]))
+            if not vname.strip(): continue
+            current_entries.append({
+                "name": vname,
+                "tel":  tel,
+                "mail": mail if mail.lower() not in ("nan","") else ""
+            })
+        if current_entries:
+            groups.append({"gruppe": current_group, "personen": current_entries})
+        return _json.dumps(groups, ensure_ascii=False)
+    except Exception as e:
+        st.warning(f"Telefonliste konnte nicht gelesen werden: {e}")
+        return "[]"
+
 st.subheader("🔗 Kombinieren & app.html herunterladen")
 
-c1, c2 = st.columns(2)
+c1, c2, c3 = st.columns(3)
 with c1:
     suche_ok = st.session_state.suche_html is not None
     st.metric("Suche-HTML", "✅ bereit" if suche_ok else "❌ fehlt")
 with c2:
     druck_ok = st.session_state.druck_html is not None
     st.metric("Druck-HTML", "✅ bereit" if druck_ok else "❌ fehlt")
+with c3:
+    tel_up = st.file_uploader("📞 Telefonliste (Excel)", type=["xlsx"], key="tel_upload")
+    if tel_up:
+        st.session_state.tel_json = parse_telefon_excel(tel_up)
+        n = len(__import__("json").loads(st.session_state.tel_json))
+        st.metric("Telefonliste", f"✅ {n} Gruppen")
+    elif "tel_json" not in st.session_state:
+        st.metric("Telefonliste", "⚪ optional")
 
 if suche_ok and druck_ok:
     with st.spinner("Kombiniere ..."):
@@ -885,6 +992,7 @@ if suche_ok and druck_ok:
         st.session_state.suche_html,
         st.session_state.druck_html,
         last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
+        tel_json=st.session_state.get("tel_json", "[]"),
     )
     st.download_button(
         label="⬇️  suche.html herunterladen",
