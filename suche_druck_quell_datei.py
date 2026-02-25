@@ -1050,150 +1050,20 @@ def parse_telefon_excel(up) -> str:
 
 # ── Kombination & Download ─────────────────────────────────────────────────────
 st.divider()
-st.subheader("🔗 Instanzen & suche.html herunterladen")
-st.caption("Jede Instanz (Normalwochen, KW17, Ostern …) hat eigene Upload-Felder. Logo gilt pro Instanz.")
+st.subheader("🔗 Wochen & suche.html herunterladen")
+st.caption("Globale Dateien einmalig hochladen. Pro Instanz (Woche) nur die Wochen-Excel hochladen.")
 
 # ── Instanzen initialisieren ──────────────────────────────────────────────────
 def _empty_inst(name="Normalwochen"):
-    return {
-        "name": name,
-        "suche_html": None, "druck_html": None,
-        # Dateipfade merken für Re-Generierung (nicht nötig – wir generieren on-upload)
-    }
+    return {"name": name, "suche_html": None, "druck_html": None}
 
 if "instances" not in st.session_state:
     st.session_state.instances = [_empty_inst("Normalwochen")]
 
-# ── Pro Instanz alle Upload-Felder ────────────────────────────────────────────
-for i, inst in enumerate(st.session_state.instances):
-    with st.expander(f"📋 Instanz {i+1}: {inst['name']}", expanded=(i == 0)):
-
-        # Name + Löschen
-        col_name, col_del = st.columns([5, 1])
-        with col_name:
-            new_name = st.text_input("Bezeichnung", value=inst["name"], key=f"inst_name_{i}")
-            st.session_state.instances[i]["name"] = new_name
-        with col_del:
-            if i > 0:
-                st.write("")
-                st.write("")
-                if st.button("🗑️ Löschen", key=f"del_inst_{i}"):
-                    st.session_state.instances.pop(i)
-                    st.rerun()
-
-        st.markdown("**Suche**")
-        cs1, cs2, cs3 = st.columns(3)
-        with cs1:
-            s_excel = st.file_uploader("📊 Suche-Excel *", type=["xlsx"], key=f"s_excel_{i}")
-        with cs2:
-            s_key   = st.file_uploader("🔑 Key-Datei *",   type=["xlsx"], key=f"s_key_{i}")
-        with cs3:
-            s_logo  = st.file_uploader("🖼️ Logo *",         type=["png","jpg","jpeg","svg"], key=f"s_logo_{i}")
-
-        cs4, cs5 = st.columns(2)
-        with cs4:
-            s_fach  = st.file_uploader("👤 Fachberater-Liste (optional)", type=["xlsx"], key=f"s_fach_{i}")
-        with cs5:
-            s_fcsb  = st.file_uploader("🔗 Fachberater-CSB (optional)",  type=["xlsx"], key=f"s_fcsb_{i}")
-
-        if s_excel and s_key and s_logo:
-            try:
-                with st.spinner("Generiere Suche-HTML …"):
-                    st.session_state.instances[i]["suche_html"] = generate_suche_html(
-                        s_excel, s_key, s_logo, s_fach, s_fcsb
-                    )
-                st.success(f"✅ Suche bereit ({len(st.session_state.instances[i]['suche_html'])//1024} KB)")
-            except Exception as e:
-                st.error(f"Suche-Fehler: {e}")
-        elif inst["suche_html"]:
-            st.caption(f"✅ Suche bereits generiert ({len(inst['suche_html'])//1024} KB) — neue Dateien hochladen zum Aktualisieren")
-        else:
-            st.info("Bitte Suche-Excel, Key-Datei und Logo hochladen.")
-
-        st.markdown("**Druck**")
-        cd1, cd2 = st.columns(2)
-        with cd1:
-            d_excel = st.file_uploader("📊 Druck-Excel *", type=["xlsx"], key=f"d_excel_{i}")
-        with cd2:
-            d_logo  = st.file_uploader("🖼️ Logo (Druck) *", type=["png","jpg","jpeg","svg"], key=f"d_logo_{i}")
-
-        if d_excel and d_logo:
-            try:
-                with st.spinner("Generiere Druck-HTML …"):
-                    st.session_state.instances[i]["druck_html"] = generate_druck_html(d_excel, d_logo)
-                st.success(f"✅ Druck bereit ({len(st.session_state.instances[i]['druck_html'])//1024} KB)")
-            except Exception as e:
-                st.error(f"Druck-Fehler: {e}")
-        elif inst["druck_html"]:
-            st.caption(f"✅ Druck bereits generiert ({len(inst['druck_html'])//1024} KB) — neue Dateien hochladen zum Aktualisieren")
-        else:
-            st.info("Bitte Druck-Excel und Logo hochladen.")
-
-if st.button("➕ Instanz hinzufügen"):
-    n = len(st.session_state.instances)
-    st.session_state.instances.append(_empty_inst(f"Sonderwoche {n}"))
-    st.rerun()
-
-st.divider()
-
-# ── Telefonliste (global) ─────────────────────────────────────────────────────
-tel_up = st.file_uploader("📞 Telefonliste (Excel, optional — gilt für alle Instanzen)", type=["xlsx"], key="tel_upload")
-if tel_up:
-    st.session_state.tel_json = parse_telefon_excel(tel_up)
-    n = len(__import__("json").loads(st.session_state.tel_json))
-    st.caption(f"✅ Telefonliste: {n} Gruppen")
-
-# ── Download ──────────────────────────────────────────────────────────────────
-st.divider()
-ready = [inst for inst in st.session_state.instances if inst["suche_html"] and inst["druck_html"]]
-if ready:
-    with st.spinner("Kombiniere …"):
-        app_html = combine_html(
-            instances=ready,
-            tel_json=st.session_state.get("tel_json", "[]"),
-            last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
-        )
-    st.download_button(
-        label=f"⬇️  suche.html herunterladen ({len(ready)} Instanz{'en' if len(ready) > 1 else ''})",
-        data=app_html.encode("utf-8"),
-        file_name="suche.html",
-        mime="text/html",
-        type="primary",
-    )
-    st.caption(f"Gesamtgröße: ca. {len(app_html)//1024} KB | Instanzen: {', '.join(i['name'] for i in ready)}")
-else:
-    st.warning("Bitte mindestens eine Instanz vollständig befüllen (Suche + Druck).")# ── Globale Dateien (einmalig für alle Instanzen) ─────────────────────────────
-st.markdown("**Globale Dateien** – gelten für alle Instanzen")
-gc1, gc2, gc3, gc4 = st.columns(4)
-with gc1:
-    g_logo  = st.file_uploader("🖼️ Logo", type=["png","jpg","jpeg","svg"], key="g_logo")
-    if g_logo: st.session_state.g_logo = g_logo
-with gc2:
-    g_key   = st.file_uploader("🔑 Marktschlüssel", type=["xlsx"], key="g_key")
-    if g_key: st.session_state.g_key = g_key
-with gc3:
-    g_fach  = st.file_uploader("👤 Telefonnummern Fachberater", type=["xlsx"], key="g_fach")
-    if g_fach: st.session_state.g_fach = g_fach
-with gc4:
-    g_fcsb  = st.file_uploader("🔗 Kundenliste Original", type=["xlsx"], key="g_fcsb")
-    if g_fcsb: st.session_state.g_fcsb = g_fcsb
-
-# Status globaler Dateien
-_glob_status = []
-for _k, _lbl in [("g_logo","Logo"),("g_key","Marktschlüssel"),("g_fach","Tel. Fachberater"),("g_fcsb","Kundenliste")]:
-    _glob_status.append("✅ "+_lbl if st.session_state.get(_k) else "❌ "+_lbl)
-st.caption(" · ".join(_glob_status))
-
-st.divider()
-
-# ── Instanzen-Verwaltung ──────────────────────────────────────────────────────
-if "instances" not in st.session_state:
-    st.session_state.instances = [_empty_inst("Normalwochen")]
-
-st.markdown("**Instanzen** (Normalwochen + beliebig viele Sonderwochen)")
+st.markdown("**Wochen** – pro Woche eine Wochen-Excel hochladen")
 
 for i, inst in enumerate(st.session_state.instances):
-    with st.expander(f"📋 Instanz {i+1}: {inst['name']}", expanded=(i == 0)):
+    with st.expander(f"📅 Woche {i+1}: {inst['name']}", expanded=(i == 0)):
 
         col_name, col_del = st.columns([5, 1])
         with col_name:
@@ -1208,7 +1078,6 @@ for i, inst in enumerate(st.session_state.instances):
 
         excel = st.file_uploader("📊 Wochen-Excel *", type=["xlsx"], key=f"excel_{i}")
 
-        # Globale Dateien holen
         _logo = st.session_state.get("g_logo")
         _key  = st.session_state.get("g_key")
         _fach = st.session_state.get("g_fach")
@@ -1244,7 +1113,7 @@ for i, inst in enumerate(st.session_state.instances):
             if not _key:  missing.append("Marktschlüssel (global)")
             if missing: st.info(f"Fehlend: {', '.join(missing)}")
 
-if st.button("➕ Instanz hinzufügen"):
+if st.button("➕ Woche hinzufügen"):
     n = len(st.session_state.instances)
     st.session_state.instances.append(_empty_inst(f"Sonderwoche {n}"))
     st.rerun()
@@ -1252,7 +1121,7 @@ if st.button("➕ Instanz hinzufügen"):
 st.divider()
 
 # ── Telefonliste (global) ─────────────────────────────────────────────────────
-tel_up = st.file_uploader("📞 Telefonliste (Excel, optional — gilt für alle Instanzen)", type=["xlsx"], key="tel_upload")
+tel_up = st.file_uploader("📞 Telefonliste (Excel, optional)", type=["xlsx"], key="tel_upload")
 if tel_up:
     st.session_state.tel_json = parse_telefon_excel(tel_up)
     n = len(__import__("json").loads(st.session_state.tel_json))
@@ -1269,12 +1138,12 @@ if ready:
             last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
         )
     st.download_button(
-        label=f"⬇️  suche.html herunterladen ({len(ready)} Instanz{'en' if len(ready) > 1 else ''})",
+        label=f"⬇️  suche.html herunterladen ({len(ready)} Woche{'n' if len(ready) > 1 else ''})",
         data=app_html.encode("utf-8"),
         file_name="suche.html",
         mime="text/html",
         type="primary",
     )
-    st.caption(f"Gesamtgröße: ca. {len(app_html)//1024} KB | Instanzen: {', '.join(i['name'] for i in ready)}")
+    st.caption(f"Gesamtgröße: ca. {len(app_html)//1024} KB | Wochen: {', '.join(i['name'] for i in ready)}")
 else:
-    st.warning("Bitte mindestens eine Instanz vollständig befüllen (Suche + Druck).")
+    st.warning("Bitte mindestens eine Woche mit Wochen-Excel befüllen (globale Dateien nicht vergessen).")
