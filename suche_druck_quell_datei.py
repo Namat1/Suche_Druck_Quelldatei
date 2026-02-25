@@ -597,6 +597,7 @@ html,body{{height:100%;font-family:'Segoe UI',Arial,sans-serif}}
 .nav-dd-btn.active{{background:#1b66b3;color:#fff;box-shadow:0 2px 6px rgba(27,102,179,.35)}}
 .nav-dd-btn.active .dd-arrow{{filter:brightness(10)}}
 .dd-arrow{{font-size:9px;opacity:.7;transition:transform .15s}}
+.inst-label{{font-size:10px;font-weight:600;opacity:.85;background:rgba(255,255,255,.25);border-radius:8px;padding:1px 6px;margin:0 4px 0 5px;white-space:nowrap}}
 .nav-dd.open .dd-arrow{{transform:rotate(180deg)}}
 .dd-menu{{
   display:none;
@@ -633,19 +634,19 @@ iframe.active{{display:block}}
   <div class="nav-sep"></div>
   <div class="nav-dd" id="dd-suche">
     <button class="nav-dd-btn active" id="btn-suche" onclick="ddToggle('suche',event)">
-      &#128269; Suche <span class="dd-arrow">&#9660;</span>
+      &#128269; Suche <span id="inst-label-suche"></span><span class="dd-arrow">&#9660;</span>
     </button>
     <div class="dd-menu" id="ddmenu-suche"></div>
   </div>
   <div class="nav-dd" id="dd-druck">
     <button class="nav-dd-btn" id="btn-druck" onclick="ddToggle('druck',event)">
-      &#128424; BLP Druck <span class="dd-arrow">&#9660;</span>
+      &#128424; BLP Druck <span id="inst-label-druck"></span><span class="dd-arrow">&#9660;</span>
     </button>
     <div class="dd-menu" id="ddmenu-druck"></div>
   </div>
   <div class="nav-dd" id="dd-vz">
     <button class="nav-dd-btn" id="btn-vz" onclick="ddToggle('vz',event)">
-      &#9200; Versp&#228;tungstabelle <span class="dd-arrow">&#9660;</span>
+      &#9200; Versp&#228;tungstabelle <span id="inst-label-vz"></span><span class="dd-arrow">&#9660;</span>
     </button>
     <div class="dd-menu" id="ddmenu-vz"></div>
   </div>
@@ -757,9 +758,21 @@ function ddToggle(area, e) {{
   }}
 }}
 
+function updateInstLabels() {{
+  if(INSTANCES.length <= 1) return;  // nur anzeigen wenn mehrere Instanzen
+  var name = INSTANCES[currentInst].name;
+  ["suche","druck","vz"].forEach(function(area) {{
+    var el = document.getElementById("inst-label-"+area);
+    if(el) {{
+      el.textContent = name;
+      el.className = "inst-label";
+    }}
+  }});
+}}
+
 function ddSelect(area, instIdx) {{
-  // Instanz laden wenn nötig
   if(instIdx !== currentInst) loadInst(instIdx);
+  updateInstLabels();
   showArea(area);
   document.querySelectorAll(".nav-dd").forEach(function(d){{d.classList.remove("open");}});
 }}
@@ -795,6 +808,7 @@ function showArea(s) {{
 if(INSTANCES.length > 0) {{
   document.getElementById("frame-suche").srcdoc = b64ChunksToString(INSTANCES[0].s);
   document.getElementById("frame-druck" ).srcdoc = b64ChunksToString(INSTANCES[0].d);
+  updateInstLabels();
 }}
 
 window.addEventListener("message", function(e) {{
