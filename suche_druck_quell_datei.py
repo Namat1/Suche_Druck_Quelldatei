@@ -521,31 +521,44 @@ def generate_druck_html(up, logo_up) -> str:
 # HTML KOMBINIEREN  →  app.html
 # =============================================================================
 
-def combine_html(suche_html: str, druck_html: str, last_updated: str = "", tel_json: str = "[]") -> str:
+def combine_html(instances: list, tel_json: str = "[]", last_updated: str = "") -> str:
     """
-    Bettet beide HTML-Seiten als Base64-Strings ins JS ein.
-    atob() dekodiert sie im Browser → KEIN Escaping-Problem,
-    egal welche Zeichen (Backticks, Backslashes, ${...}) im HTML stecken.
+    Bettet beliebig viele Suche+Druck-Paare (Instanzen) in eine HTML ein.
+    Instanz-Wechsler im Topnav.
     """
-    # Base64-kodieren (UTF-8 → bytes → base64-ASCII)
-    s_b64 = base64.b64encode(suche_html.encode("utf-8")).decode("ascii")
-    d_b64 = base64.b64encode(druck_html.encode("utf-8")).decode("ascii")
-
-    # Base64 in JS-Array-Chunks aufteilen (komma-getrennt → kein Zeilenumbruch
-    # innerhalb eines JS-Strings, daher kein SyntaxError)
     def to_js_array(b64: str, width: int = 100) -> str:
         chunks = [b64[i:i+width] for i in range(0, len(b64), width)]
         return ",\n".join(f'"{c}"' for c in chunks)
 
-    s_js = to_js_array(s_b64)
-    d_js = to_js_array(d_b64)
+    # Alle Instanzen als JS-Array vorbereiten
+    inst_js_parts = []
+    for inst in instances:
+        s_b64 = base64.b64encode(inst["suche_html"].encode("utf-8")).decode("ascii")
+        d_b64 = base64.b64encode(inst["druck_html"].encode("utf-8")).decode("ascii")
+        s_js  = to_js_array(s_b64)
+        d_js  = to_js_array(d_b64)
+        name_escaped = inst["name"].replace('"', '&quot;').replace("'", "&#39;")
+        inst_js_parts.append(
+            f'{{name:"{name_escaped}",'
+            f's:[{s_js}],'
+            f'd:[{d_js}]}}'
+        )
+    instances_js = ",\n".join(inst_js_parts)
+
+    # Instanz-Wechsler-Buttons für Topnav
+    inst_btns = "".join(
+        f'<button class="nav-btn inst-btn" id="inst-btn-{i}" '
+        f'onclick="switchInst({i})">{inst["name"]}</button>\n  '
+        for i, inst in enumerate(instances)
+    )
+    first_active = 'class="nav-btn inst-btn active"' if instances else ''
 
     return f"""<!DOCTYPE html>
 <html lang="de">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Kunden-App &#8211; Suche &amp; Druck</title>
+<title>Kunden-App &ndash; Suche &amp; Druck</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -553,33 +566,34 @@ html,body{{height:100%;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif}}
 .topnav{{
   height:52px;
   background:#ffffff;
-  display:flex;align-items:center;padding:0 20px;gap:12px;
+  display:flex;align-items:center;padding:0 16px;gap:8px;
   box-shadow:0 1px 4px rgba(0,0,0,.12);
   border-bottom:3px solid #1b66b3;
   flex-shrink:0;
+  overflow-x:auto;
 }}
 .topnav-title{{
-  color:#1b66b3;
-  font-weight:800;
-  font-size:16px;
-  margin-right:8px;
-  letter-spacing:.2px;
-  white-space:nowrap;
+  color:#1b66b3;font-weight:800;font-size:15px;
+  margin-right:6px;letter-spacing:.2px;white-space:nowrap;
+}}
+.nav-sep{{
+  width:1px;height:24px;background:#d5dde9;flex-shrink:0;margin:0 4px;
 }}
 .nav-btn{{
-  padding:6px 20px;border-radius:20px;
+  padding:5px 14px;border-radius:20px;
   border:2px solid #1b66b3;
   cursor:pointer;font-weight:700;font-size:12px;
   transition:all .15s ease;background:#fff;color:#1b66b3;
+  white-space:nowrap;flex-shrink:0;
 }}
 .nav-btn:hover:not(.active){{background:#e8f0fb}}
 .nav-btn.active{{background:#1b66b3;color:#fff;box-shadow:0 2px 6px rgba(27,102,179,.35)}}
+.inst-btn{{border-color:#0f4c8a;color:#0f4c8a}}
+.inst-btn:hover:not(.active){{background:#e0ecff}}
+.inst-btn.active{{background:#0f4c8a;border-color:#0f4c8a;color:#fff}}
 .topnav-stamp{{
-  margin-left:auto;
-  font-size:11px;
-  font-weight:700;
-  color:#64748b;
-  white-space:nowrap;
+  margin-left:auto;font-size:11px;font-weight:700;
+  color:#64748b;white-space:nowrap;padding-left:8px;
 }}
 .frame-wrap{{height:calc(100vh - 52px);display:flex;flex-direction:column}}
 iframe{{flex:1;width:100%;border:none;display:none}}
@@ -591,7 +605,9 @@ iframe.active{{display:block}}
 <body>
 
 <nav class="topnav">
-  <span class="topnav-title">NordFrischeCenter &ndash; Kunden App</span>
+  <span class="topnav-title">NordFrischeCenter</span>
+  <div class="nav-sep"></div>
+  {inst_btns}<div class="nav-sep"></div>
   <button class="nav-btn active" id="btn-suche" onclick="showArea('suche')">&#128269; Suche</button>
   <button class="nav-btn"        id="btn-druck" onclick="showArea('druck')">&#128424; BLP Druck</button>
   <button class="nav-btn"        id="btn-vz"    onclick="showArea('vz')">&#9200; Versp&#228;tungstabelle</button>
@@ -637,29 +653,44 @@ iframe.active{{display:block}}
 </div>
 
 <script>
-// ── Base64-Chunks → UTF-8-String (funktioniert auch bei file://) ─────────────
+// ── Base64-Chunks → UTF-8-String ─────────────────────────────────────────────
 function b64ChunksToString(chunks) {{
   var b64 = chunks.join("");
   var bin = atob(b64);
-  // Bin → UTF-8-String via TextDecoder
   var bytes = new Uint8Array(bin.length);
   for (var i = 0; i < bin.length; i++) {{ bytes[i] = bin.charCodeAt(i); }}
   return new TextDecoder("utf-8").decode(bytes);
 }}
 
-// ── Suche-HTML (Base64, {len(s_b64)} Zeichen) ────────────────────────────────
-var SUCHE_CHUNKS = [
-{s_js}
+// ── Instanzen ─────────────────────────────────────────────────────────────────
+var INSTANCES = [
+{instances_js}
 ];
+var currentInst = 0;
 
-// ── Druck-HTML (Base64, {len(d_b64)} Zeichen) ─────────────────────────────────
-var DRUCK_CHUNKS = [
-{d_js}
-];
+function switchInst(i) {{
+  currentInst = i;
+  // Instanz-Buttons
+  document.querySelectorAll(".inst-btn").forEach(function(b, idx) {{
+    b.className = "nav-btn inst-btn" + (idx === i ? " active" : "");
+  }});
+  // iframes neu laden
+  var inst = INSTANCES[i];
+  var fs = document.getElementById("frame-suche");
+  var fd = document.getElementById("frame-druck");
+  fs.srcdoc = b64ChunksToString(inst.s);
+  fd.srcdoc = b64ChunksToString(inst.d);
+  // vzAllData zurücksetzen – neue Instanz hat andere Daten
+  vzAllData = null;
+  document.getElementById("vz-status").textContent = "";
+  document.getElementById("vz-preview").innerHTML = "";
+}}
 
-// ── iframes per srcdoc laden (kein Blob, funktioniert mit file://) ────────────
-document.getElementById("frame-suche").srcdoc = b64ChunksToString(SUCHE_CHUNKS);
-document.getElementById("frame-druck" ).srcdoc = b64ChunksToString(DRUCK_CHUNKS);
+// ── Initiales Laden ───────────────────────────────────────────────────────────
+if(INSTANCES.length > 0) {{
+  document.getElementById("frame-suche").srcdoc = b64ChunksToString(INSTANCES[0].s);
+  document.getElementById("frame-druck" ).srcdoc = b64ChunksToString(INSTANCES[0].d);
+}}
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 function showArea(s) {{
@@ -690,13 +721,12 @@ window.addEventListener("message", function(e) {{
   if (e.data && e.data.type === "vz-data") vzHandleData(e.data.data);
   if (e.data && e.data.type === "vz-init-data") {{
     vzAllData = e.data.data;
-    console.log("VZ: ALL_DATA empfangen, Bereiche:", Object.keys(vzAllData||{{}}));
   }}
 }});
 
-// ── Verspätungstabelle ────────────────────────────────────────────────────
+// ── Verspätungstabelle ────────────────────────────────────────────────────────
 var vzSelectedDay = null;
-var vzAllData = null;  // wird beim Laden des Druck-Iframes befüllt
+var vzAllData = null;
 
 function vzSelectDay(day) {{
   vzSelectedDay = day;
@@ -706,7 +736,6 @@ function vzSelectDay(day) {{
   if(!vzAllData) {{
     document.getElementById("vz-status").textContent =
       "⏳ Daten noch nicht bereit – bitte kurz warten und nochmal klicken.";
-    // Erneut anfordern
     try {{ document.getElementById("frame-druck").contentWindow
       .postMessage({{type:"request-vz-data"}}, "*"); }} catch(e){{}}
     return;
@@ -718,7 +747,6 @@ function vzHandleData(allData) {{
   vzAllData = allData;
   var day = vzSelectedDay;
   var AREAS = ["direkt","mk","nms","malchow"];
-  // tourMap: tourNr -> [{{sap, name}}]
   var tourMap = {{}};
   AREAS.forEach(function(area) {{
     var areaData = allData[area] || {{}};
@@ -733,16 +761,12 @@ function vzHandleData(allData) {{
       }}
     }});
   }});
-  // Touren aufsteigend sortieren
   var tours = Object.keys(tourMap).sort(function(a,b){{
     return (parseInt(a,10)||0) - (parseInt(b,10)||0);
   }});
-  // Zeilen aufbauen: Tour-Zeile + Kunden-Unterzeilen
   var rows = [];
   tours.forEach(function(t) {{
-    // Tour-Kopfzeile: Tournummer | Soll Startzeit | Ist Startzeit | Verzögerung
     rows.push({{ type:"tour", tour:t, soll:"", ist:"", verz:"" }});
-    // Kunden nach SAP-Nr sortieren
     tourMap[t].sort(function(a,b){{ return (parseInt(a.sap,10)||0)-(parseInt(b.sap,10)||0); }});
     tourMap[t].forEach(function(k) {{
       rows.push({{ type:"kunde", sap:k.sap, name:k.name }});
@@ -787,99 +811,9 @@ function vzRenderPreview(rows) {{
   document.getElementById("vz-preview").innerHTML = html;
 }}
 
-
-// ── Telefonliste ──────────────────────────────────────────────────────────
-var TEL_DATA = {tel_json};
-
-function telFilter(q) {{ telRender(q); }}
-
-function telPDF() {{
-  var w = window.open("","_blank","width=900,height=700");
-  var css = [
-    "body{{font-family:'Segoe UI',Arial,sans-serif;font-size:8pt;margin:10mm;color:#000}}",
-    "h1{{font-size:13pt;color:#1b66b3;margin:0 0 4mm 0;border-bottom:2px solid #1b66b3;padding-bottom:2mm}}",
-    ".gruppe{{font-size:8pt;font-weight:900;text-transform:uppercase;color:#1b66b3;",
-    "  margin:4mm 0 1.5mm 0;letter-spacing:.3px;border-bottom:1px solid #1b66b3;padding-bottom:0.5mm}}",
-    ".grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:1mm 3mm}}",
-    ".item{{padding:0.8mm 0;border-bottom:1px solid #eee;line-height:1.3}}",
-    ".iname{{font-weight:800;font-size:7.5pt}}",
-    ".itel{{color:#1b66b3;font-size:7.5pt}}",
-    ".imail{{color:#888;font-size:6.5pt;font-style:italic}}",
-    "@media print{{@page{{size:A4 portrait;margin:10mm}}body{{margin:0}}}}"
-  ].join("");
-
-  var body = "<h1>&#128222; Telefonliste</h1>";
-  TEL_DATA.forEach(function(g) {{
-    if(!g.personen.length) return;
-    body += "<div class='gruppe'>" + g.gruppe + " (" + g.personen.length + ")</div>";
-    body += "<div class='grid'>";
-    g.personen.forEach(function(p) {{
-      body += "<div class='item'>";
-      body += "<div class='iname'>" + p.name + "</div>";
-      body += "<div class='itel'>&#128222; " + p.tel + "</div>";
-      if(p.mail) {{
-        var isRole = (p.mail==="Disponent"||p.mail==="Chef");
-        body += isRole
-          ? "<div style='font-size:6.5pt;color:#dc2626;font-weight:700'>" + p.mail + "</div>"
-          : "<div class='imail'>&#9993; " + p.mail + "</div>";
-      }}
-      body += "</div>";
-    }});
-    body += "</div>";
-  }});
-
-  w.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'>");
-  w.document.write("<title>Telefonliste NordFrischeCenter</title>");
-  w.document.write("<style>" + css + "</style></head><body>");
-  w.document.write(body);
-  w.document.write("</body></html>");
-  w.document.close();
-  w.focus();
-  setTimeout(function(){{ w.print(); }}, 400);
-}}
-function telCopy(tel) {{
-  if(navigator.clipboard) navigator.clipboard.writeText(tel);
-}}
-function telHover(el, on) {{
-  el.style.background = on ? "#eff6ff" : "#fff";
-}}
-function telRender(q) {{
-  q = q.toLowerCase().trim();
-  var html = "";
-  TEL_DATA.forEach(function(g) {{
-    var hits = g.personen.filter(function(p) {{
-      return !q || p.name.toLowerCase().includes(q) || p.tel.includes(q);
-    }});
-    if(!hits.length) return;
-    html += "<div style='margin-bottom:18px'>";
-    html += "<div style='font-size:11px;font-weight:900;text-transform:uppercase;"
-          + "letter-spacing:.5px;color:#1b66b3;padding:4px 0;"
-          + "border-bottom:2px solid #1b66b3;margin-bottom:6px'>";
-    html += g.gruppe + " <span style='font-weight:500;color:#94a3b8'>(" + hits.length + ")</span></div>";
-    html += "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:6px'>";
-    hits.forEach(function(p) {{
-      var safetel = p.tel.replace(/'/g,"&#39;");
-      html += "<div"
-            + " onclick='telCopy(this.dataset.tel)'"
-            + " onmouseover='telHover(this,true)'"
-            + " onmouseout='telHover(this,false)'"
-            + " data-tel='" + safetel + "'"
-            + " title='Klicken zum Kopieren'"
-            + " style='cursor:pointer;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;transition:background .12s'>";
-      html += "<div style='font-weight:800;font-size:13px;color:#0b1220'>" + p.name + "</div>";
-      html += "<div style='font-size:13px;color:#1b66b3;font-weight:700;margin-top:2px'>&#128222; " + p.tel + "</div>";
-      if(p.mail) html += "<div style='font-size:11px;color:#64748b;margin-top:2px'>&#9993; " + p.mail + "</div>";
-      html += "</div>";
-    }});
-    html += "</div></div>";
-  }});
-  if(!html) html = "<div style='color:#64748b;padding:20px'>Keine Ergebnisse.</div>";
-  document.getElementById("tel-content").innerHTML = html;
-}}
-
 function vzGenerateExcel(rows, day) {{
   if(typeof XLSX === "undefined") {{
-    document.getElementById("vz-status").textContent += " (SheetJS nicht geladen \u2013 bitte online \xf6ffnen)";
+    document.getElementById("vz-status").textContent += " (SheetJS nicht geladen)";
     return;
   }}
   var wsData = [["Tournummer","SAP-Nr.","Kundenname","Soll Startzeit","Ist Startzeit","Verz\u00f6gerung in Stunden"]];
@@ -897,179 +831,179 @@ function vzGenerateExcel(rows, day) {{
   XLSX.writeFile(wb, "Verspaetung_"+day+".xlsx");
   document.getElementById("vz-status").textContent += " \u2705 Excel heruntergeladen.";
 }}
+
+// ── Telefonliste ──────────────────────────────────────────────────────────────
+var TEL_DATA = {tel_json};
+
+function telPDF() {{
+  var w = window.open("","_blank","width=900,height=700");
+  var css = [
+    "body{{font-family:'Segoe UI',Arial,sans-serif;font-size:8pt;margin:10mm;color:#000}}",
+    "h1{{font-size:13pt;color:#1b66b3;margin:0 0 4mm 0;border-bottom:2px solid #1b66b3;padding-bottom:2mm}}",
+    ".gruppe{{font-size:8pt;font-weight:900;text-transform:uppercase;color:#1b66b3;margin:4mm 0 1.5mm 0;letter-spacing:.3px;border-bottom:1px solid #1b66b3;padding-bottom:0.5mm}}",
+    ".grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:1mm 3mm}}",
+    ".item{{padding:0.8mm 0;border-bottom:1px solid #eee;line-height:1.3}}",
+    ".iname{{font-weight:800;font-size:7.5pt}}",
+    ".itel{{color:#1b66b3;font-size:7.5pt}}",
+    ".imail{{color:#888;font-size:6.5pt;font-style:italic}}",
+    ".irole{{font-size:6.5pt;color:#dc2626;font-weight:700}}",
+    "@media print{{@page{{size:A4 portrait;margin:10mm}}body{{margin:0}}}}"
+  ].join("");
+  var body = "<h1>&#128222; Telefonliste</h1>";
+  TEL_DATA.forEach(function(g) {{
+    if(!g.personen.length) return;
+    body += "<div class='gruppe'>" + g.gruppe + " (" + g.personen.length + ")</div>";
+    body += "<div class='grid'>";
+    g.personen.forEach(function(p) {{
+      body += "<div class='item'>";
+      body += "<div class='iname'>" + p.name + "</div>";
+      body += "<div class='itel'>&#128222; " + p.tel + "</div>";
+      if(p.mail) {{
+        var isRole = (p.mail==="Disponent"||p.mail==="Chef");
+        body += isRole
+          ? "<div class='irole'>" + p.mail + "</div>"
+          : "<div class='imail'>&#9993; " + p.mail + "</div>";
+      }}
+      body += "</div>";
+    }});
+    body += "</div>";
+  }});
+  w.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'>");
+  w.document.write("<title>Telefonliste NordFrischeCenter</title>");
+  w.document.write("<style>" + css + "</style></head><body>");
+  w.document.write(body);
+  w.document.write("</body></html>");
+  w.document.close();
+  w.focus();
+  setTimeout(function(){{ w.print(); }}, 400);
+}}
+
+function telCopy(tel) {{
+  if(navigator.clipboard) navigator.clipboard.writeText(tel);
+}}
+function telHover(el, on) {{
+  el.style.background = on ? "#eff6ff" : "#fff";
+}}
+function telFilter(q) {{ telRender(q); }}
+
+function telRender(q) {{
+  q = q.toLowerCase().trim();
+  var html = "";
+  TEL_DATA.forEach(function(g) {{
+    var hits = g.personen.filter(function(p) {{
+      return !q || p.name.toLowerCase().includes(q) || p.tel.includes(q);
+    }});
+    if(!hits.length) return;
+    html += "<div style='margin-bottom:18px'>";
+    html += "<div style='font-size:11px;font-weight:900;text-transform:uppercase;"
+          + "letter-spacing:.5px;color:#1b66b3;padding:4px 0;"
+          + "border-bottom:2px solid #1b66b3;margin-bottom:6px'>";
+    html += g.gruppe + " <span style='font-weight:500;color:#94a3b8'>(" + hits.length + ")</span></div>";
+    html += "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:6px'>";
+    hits.forEach(function(p) {{
+      var safetel = p.tel.replace(/'/g,"&#39;");
+      html += "<div onclick='telCopy(this.dataset.tel)' onmouseover='telHover(this,true)' onmouseout='telHover(this,false)'"
+            + " data-tel='" + safetel + "' title='Klicken zum Kopieren'"
+            + " style='cursor:pointer;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;transition:background .12s'>";
+      html += "<div style='font-weight:800;font-size:13px;color:#0b1220'>" + p.name + "</div>";
+      html += "<div style='font-size:13px;color:#1b66b3;font-weight:700;margin-top:2px'>&#128222; " + p.tel + "</div>";
+      if(p.mail) {{
+        var isRole = (p.mail==="Disponent"||p.mail==="Chef");
+        html += isRole
+          ? "<div style='font-size:11px;color:#dc2626;font-weight:700;margin-top:2px'>" + p.mail + "</div>"
+          : "<div style='font-size:11px;color:#64748b;margin-top:2px'>&#9993; " + p.mail + "</div>";
+      }}
+      html += "</div>";
+    }});
+    html += "</div></div>";
+  }});
+  if(!html) html = "<div style='color:#64748b;padding:20px'>Keine Ergebnisse.</div>";
+  document.getElementById("tel-content").innerHTML = html;
+}}
 </script>
 
 </body>
 </html>"""
-
-
-# =============================================================================
-# STREAMLIT-OBERFLAECHE
-# =============================================================================
-
-st.set_page_config(page_title="Kunden-App Generator", page_icon="📋", layout="wide")
-st.title("📋 Kunden-App Generator")
-st.write(
-    "Erzeugt eine einzige **app.html** mit Suche- und Druckfunktion, "
-    "umschaltbar per Navigationsleiste oben."
-)
-
-for _k in ("suche_html", "druck_html"):
-    if _k not in st.session_state:
-        st.session_state[_k] = None
-
-st.divider()
-tab_suche, tab_druck = st.tabs(["🔍  Suche – Datei-Upload", "🖨️  Druck – Datei-Upload"])
-
-# ── Tab Suche ─────────────────────────────────────────────────────────────────
-with tab_suche:
-    st.subheader("Suche – Pflicht- und optionale Dateien")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        s_excel = st.file_uploader("Quelldatei (Kundendaten)", type=["xlsx"], key="s_excel")
-    with col2:
-        s_key   = st.file_uploader("Schluesseldatei (A=CSB, F=Schluessel)", type=["xlsx"], key="s_key")
-    with col3:
-        s_logo  = st.file_uploader("Logo (PNG/JPG)", type=["png","jpg","jpeg"], key="s_logo")
-
-    s_berater     = st.file_uploader(
-        "OPTIONAL: Fachberater-Telefonliste (A=Vorname, B=Nachname, C=Nummer)",
-        type=["xlsx"], key="s_berater")
-    s_berater_csb = st.file_uploader(
-        "OPTIONAL: Fachberater-CSB-Zuordnung (A=Fachberater, I=CSB, O=Markt-Tel, X=Markt-Mail)",
-        type=["xlsx"], key="s_berater_csb")
-
-    if s_excel and s_key:
-        if st.button("✅ Suche-HTML generieren", key="btn_suche", type="primary"):
-            try:
-                st.session_state.suche_html = generate_suche_html(
-                    s_excel, s_key, s_logo, s_berater, s_berater_csb)
-                st.success("Suche-HTML erfolgreich generiert!")
-            except Exception as e:
-                st.error(f"Fehler: {e}")
-    else:
-        st.info("Bitte Quelldatei und Schluesseldatei hochladen.")
-
-    if st.session_state.suche_html:
-        st.caption(f"Suche-HTML bereit ({len(st.session_state.suche_html)//1024} KB)")
-
-# ── Tab Druck ─────────────────────────────────────────────────────────────────
-with tab_druck:
-    st.subheader("Druck – Sendeplan Generator")
-    st.write("Verarbeitet 4 Bereiche: Direkt, MK, HuPa NMS, HuPa Malchow")
-
-    d_logo  = st.file_uploader("Logo im Druck (PNG/JPG/SVG, optional)",
-                                type=["png","jpg","jpeg","svg"], key="d_logo")
-    logo_uri = logo_file_to_data_uri(d_logo) or load_logo_data_uri()
-    if logo_uri:
-        st.image(logo_uri, caption="Vorschau Logo", width=200)
-    else:
-        st.info("Kein Logo gefunden (optional).")
-
-    d_excel = st.file_uploader("Excel-Datei laden", type=["xlsx"], key="d_excel")
-
-    if d_excel:
-        if st.button("✅ Druck-HTML generieren", key="btn_druck", type="primary"):
-            try:
-                st.session_state.druck_html = generate_druck_html(d_excel, d_logo)
-            except Exception as e:
-                st.error(f"Fehler: {e}")
-    else:
-        st.info("Bitte Excel-Datei hochladen.")
-
-    if st.session_state.druck_html:
-        st.caption(f"Druck-HTML bereit ({len(st.session_state.druck_html)//1024} KB)")
-
 # ── Kombination & Download ─────────────────────────────────────────────────────
 st.divider()
+st.subheader("🔗 Kombinieren & suche.html herunterladen")
 
-def parse_telefon_excel(up) -> str:
-    """Liest Telefonnummern.xlsx (Sheet 'aktuell') und gibt JSON-String zurück."""
-    import json as _json
-    try:
-        df = pd.read_excel(up, sheet_name="aktuell", dtype=str)
-        df.columns = ["name","vorname","vorwahl","nummer","mail","gruppe"]
-        df = df.fillna("")
-        groups, current_group, current_entries = [], "Eigene Fahrer", []
-        for _, r in df.iterrows():
-            name    = r["name"].strip()
-            vorname = r["vorname"].strip()
-            vorwahl = r["vorwahl"].strip()
-            nummer  = r["nummer"].strip()
-            mail    = r["mail"].strip()
-            gruppe  = r["gruppe"].strip()
-            if not name and not vorname and not vorwahl and not nummer:
-                if current_entries:
-                    groups.append({"gruppe": current_group, "personen": current_entries})
-                current_entries = []
-                continue
-            if gruppe:
-                if current_entries:
-                    groups.append({"gruppe": current_group, "personen": current_entries})
-                    current_entries = []
-                current_group = gruppe
-            tel = ""
-            if vorwahl and vorwahl.lower() not in ("nan","n.a.",""):
-                tel = vorwahl.strip()
-                if nummer and nummer.lower() not in ("nan","n.a.",""):
-                    tel += " " + nummer.strip()
-            elif nummer and nummer.lower() not in ("nan","n.a.",""):
-                tel = nummer.strip()
-            else:
-                tel = "n.a."
-            vname = " ".join(filter(None, [vorname, name]))
-            if not vname.strip(): continue
-            current_entries.append({
-                "name": vname,
-                "tel":  tel,
-                "mail": mail if mail.lower() not in ("nan","") else ""
-            })
-        if current_entries:
-            groups.append({"gruppe": current_group, "personen": current_entries})
-        return _json.dumps(groups, ensure_ascii=False)
-    except Exception as e:
-        st.warning(f"Telefonliste konnte nicht gelesen werden: {e}")
-        return "[]"
+# ── Instanzen-Verwaltung ──────────────────────────────────────────────────────
+if "instances" not in st.session_state:
+    st.session_state.instances = [{"name": "Normalwochen", "suche_html": None, "druck_html": None}]
 
-st.subheader("🔗 Kombinieren & app.html herunterladen")
+st.markdown("**Instanzen** (Normalwochen + beliebig viele Sonderwochen)")
 
-c1, c2, c3 = st.columns(3)
-with c1:
-    suche_ok = st.session_state.suche_html is not None
-    st.metric("Suche-HTML", "✅ bereit" if suche_ok else "❌ fehlt")
-with c2:
-    druck_ok = st.session_state.druck_html is not None
-    st.metric("Druck-HTML", "✅ bereit" if druck_ok else "❌ fehlt")
-with c3:
-    tel_up = st.file_uploader("📞 Telefonliste (Excel)", type=["xlsx"], key="tel_upload")
-    if tel_up:
-        st.session_state.tel_json = parse_telefon_excel(tel_up)
-        n = len(__import__("json").loads(st.session_state.tel_json))
-        st.metric("Telefonliste", f"✅ {n} Gruppen")
-    elif "tel_json" not in st.session_state:
-        st.metric("Telefonliste", "⚪ optional")
+for i, inst in enumerate(st.session_state.instances):
+    with st.expander(f"📋 Instanz {i+1}: {inst['name']}", expanded=(i==0)):
+        col_name, col_del = st.columns([4,1])
+        with col_name:
+            new_name = st.text_input("Name", value=inst["name"], key=f"inst_name_{i}")
+            st.session_state.instances[i]["name"] = new_name
+        with col_del:
+            if i > 0:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("🗑️ Entfernen", key=f"del_inst_{i}"):
+                    st.session_state.instances.pop(i)
+                    st.rerun()
 
-if suche_ok and druck_ok:
+        c1, c2 = st.columns(2)
+        with c1:
+            s_up = st.file_uploader(f"Suche-Excel", type=["xlsx"], key=f"s_up_{i}")
+            if s_up:
+                try:
+                    st.session_state.instances[i]["suche_html"] = generate_suche_html(
+                        s_up,
+                        st.session_state.get("key_file"),
+                        st.session_state.get("logo_file"),
+                        st.session_state.get("fach_file"),
+                    )
+                    st.success(f"✅ Suche bereit ({len(st.session_state.instances[i]['suche_html'])//1024} KB)")
+                except Exception as e:
+                    st.error(f"Fehler: {e}")
+            elif inst["suche_html"]:
+                st.caption(f"✅ Suche bereit ({len(inst['suche_html'])//1024} KB)")
+        with c2:
+            d_up = st.file_uploader(f"Druck-Excel", type=["xlsx"], key=f"d_up_{i}")
+            if d_up:
+                try:
+                    logo_up = st.session_state.get("logo_file")
+                    st.session_state.instances[i]["druck_html"] = generate_druck_html(d_up, logo_up)
+                    st.success(f"✅ Druck bereit ({len(st.session_state.instances[i]['druck_html'])//1024} KB)")
+                except Exception as e:
+                    st.error(f"Fehler: {e}")
+            elif inst["druck_html"]:
+                st.caption(f"✅ Druck bereit ({len(inst['druck_html'])//1024} KB)")
+
+if st.button("➕ Instanz hinzufügen"):
+    st.session_state.instances.append({"name": f"Sonderwoche {len(st.session_state.instances)}", "suche_html": None, "druck_html": None})
+    st.rerun()
+
+st.divider()
+
+# ── Telefonliste ──────────────────────────────────────────────────────────────
+tel_up = st.file_uploader("📞 Telefonliste (Excel, optional)", type=["xlsx"], key="tel_upload")
+if tel_up:
+    st.session_state.tel_json = parse_telefon_excel(tel_up)
+    n = len(__import__("json").loads(st.session_state.tel_json))
+    st.caption(f"✅ Telefonliste: {n} Gruppen")
+
+# ── Download ──────────────────────────────────────────────────────────────────
+ready = [inst for inst in st.session_state.instances if inst["suche_html"] and inst["druck_html"]]
+if ready:
     with st.spinner("Kombiniere ..."):
         app_html = combine_html(
-        st.session_state.suche_html,
-        st.session_state.druck_html,
-        last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
-        tel_json=st.session_state.get("tel_json", "[]"),
-    )
+            instances=ready,
+            tel_json=st.session_state.get("tel_json", "[]"),
+            last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
+        )
     st.download_button(
-        label="⬇️  suche.html herunterladen",
+        label=f"⬇️  suche.html herunterladen ({len(ready)} Instanz{'en' if len(ready)>1 else ''})",
         data=app_html.encode("utf-8"),
         file_name="suche.html",
         mime="text/html",
         type="primary",
     )
-    st.caption(
-        f"Gesamtgroesse: ca. {len(app_html)//1024} KB | "
-        "Navigation: Topbar + fixer Wechsel-Button in jeder Seite"
-    )
+    st.caption(f"Gesamtgröße: ca. {len(app_html)//1024} KB | {len(ready)} Instanz(en): {', '.join(i['name'] for i in ready)}")
 else:
-    st.warning(
-        "Bitte zuerst in beiden Tabs die HTML-Bereiche generieren, "
-        "dann erscheint hier der Download-Button."
-    )
+    st.warning("Bitte mindestens eine Instanz mit Suche- und Druck-Excel befüllen.")
