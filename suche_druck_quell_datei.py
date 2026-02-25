@@ -926,84 +926,116 @@ function telRender(q) {{
 </html>"""
 # ── Kombination & Download ─────────────────────────────────────────────────────
 st.divider()
-st.subheader("🔗 Kombinieren & suche.html herunterladen")
+st.subheader("🔗 Instanzen & suche.html herunterladen")
+st.caption("Jede Instanz (Normalwochen, KW17, Ostern …) hat eigene Upload-Felder. Logo gilt pro Instanz.")
 
-# ── Instanzen-Verwaltung ──────────────────────────────────────────────────────
+# ── Instanzen initialisieren ──────────────────────────────────────────────────
+def _empty_inst(name="Normalwochen"):
+    return {
+        "name": name,
+        "suche_html": None, "druck_html": None,
+        # Dateipfade merken für Re-Generierung (nicht nötig – wir generieren on-upload)
+    }
+
 if "instances" not in st.session_state:
-    st.session_state.instances = [{"name": "Normalwochen", "suche_html": None, "druck_html": None}]
+    st.session_state.instances = [_empty_inst("Normalwochen")]
 
-st.markdown("**Instanzen** (Normalwochen + beliebig viele Sonderwochen)")
-
+# ── Pro Instanz alle Upload-Felder ────────────────────────────────────────────
 for i, inst in enumerate(st.session_state.instances):
-    with st.expander(f"📋 Instanz {i+1}: {inst['name']}", expanded=(i==0)):
-        col_name, col_del = st.columns([4,1])
+    with st.expander(f"📋 Instanz {i+1}: {inst['name']}", expanded=(i == 0)):
+
+        # Name + Löschen
+        col_name, col_del = st.columns([5, 1])
         with col_name:
-            new_name = st.text_input("Name", value=inst["name"], key=f"inst_name_{i}")
+            new_name = st.text_input("Bezeichnung", value=inst["name"], key=f"inst_name_{i}")
             st.session_state.instances[i]["name"] = new_name
         with col_del:
             if i > 0:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🗑️ Entfernen", key=f"del_inst_{i}"):
+                st.write("")
+                st.write("")
+                if st.button("🗑️ Löschen", key=f"del_inst_{i}"):
                     st.session_state.instances.pop(i)
                     st.rerun()
 
-        c1, c2 = st.columns(2)
-        with c1:
-            s_up = st.file_uploader(f"Suche-Excel", type=["xlsx"], key=f"s_up_{i}")
-            if s_up:
-                try:
+        st.markdown("**Suche**")
+        cs1, cs2, cs3 = st.columns(3)
+        with cs1:
+            s_excel = st.file_uploader("📊 Suche-Excel *", type=["xlsx"], key=f"s_excel_{i}")
+        with cs2:
+            s_key   = st.file_uploader("🔑 Key-Datei *",   type=["xlsx"], key=f"s_key_{i}")
+        with cs3:
+            s_logo  = st.file_uploader("🖼️ Logo *",         type=["png","jpg","jpeg","svg"], key=f"s_logo_{i}")
+
+        cs4, cs5 = st.columns(2)
+        with cs4:
+            s_fach  = st.file_uploader("👤 Fachberater-Liste (optional)", type=["xlsx"], key=f"s_fach_{i}")
+        with cs5:
+            s_fcsb  = st.file_uploader("🔗 Fachberater-CSB (optional)",  type=["xlsx"], key=f"s_fcsb_{i}")
+
+        if s_excel and s_key and s_logo:
+            try:
+                with st.spinner("Generiere Suche-HTML …"):
                     st.session_state.instances[i]["suche_html"] = generate_suche_html(
-                        s_up,
-                        st.session_state.get("key_file"),
-                        st.session_state.get("logo_file"),
-                        st.session_state.get("fach_file"),
+                        s_excel, s_key, s_logo, s_fach, s_fcsb
                     )
-                    st.success(f"✅ Suche bereit ({len(st.session_state.instances[i]['suche_html'])//1024} KB)")
-                except Exception as e:
-                    st.error(f"Fehler: {e}")
-            elif inst["suche_html"]:
-                st.caption(f"✅ Suche bereit ({len(inst['suche_html'])//1024} KB)")
-        with c2:
-            d_up = st.file_uploader(f"Druck-Excel", type=["xlsx"], key=f"d_up_{i}")
-            if d_up:
-                try:
-                    logo_up = st.session_state.get("logo_file")
-                    st.session_state.instances[i]["druck_html"] = generate_druck_html(d_up, logo_up)
-                    st.success(f"✅ Druck bereit ({len(st.session_state.instances[i]['druck_html'])//1024} KB)")
-                except Exception as e:
-                    st.error(f"Fehler: {e}")
-            elif inst["druck_html"]:
-                st.caption(f"✅ Druck bereit ({len(inst['druck_html'])//1024} KB)")
+                st.success(f"✅ Suche bereit ({len(st.session_state.instances[i]['suche_html'])//1024} KB)")
+            except Exception as e:
+                st.error(f"Suche-Fehler: {e}")
+        elif inst["suche_html"]:
+            st.caption(f"✅ Suche bereits generiert ({len(inst['suche_html'])//1024} KB) — neue Dateien hochladen zum Aktualisieren")
+        else:
+            st.info("Bitte Suche-Excel, Key-Datei und Logo hochladen.")
+
+        st.markdown("**Druck**")
+        cd1, cd2 = st.columns(2)
+        with cd1:
+            d_excel = st.file_uploader("📊 Druck-Excel *", type=["xlsx"], key=f"d_excel_{i}")
+        with cd2:
+            d_logo  = st.file_uploader("🖼️ Logo (Druck) *", type=["png","jpg","jpeg","svg"], key=f"d_logo_{i}")
+
+        if d_excel and d_logo:
+            try:
+                with st.spinner("Generiere Druck-HTML …"):
+                    st.session_state.instances[i]["druck_html"] = generate_druck_html(d_excel, d_logo)
+                st.success(f"✅ Druck bereit ({len(st.session_state.instances[i]['druck_html'])//1024} KB)")
+            except Exception as e:
+                st.error(f"Druck-Fehler: {e}")
+        elif inst["druck_html"]:
+            st.caption(f"✅ Druck bereits generiert ({len(inst['druck_html'])//1024} KB) — neue Dateien hochladen zum Aktualisieren")
+        else:
+            st.info("Bitte Druck-Excel und Logo hochladen.")
 
 if st.button("➕ Instanz hinzufügen"):
-    st.session_state.instances.append({"name": f"Sonderwoche {len(st.session_state.instances)}", "suche_html": None, "druck_html": None})
+    n = len(st.session_state.instances)
+    st.session_state.instances.append(_empty_inst(f"Sonderwoche {n}"))
     st.rerun()
 
 st.divider()
 
-# ── Telefonliste ──────────────────────────────────────────────────────────────
-tel_up = st.file_uploader("📞 Telefonliste (Excel, optional)", type=["xlsx"], key="tel_upload")
+# ── Telefonliste (global) ─────────────────────────────────────────────────────
+tel_up = st.file_uploader("📞 Telefonliste (Excel, optional — gilt für alle Instanzen)", type=["xlsx"], key="tel_upload")
 if tel_up:
     st.session_state.tel_json = parse_telefon_excel(tel_up)
     n = len(__import__("json").loads(st.session_state.tel_json))
     st.caption(f"✅ Telefonliste: {n} Gruppen")
 
 # ── Download ──────────────────────────────────────────────────────────────────
+st.divider()
 ready = [inst for inst in st.session_state.instances if inst["suche_html"] and inst["druck_html"]]
 if ready:
-    with st.spinner("Kombiniere ..."):
+    with st.spinner("Kombiniere …"):
         app_html = combine_html(
             instances=ready,
             tel_json=st.session_state.get("tel_json", "[]"),
             last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
         )
     st.download_button(
-        label=f"⬇️  suche.html herunterladen ({len(ready)} Instanz{'en' if len(ready)>1 else ''})",
+        label=f"⬇️  suche.html herunterladen ({len(ready)} Instanz{'en' if len(ready) > 1 else ''})",
         data=app_html.encode("utf-8"),
         file_name="suche.html",
         mime="text/html",
         type="primary",
     )
-    st.caption(f"Gesamtgröße: ca. {len(app_html)//1024} KB | {len(ready)} Instanz(en): {', '.join(i['name'] for i in ready)}")
+    st.caption(f"Gesamtgröße: ca. {len(app_html)//1024} KB | Instanzen: {', '.join(i['name'] for i in ready)}")
 else:
-    st.warning("Bitte mindestens eine Instanz mit Suche- und Druck-Excel befüllen.")
+    st.warning("Bitte mindestens eine Instanz vollständig befüllen (Suche + Druck).")
