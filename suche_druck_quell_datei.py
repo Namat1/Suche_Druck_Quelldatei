@@ -1053,6 +1053,29 @@ st.divider()
 st.subheader("🔗 Wochen & suche.html herunterladen")
 st.caption("Globale Dateien einmalig hochladen. Pro Instanz (Woche) nur die Wochen-Excel hochladen.")
 
+# ── Globale Dateien (einmalig für alle Wochen) ────────────────────────────────
+st.markdown("**Globale Dateien** – einmalig hochladen, gelten für alle Wochen")
+gc1, gc2, gc3, gc4 = st.columns(4)
+with gc1:
+    g_logo = st.file_uploader("🖼️ Logo", type=["png","jpg","jpeg","svg"], key="g_logo")
+    if g_logo: st.session_state.g_logo = g_logo
+with gc2:
+    g_key  = st.file_uploader("🔑 Marktschlüssel", type=["xlsx"], key="g_key")
+    if g_key: st.session_state.g_key = g_key
+with gc3:
+    g_fach = st.file_uploader("👤 Telefonnummern Fachberater", type=["xlsx"], key="g_fach")
+    if g_fach: st.session_state.g_fach = g_fach
+with gc4:
+    g_fcsb = st.file_uploader("🔗 Kundenliste Original", type=["xlsx"], key="g_fcsb")
+    if g_fcsb: st.session_state.g_fcsb = g_fcsb
+
+_glob_status = []
+for _k, _lbl in [("g_logo","Logo"),("g_key","Marktschlüssel"),("g_fach","Tel. Fachberater"),("g_fcsb","Kundenliste")]:
+    _glob_status.append("✅ "+_lbl if st.session_state.get(_k) else "❌ "+_lbl)
+st.caption(" · ".join(_glob_status))
+
+st.divider()
+
 # ── Instanzen initialisieren ──────────────────────────────────────────────────
 def _empty_inst(name="Normalwochen"):
     return {"name": name, "suche_html": None, "druck_html": None}
