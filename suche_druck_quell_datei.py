@@ -894,12 +894,18 @@ function showArea(s) {{
   // Telefonliste-Button
   var telBtn = document.getElementById("btn-tel");
   if(telBtn) telBtn.className = "nav-btn" + (s==="tel"?" active":"");
+  // Samstags-Button
+  var samBtn = document.getElementById("btn-sam");
+  if(samBtn) samBtn.className = "nav-btn" + (s==="sam"?" active":"");
   // Panels
   var vzPanel  = document.getElementById("panel-vz");
   var telPanel = document.getElementById("panel-tel");
+  var samPanel = document.getElementById("panel-sam");
   vzPanel.style.display  = (s==="vz")  ? "block" : "none";
   telPanel.style.display = (s==="tel") ? "block" : "none";
+  if(samPanel) samPanel.style.display = (s==="sam") ? "block" : "none";
   if(s==="tel" && !telPanel.dataset.loaded) {{ telRender(""); telPanel.dataset.loaded="1"; }}
+  if(s==="sam" && samPanel && !samPanel.dataset.loaded) {{ samRender(""); samPanel.dataset.loaded="1"; }}
 }}
 
 if(INSTANCES.length > 0) {{
