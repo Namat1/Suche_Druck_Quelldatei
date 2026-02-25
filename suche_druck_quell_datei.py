@@ -924,6 +924,55 @@ function telRender(q) {{
 
 </body>
 </html>"""
+
+def parse_telefon_excel(up) -> str:
+    """Liest Telefonnummern.xlsx (Sheet 'aktuell') und gibt JSON-String zurück."""
+    import json as _json
+    try:
+        df = pd.read_excel(up, sheet_name="aktuell", dtype=str)
+        df.columns = ["name","vorname","vorwahl","nummer","mail","gruppe"]
+        df = df.fillna("")
+        groups, current_group, current_entries = [], "Eigene Fahrer", []
+        for _, r in df.iterrows():
+            name    = r["name"].strip()
+            vorname = r["vorname"].strip()
+            vorwahl = r["vorwahl"].strip()
+            nummer  = r["nummer"].strip()
+            mail    = r["mail"].strip()
+            gruppe  = r["gruppe"].strip()
+            if not name and not vorname and not vorwahl and not nummer:
+                if current_entries:
+                    groups.append({"gruppe": current_group, "personen": current_entries})
+                current_entries = []
+                continue
+            if gruppe:
+                if current_entries:
+                    groups.append({"gruppe": current_group, "personen": current_entries})
+                    current_entries = []
+                current_group = gruppe
+            tel = ""
+            if vorwahl and vorwahl.lower() not in ("nan","n.a.",""):
+                tel = vorwahl.strip()
+                if nummer and nummer.lower() not in ("nan","n.a.",""):
+                    tel += " " + nummer.strip()
+            elif nummer and nummer.lower() not in ("nan","n.a.",""):
+                tel = nummer.strip()
+            else:
+                tel = "n.a."
+            vname = " ".join(filter(None, [vorname, name]))
+            if not vname.strip(): continue
+            current_entries.append({
+                "name": vname,
+                "tel":  tel,
+                "mail": mail if mail.lower() not in ("nan","") else ""
+            })
+        if current_entries:
+            groups.append({"gruppe": current_group, "personen": current_entries})
+        return _json.dumps(groups, ensure_ascii=False)
+    except Exception as e:
+        st.warning(f"Telefonliste konnte nicht gelesen werden: {e}")
+        return "[]"
+
 # ── Kombination & Download ─────────────────────────────────────────────────────
 st.divider()
 st.subheader("🔗 Instanzen & suche.html herunterladen")
