@@ -1130,6 +1130,85 @@ function telRender(q) {{
   if(!html) html = "<div style='color:#64748b;padding:20px'>Keine Ergebnisse.</div>";
   document.getElementById("tel-content").innerHTML = html;
 }}
+// ── Samstags Fahrer ───────────────────────────────────────────────────────────
+var samCurrentSort = "name";
+
+function samSort(mode) {{
+  samCurrentSort = mode;
+  document.getElementById("sam-sort-name").style.background  = mode==="name"  ? "#1b66b3" : "#fff";
+  document.getElementById("sam-sort-name").style.color       = mode==="name"  ? "#fff"    : "#1b66b3";
+  document.getElementById("sam-sort-count").style.background = mode==="count" ? "#1b66b3" : "#fff";
+  document.getElementById("sam-sort-count").style.color      = mode==="count" ? "#fff"    : "#1b66b3";
+  samRender(document.getElementById("sam-search").value);
+}}
+
+function samFilter(q) {{ samRender(q); }}
+
+function samRender(q) {{
+  q = (q||"").toLowerCase().trim();
+  if(!SAM_DATA || !SAM_DATA.length) {{
+    document.getElementById("sam-content").innerHTML =
+      "<div style=\'color:#94a3b8;padding:40px;text-align:center;font-size:14px;\'>"
+      + "Keine Daten vorhanden.<br>Bitte Samstags-Dateien in Streamlit hochladen.</div>";
+    return;
+  }}
+  var filtered = SAM_DATA.filter(function(d) {{
+    return !q || d.name.toLowerCase().includes(q);
+  }});
+  if(samCurrentSort === "count") {{
+    filtered.sort(function(a,b){{ return b.einsaetze - a.einsaetze; }});
+  }} else {{
+    filtered.sort(function(a,b){{ return a.name.localeCompare(b.name,"de"); }});
+  }}
+  var total = filtered.reduce(function(s,d){{ return s+d.einsaetze; }},0);
+  document.getElementById("sam-stats").textContent =
+    filtered.length + " Fahrer · " + total + " Einsätze gesamt";
+
+  var html = "<div style=\'display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;\'>";
+  filtered.forEach(function(d) {{
+    var dots = "";
+    for(var i=0;i<Math.min(d.einsaetze,20);i++) {{
+      dots += "<span style=\'display:inline-block;width:8px;height:8px;border-radius:50%;"
+            + "background:#1b66b3;margin:1px;opacity:" + (0.3+0.7*((i+1)/d.einsaetze)).toFixed(2) + "\'></span>";
+    }}
+    if(d.einsaetze>20) dots += "<span style=\'font-size:10px;color:#94a3b8;\'>+" + (d.einsaetze-20) + " weitere</span>";
+
+    var sorted_daten = d.daten.slice().sort(function(a,b){{
+      var pa=a.datum.split(" ")[0].split("."); var pb=b.datum.split(" ")[0].split(".");
+      return new Date(pa[2],pa[1]-1,pa[0]) - new Date(pb[2],pb[1]-1,pb[0]);
+    }});
+    var dates_html = sorted_daten.map(function(e) {{
+      return "<span style=\'display:inline-block;background:#f1f5f9;border-radius:4px;"
+           + "padding:2px 7px;margin:2px;font-size:10px;color:#334155;\'>"
+           + e.datum + (e.tour && e.tour!=="zbv" ? " <b style=\'color:#1b66b3;\'>T"+e.tour+"</b>" : "")
+           + "</span>";
+    }}).join("");
+
+    html += "<div onclick=\'samToggle(this)\' style=\'background:#fff;border:1.5px solid #e2e8f0;"
+          + "border-radius:10px;padding:14px 16px;cursor:pointer;\'>";
+    html += "<div style=\'display:flex;align-items:center;justify-content:space-between;\'>";
+    html += "<div><div style=\'font-weight:800;font-size:14px;color:#0b1220;\'>" + d.name + "</div>";
+    html += "<div style=\'margin-top:4px;\'>" + dots + "</div></div>";
+    html += "<div style=\'text-align:right;\'>"
+          + "<div style=\'font-size:22px;font-weight:900;color:#1b66b3;line-height:1;\'>" + d.einsaetze + "</div>"
+          + "<div style=\'font-size:10px;color:#94a3b8;font-weight:600;\'>Einsätze</div></div>";
+    html += "</div>";
+    html += "<div class=\'sam-dates\' style=\'display:none;margin-top:10px;"
+          + "border-top:1px solid #e2e8f0;padding-top:8px;\'>" + dates_html + "</div>";
+    html += "</div>";
+  }});
+  html += "</div>";
+  document.getElementById("sam-content").innerHTML = html;
+}}
+
+function samToggle(el) {{
+  var dates = el.querySelector(".sam-dates");
+  if(!dates) return;
+  var open = dates.style.display !== "none";
+  dates.style.display = open ? "none" : "block";
+  el.style.borderColor = open ? "#e2e8f0" : "#1b66b3";
+}}
+
 </script>
 
 </body>
