@@ -1272,12 +1272,25 @@ if st.button("➕ Woche hinzufügen"):
 
 st.divider()
 
-# ── Telefonliste (global) ─────────────────────────────────────────────────────
+# ── Telefonliste + Samstags Fahrer (global) ──────────────────────────────────
 tel_up = st.file_uploader("📞 Telefonliste (Excel, optional)", type=["xlsx"], key="tel_upload")
 if tel_up:
     st.session_state.tel_json = parse_telefon_excel(tel_up)
     n = len(__import__("json").loads(st.session_state.tel_json))
     st.caption(f"✅ Telefonliste: {n} Gruppen")
+elif st.session_state.get("tel_json"):
+    st.caption("✅ Telefonliste bereits geladen")
+
+sam_ups = st.file_uploader("🚗 Samstags-Dateien (mehrere Excel möglich)", type=["xlsx"],
+                            accept_multiple_files=True, key="sam_upload")
+if sam_ups:
+    with st.spinner("Verarbeite Samstags-Dateien …"):
+        st.session_state.sam_json = parse_samstag_excel(sam_ups)
+    n = len(__import__("json").loads(st.session_state.sam_json))
+    st.caption(f"✅ Samstags Fahrer: {n} Fahrer aus {len(sam_ups)} Dateien")
+elif st.session_state.get("sam_json"):
+    n = len(__import__("json").loads(st.session_state.sam_json))
+    st.caption(f"✅ Samstags Fahrer bereits geladen: {n} Fahrer")
 
 # ── Download ──────────────────────────────────────────────────────────────────
 st.divider()
