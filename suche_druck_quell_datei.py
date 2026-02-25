@@ -763,7 +763,9 @@ iframe.active{{display:block}}
       </div>
       <div id="tel-content"></div>
     </div>
-    <div id="panel-sam" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#f4f6fa;font-family:Segoe UI,Arial,sans-serif">
+  </div>
+
+  <div id="panel-sam" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#f4f6fa;font-family:Segoe UI,Arial,sans-serif">
     <div style="max-width:1000px;margin:0 auto">
       <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128664; Samstags Fahrer</h2>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
