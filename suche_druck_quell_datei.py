@@ -554,7 +554,7 @@ def combine_html(instances: list, tel_json: str = "[]", last_updated: str = "") 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-html,body{{height:100%;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif}}
+html,body{{height:100%;font-family:'Segoe UI',Arial,sans-serif}}
 .topnav{{
   height:52px;
   background:#ffffff;
@@ -600,11 +600,11 @@ html,body{{height:100%;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif}}
 .nav-dd.open .dd-arrow{{transform:rotate(180deg)}}
 .dd-menu{{
   display:none;
-  position:absolute;top:calc(100% + 6px);left:0;
+  position:fixed;
   background:#fff;border:1.5px solid #1b66b3;
   border-radius:10px;min-width:160px;
   box-shadow:0 4px 16px rgba(27,102,179,.18);
-  z-index:999;overflow:hidden;
+  z-index:99999;overflow:hidden;
 }}
 .nav-dd.open .dd-menu{{display:block}}
 .dd-item{{
@@ -742,13 +742,18 @@ function buildDdMenu(area) {{
 
 function ddToggle(area, e) {{
   e.stopPropagation();
-  var dd = document.getElementById("dd-"+area);
+  var dd   = document.getElementById("dd-"+area);
+  var menu = document.getElementById("ddmenu-"+area);
   var wasOpen = dd.classList.contains("open");
-  // alle schließen
   document.querySelectorAll(".nav-dd").forEach(function(d){{d.classList.remove("open");}});
   if(!wasOpen) {{
     buildDdMenu(area);
     dd.classList.add("open");
+    // Position unter dem Button berechnen (fixed, ignoriert iframe)
+    var btn  = document.getElementById("btn-"+area);
+    var rect = btn.getBoundingClientRect();
+    menu.style.top  = (rect.bottom + 4) + "px";
+    menu.style.left = rect.left + "px";
   }}
 }}
 
