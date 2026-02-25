@@ -521,7 +521,81 @@ def generate_druck_html(up, logo_up) -> str:
 # HTML KOMBINIEREN  →  app.html
 # =============================================================================
 
-def combine_html(instances: list, tel_json: str = "[]", last_updated: str = "") -> str:
+def parse_samstag_excel(dateien: list) -> str:
+    """Verarbeitet mehrere Samstags-Excel-Dateien → JSON für SAM_DATA."""
+    import json as _json
+    from io import BytesIO
+    from datetime import datetime
+    from openpyxl import load_workbook
+
+    AUSGESCHLOSSEN = [
+        "Ch.Holtz","Paasch","Meyer","Ihde","Spedition M+S Express 4","Spedition M+S Express 3",
+        "Spedition M+S Express 2","Spedition M+S Express 1","Spedition Meyer 1","Spedition Meyer 2",
+        "Spedition Meyer 3","Spedition Meyer 4","Spedition Meyer 5","Spedition Meyer 6",
+        "Spedition Meyer 7 (36er)","Spedition Meyer 8","Spedition Meyer Sz.","Paasch & Reinke 1",
+        "Paasch & Reinke 2","Paasch & Reinke 3","deVries","Spedition Ihde","Insellogistik 1",
+        "Insellogistik 2","Zippel Logistik T1","Zippel Logistik T2","Zippel Logistik T3",
+        "Ch. Holtz T1","Ch. Holtz T2","Ch. Holtz T3","T&D Spedition","Kudex 1","Kudex 2",
+    ]
+
+    def ist_ausgeschlossen(nachname):
+        return any(a in str(nachname) for a in AUSGESCHLOSSEN)
+
+    gearbeitete_daten = {}
+
+    for datei in dateien:
+        try:
+            datei.seek(0)
+            wb = load_workbook(filename=BytesIO(datei.read()), data_only=True)
+            if "Aushang" not in wb.sheetnames:
+                continue
+            arbeitsdatum = wb["Aushang"].cell(row=2, column=15).value
+            if not arbeitsdatum:
+                continue
+            arbeitsdatum = arbeitsdatum.strftime("%d.%m.%Y") if hasattr(arbeitsdatum,"strftime") else str(arbeitsdatum)
+            kw = datetime.strptime(arbeitsdatum, "%d.%m.%Y").isocalendar()[1]
+            datum_kw = f"{arbeitsdatum} (KW{kw})"
+
+            datei.seek(0)
+            df = pd.read_excel(BytesIO(datei.read()), sheet_name="Touren", header=None, engine="openpyxl")
+            df.columns = [f"Spalte_{i}" for i in range(len(df.columns))]
+            start = df[df["Spalte_0"] == 6001].index.min()
+            if pd.isna(start):
+                continue
+            df = df.loc[start:start+40]
+
+            for _, row in df.iterrows():
+                paare = []
+                if pd.notna(row.get("Spalte_3")) and pd.notna(row.get("Spalte_4")):
+                    paare.append((str(row["Spalte_3"]).strip(), str(row["Spalte_4"]).strip()))
+                if pd.notna(row.get("Spalte_6")) and pd.notna(row.get("Spalte_7")):
+                    paare.append((str(row["Spalte_6"]).strip(), str(row["Spalte_7"]).strip()))
+                for nachname, vorname in paare:
+                    if ist_ausgeschlossen(nachname) or nachname=="0" or vorname=="0":
+                        continue
+                    tour = row.get("Spalte_0","zbv")
+                    if pd.isna(tour): tour = "zbv"
+                    key = (nachname, vorname)
+                    if key not in gearbeitete_daten:
+                        gearbeitete_daten[key] = []
+                    gearbeitete_daten[key].append({"datum": datum_kw, "tour": str(tour)})
+        except Exception as e:
+            st.warning(f"Fehler bei {datei.name}: {e}")
+            continue
+
+    result = []
+    for (nachname, vorname), daten in sorted(gearbeitete_daten.items()):
+        result.append({
+            "name": f"{vorname} {nachname}",
+            "nachname": nachname,
+            "vorname": vorname,
+            "einsaetze": len(daten),
+            "daten": daten,
+        })
+    return _json.dumps(result, ensure_ascii=False)
+
+
+def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", last_updated: str = "") -> str:
     """
     Bettet beliebig viele Suche+Druck-Paare (Instanzen) in eine HTML ein.
     Instanz-Wechsler im Topnav.
@@ -651,6 +725,7 @@ iframe.active{{display:block}}
     <div class="dd-menu" id="ddmenu-vz"></div>
   </div>
   <button class="nav-btn" id="btn-tel" onclick="showArea('tel')">&#128222; Telefonliste</button>
+  <button class="nav-btn" id="btn-sam" onclick="showArea('sam')">&#128664; Samstags Fahrer</button>
   <span class="topnav-stamp">{last_updated}</span>
 </nav>
 
@@ -688,7 +763,29 @@ iframe.active{{display:block}}
       </div>
       <div id="tel-content"></div>
     </div>
+    <div id="panel-sam" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#f4f6fa;font-family:Segoe UI,Arial,sans-serif">
+    <div style="max-width:1000px;margin:0 auto">
+      <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128664; Samstags Fahrer</h2>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+        <input id="sam-search" placeholder="Fahrer suchen..." oninput="samFilter(this.value)"
+          style="flex:1;min-width:200px;max-width:360px;padding:8px 14px;border:2px solid #1b66b3;
+                 border-radius:20px;font-size:13px;font-family:inherit;outline:none">
+        <div id="sam-sort" style="display:flex;gap:6px;">
+          <button onclick="samSort('name')" id="sam-sort-name"
+            style="padding:6px 14px;border:2px solid #1b66b3;border-radius:20px;background:#1b66b3;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">
+            Name
+          </button>
+          <button onclick="samSort('count')" id="sam-sort-count"
+            style="padding:6px 14px;border:2px solid #1b66b3;border-radius:20px;background:#fff;color:#1b66b3;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">
+            Eins&#228;tze &#8595;
+          </button>
+        </div>
+      </div>
+      <div id="sam-stats" style="margin-bottom:16px;font-size:13px;color:#64748b;"></div>
+      <div id="sam-content"></div>
+    </div>
   </div>
+</div>
 </div>
 
 <script>
@@ -940,6 +1037,7 @@ function vzGenerateExcel(rows, day) {{
 
 // ── Telefonliste ──────────────────────────────────────────────────────────────
 var TEL_DATA = {tel_json};
+var SAM_DATA = {sam_json};
 
 function telPDF() {{
   var w = window.open("","_blank","width=900,height=700");
@@ -1189,6 +1287,7 @@ if ready:
         app_html = combine_html(
             instances=ready,
             tel_json=st.session_state.get("tel_json", "[]"),
+            sam_json=st.session_state.get("sam_json", "[]"),
             last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
         )
     st.download_button(
