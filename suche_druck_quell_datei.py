@@ -545,14 +545,6 @@ def combine_html(instances: list, tel_json: str = "[]", last_updated: str = "") 
         )
     instances_js = ",\n".join(inst_js_parts)
 
-    # Instanz-Wechsler-Buttons für Topnav
-    inst_btns = "".join(
-        f'<button class="nav-btn inst-btn" id="inst-btn-{i}" '
-        f'onclick="switchInst({i})">{inst["name"]}</button>\n  '
-        for i, inst in enumerate(instances)
-    )
-    first_active = 'class="nav-btn inst-btn active"' if instances else ''
-
     return f"""<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -585,12 +577,44 @@ html,body{{height:100%;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif}}
   cursor:pointer;font-weight:700;font-size:12px;
   transition:all .15s ease;background:#fff;color:#1b66b3;
   white-space:nowrap;flex-shrink:0;
+  position:relative;
 }}
 .nav-btn:hover:not(.active){{background:#e8f0fb}}
 .nav-btn.active{{background:#1b66b3;color:#fff;box-shadow:0 2px 6px rgba(27,102,179,.35)}}
 .inst-btn{{border-color:#0f4c8a;color:#0f4c8a}}
 .inst-btn:hover:not(.active){{background:#e0ecff}}
 .inst-btn.active{{background:#0f4c8a;border-color:#0f4c8a;color:#fff}}
+/* ── Dropdown ── */
+.nav-dd{{position:relative;flex-shrink:0}}
+.nav-dd-btn{{
+  padding:5px 14px;border-radius:20px;
+  border:2px solid #1b66b3;
+  cursor:pointer;font-weight:700;font-size:12px;
+  transition:all .15s ease;background:#fff;color:#1b66b3;
+  white-space:nowrap;display:flex;align-items:center;gap:5px;
+}}
+.nav-dd-btn:hover{{background:#e8f0fb}}
+.nav-dd-btn.active{{background:#1b66b3;color:#fff;box-shadow:0 2px 6px rgba(27,102,179,.35)}}
+.nav-dd-btn.active .dd-arrow{{filter:brightness(10)}}
+.dd-arrow{{font-size:9px;opacity:.7;transition:transform .15s}}
+.nav-dd.open .dd-arrow{{transform:rotate(180deg)}}
+.dd-menu{{
+  display:none;
+  position:absolute;top:calc(100% + 6px);left:0;
+  background:#fff;border:1.5px solid #1b66b3;
+  border-radius:10px;min-width:160px;
+  box-shadow:0 4px 16px rgba(27,102,179,.18);
+  z-index:999;overflow:hidden;
+}}
+.nav-dd.open .dd-menu{{display:block}}
+.dd-item{{
+  padding:8px 14px;cursor:pointer;font-size:12px;font-weight:700;
+  color:#1b66b3;transition:background .12s;white-space:nowrap;
+  border-bottom:1px solid #e8f0fb;
+}}
+.dd-item:last-child{{border-bottom:none}}
+.dd-item:hover{{background:#eff6ff}}
+.dd-item.active{{background:#1b66b3;color:#fff}}
 .topnav-stamp{{
   margin-left:auto;font-size:11px;font-weight:700;
   color:#64748b;white-space:nowrap;padding-left:8px;
@@ -607,11 +631,25 @@ iframe.active{{display:block}}
 <nav class="topnav">
   <span class="topnav-title">NordFrischeCenter</span>
   <div class="nav-sep"></div>
-  {inst_btns}<div class="nav-sep"></div>
-  <button class="nav-btn active" id="btn-suche" onclick="showArea('suche')">&#128269; Suche</button>
-  <button class="nav-btn"        id="btn-druck" onclick="showArea('druck')">&#128424; BLP Druck</button>
-  <button class="nav-btn"        id="btn-vz"    onclick="showArea('vz')">&#9200; Versp&#228;tungstabelle</button>
-  <button class="nav-btn"        id="btn-tel"   onclick="showArea('tel')">&#128222; Telefonliste</button>
+  <div class="nav-dd" id="dd-suche">
+    <button class="nav-dd-btn active" id="btn-suche" onclick="ddToggle('suche',event)">
+      &#128269; Suche <span class="dd-arrow">&#9660;</span>
+    </button>
+    <div class="dd-menu" id="ddmenu-suche"></div>
+  </div>
+  <div class="nav-dd" id="dd-druck">
+    <button class="nav-dd-btn" id="btn-druck" onclick="ddToggle('druck',event)">
+      &#128424; BLP Druck <span class="dd-arrow">&#9660;</span>
+    </button>
+    <div class="dd-menu" id="ddmenu-druck"></div>
+  </div>
+  <div class="nav-dd" id="dd-vz">
+    <button class="nav-dd-btn" id="btn-vz" onclick="ddToggle('vz',event)">
+      &#9200; Versp&#228;tungstabelle <span class="dd-arrow">&#9660;</span>
+    </button>
+    <div class="dd-menu" id="ddmenu-vz"></div>
+  </div>
+  <button class="nav-btn" id="btn-tel" onclick="showArea('tel')">&#128222; Telefonliste</button>
   <span class="topnav-stamp">{last_updated}</span>
 </nav>
 
@@ -668,60 +706,91 @@ var INSTANCES = [
 ];
 var currentInst = 0;
 
-function switchInst(i) {{
-  currentInst = i;
-  // Instanz-Buttons
-  document.querySelectorAll(".inst-btn").forEach(function(b, idx) {{
-    b.className = "nav-btn inst-btn" + (idx === i ? " active" : "");
-  }});
-  // iframes neu laden
-  var inst = INSTANCES[i];
-  var fs = document.getElementById("frame-suche");
-  var fd = document.getElementById("frame-druck");
-  fs.srcdoc = b64ChunksToString(inst.s);
-  fd.srcdoc = b64ChunksToString(inst.d);
-  // vzAllData zurücksetzen – neue Instanz hat andere Daten
-  vzAllData = null;
-  document.getElementById("vz-status").textContent = "";
-  document.getElementById("vz-preview").innerHTML = "";
-}}
+// switchInst: ersetzt durch ddSelect()
 
 // ── Initiales Laden ───────────────────────────────────────────────────────────
-if(INSTANCES.length > 0) {{
-  document.getElementById("frame-suche").srcdoc = b64ChunksToString(INSTANCES[0].s);
-  document.getElementById("frame-druck" ).srcdoc = b64ChunksToString(INSTANCES[0].d);
+var currentInst = 0;
+var currentArea = "suche";
+
+function loadInst(i) {{
+  currentInst = i;
+  var inst = INSTANCES[i];
+  document.getElementById("frame-suche").srcdoc = b64ChunksToString(inst.s);
+  document.getElementById("frame-druck" ).srcdoc = b64ChunksToString(inst.d);
+  vzAllData = null;
+  // Dropdown-Items aktualisieren
+  ["suche","druck","vz"].forEach(function(area) {{
+    var menu = document.getElementById("ddmenu-"+area);
+    if(menu) buildDdMenu(area);
+  }});
 }}
+
+function buildDdMenu(area) {{
+  var menu = document.getElementById("ddmenu-"+area);
+  if(!menu) return;
+  menu.innerHTML = INSTANCES.map(function(inst,i) {{
+    var cls = "dd-item" + (i===currentInst?" active":"");
+    return "<div class='"+cls+"' onclick='ddSelect(""+area+'",'+i+")'>"+inst.name+"</div>";
+  }}).join("");
+}}
+
+function ddToggle(area, e) {{
+  e.stopPropagation();
+  var dd = document.getElementById("dd-"+area);
+  var wasOpen = dd.classList.contains("open");
+  // alle schließen
+  document.querySelectorAll(".nav-dd").forEach(function(d){{d.classList.remove("open");}});
+  if(!wasOpen) {{
+    buildDdMenu(area);
+    dd.classList.add("open");
+  }}
+}}
+
+function ddSelect(area, instIdx) {{
+  // Instanz laden wenn nötig
+  if(instIdx !== currentInst) loadInst(instIdx);
+  showArea(area);
+  document.querySelectorAll(".nav-dd").forEach(function(d){{d.classList.remove("open");}});
+}}
+
+// Klick außerhalb schließt Dropdown
+document.addEventListener("click", function() {{
+  document.querySelectorAll(".nav-dd").forEach(function(d){{d.classList.remove("open");}});
+}});
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 function showArea(s) {{
+  currentArea = s;
+  // iframes
   ["suche","druck"].forEach(function(id) {{
     document.getElementById("frame-"+id).className = (id===s)?"active":"";
-    document.getElementById("btn-"+id).className = "nav-btn"+(id===s?" active":"");
   }});
-  var vzPanel = document.getElementById("panel-vz");
-  var vzBtn   = document.getElementById("btn-vz");
-  if(s==="vz"){{
-    vzPanel.style.display="block"; vzBtn.className="nav-btn active";
-  }} else {{
-    vzPanel.style.display="none";  vzBtn.className="nav-btn";
-  }}
+  // Dropdown-Buttons aktiv/inaktiv
+  ["suche","druck","vz"].forEach(function(id) {{
+    var btn = document.getElementById("btn-"+id);
+    if(btn) btn.className = "nav-dd-btn" + (id===s?" active":"");
+  }});
+  // Telefonliste-Button
+  var telBtn = document.getElementById("btn-tel");
+  if(telBtn) telBtn.className = "nav-btn" + (s==="tel"?" active":"");
+  // Panels
+  var vzPanel  = document.getElementById("panel-vz");
   var telPanel = document.getElementById("panel-tel");
-  var telBtn   = document.getElementById("btn-tel");
-  if(s==="tel"){{
-    telPanel.style.display="block"; telBtn.className="nav-btn active";
-    if(!telPanel.dataset.loaded) {{ telRender(""); telPanel.dataset.loaded="1"; }}
-  }} else {{
-    telPanel.style.display="none";  telBtn.className="nav-btn";
-  }}
+  vzPanel.style.display  = (s==="vz")  ? "block" : "none";
+  telPanel.style.display = (s==="tel") ? "block" : "none";
+  if(s==="tel" && !telPanel.dataset.loaded) {{ telRender(""); telPanel.dataset.loaded="1"; }}
+}}
+
+if(INSTANCES.length > 0) {{
+  document.getElementById("frame-suche").srcdoc = b64ChunksToString(INSTANCES[0].s);
+  document.getElementById("frame-druck" ).srcdoc = b64ChunksToString(INSTANCES[0].d);
 }}
 
 window.addEventListener("message", function(e) {{
   if (e.data === "show-druck") showArea("druck");
   if (e.data === "show-suche") showArea("suche");
   if (e.data && e.data.type === "vz-data") vzHandleData(e.data.data);
-  if (e.data && e.data.type === "vz-init-data") {{
-    vzAllData = e.data.data;
-  }}
+  if (e.data && e.data.type === "vz-init-data") {{ vzAllData = e.data.data; }}
 }});
 
 // ── Verspätungstabelle ────────────────────────────────────────────────────────
