@@ -953,15 +953,21 @@ function showArea(s) {{
   // Samstags-Button
   var samBtn = document.getElementById("btn-sam");
   if(samBtn) samBtn.className = "nav-btn" + (s==="sam"?" active":"");
+  // Kennzahlen-Button
+  var kfzBtn = document.getElementById("btn-kfz");
+  if(kfzBtn) kfzBtn.className = "nav-btn" + (s==="kfz"?" active":"");
   // Panels
   var vzPanel  = document.getElementById("panel-vz");
   var telPanel = document.getElementById("panel-tel");
   var samPanel = document.getElementById("panel-sam");
+  var kfzPanel = document.getElementById("panel-kfz");
   vzPanel.style.display  = (s==="vz")  ? "block" : "none";
   telPanel.style.display = (s==="tel") ? "block" : "none";
   if(samPanel) samPanel.style.display = (s==="sam") ? "block" : "none";
+  if(kfzPanel) kfzPanel.style.display = (s==="kfz") ? "block" : "none";
   if(s==="tel" && !telPanel.dataset.loaded) {{ telRender(""); telPanel.dataset.loaded="1"; }}
   if(s==="sam" && samPanel && !samPanel.dataset.loaded) {{ samRender(""); samPanel.dataset.loaded="1"; }}
+  if(s==="kfz" && kfzPanel && !kfzPanel.dataset.loaded) {{ kfzRender(""); kfzPanel.dataset.loaded="1"; }}
 }}
 
 if(INSTANCES.length > 0) {{
