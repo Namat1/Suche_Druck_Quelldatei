@@ -729,7 +729,7 @@ def parse_fahrer_excel(dateien: list) -> str:
                 if not nachname or not vorname: continue
                 if ist_ausgeschlossen(nachname): continue
                 if nachname in ("0","nan") or vorname in ("0","nan"): continue
-                name = f"{vorname} {nachname}"
+                name = f"{nachname}, {vorname}"
                 yr   = str(jahr)
                 if name not in fahrer_map:
                     fahrer_map[name] = {}
