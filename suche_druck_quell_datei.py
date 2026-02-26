@@ -757,8 +757,8 @@ def parse_fahrer_excel(dateien: list) -> str:
                     tour_cnt[e["tour"]] = tour_cnt.get(e["tour"], 0) + 1
             lkw_cnt = {}
             for e in eintr:
-                lv = e.get("lkw","")
-                if lv and lv not in ("nan","None",""):
+                lv = e.get("lkw","").strip()
+                if lv and lv not in ("nan","None","","0") and not e["tour"].lower().strip() in ("ausgleich",) and not any(k in e["tour"].lower() for k in ["krank","urlaub","ausgleich"]):
                     lkw_cnt[lv] = lkw_cnt.get(lv, 0) + 1
             years_out[yr] = {
                 "krank":          sum(1 for e in eintr if "krank"     in e["tour"].lower()),
@@ -1831,13 +1831,13 @@ elif st.session_state.get("sam_json"):
     st.caption(f"✅ Samstags Fahrer bereits geladen: {n} Fahrer")
 
 fa_ups = st.file_uploader("👤 Fahrerauswertung (mehrere Touren-Excel möglich)", type=["xlsx"],
-                            accept_multiple_files=True, key="fa_upload")
+                            accept_multiple_files=True, key="fa_upload_v2")
 if fa_ups:
     with st.spinner("Verarbeite Fahrerauswertung …"):
-        st.session_state.fa_json = parse_fahrer_excel(fa_ups)
+        st.session_state.fa_json_v2 = parse_fahrer_excel(fa_ups)
     n = len(__import__("json").loads(st.session_state.fa_json))
     st.caption(f"✅ Fahrerauswertung: {n} Fahrer aus {len(fa_ups)} Dateien")
-elif st.session_state.get("fa_json"):
+elif st.session_state.get("fa_json_v2"):
     n = len(__import__("json").loads(st.session_state.fa_json))
     st.caption(f"✅ Fahrerauswertung bereits geladen: {n} Fahrer")
 
@@ -1861,7 +1861,7 @@ if ready:
             tel_json=st.session_state.get("tel_json", "[]"),
             sam_json=st.session_state.get("sam_json", "[]"),
             kfz_json=st.session_state.get("kfz_json", "[]"),
-            fa_json=st.session_state.get("fa_json", "[]"),
+            fa_json=st.session_state.get("fa_json_v2", "[]"),
             last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
         )
     st.download_button(
