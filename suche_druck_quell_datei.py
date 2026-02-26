@@ -715,7 +715,8 @@ def parse_fahrer_excel(dateien: list) -> str:
             uhrzeit   = fmt_zeit(row.iloc[8] if len(row) > 8 else None)
             tour      = str(row.iloc[15]).strip() if len(row) > 15 and _pd.notna(row.iloc[15]) else ""
             lkw_raw   = row.iloc[11] if len(row) > 11 and _pd.notna(row.iloc[11]) else ""
-            lkw       = str(int(float(lkw_raw))) if str(lkw_raw).replace(".", "").replace("-","").isdigit() else str(lkw_raw).strip()
+            lkw_str   = str(lkw_raw).strip()
+            lkw       = str(int(float(lkw_str))) if lkw_str.replace(".", "").replace("-","").isdigit() else (lkw_str if lkw_str not in ("nan","None","") else "")
 
             # Beide Seiten extrahieren
             paare = []
@@ -754,6 +755,11 @@ def parse_fahrer_excel(dateien: list) -> str:
                 t = e["tour"].lower()
                 if "krank" not in t and "urlaub" not in t and "ausgleich" not in t and e["tour"]:
                     tour_cnt[e["tour"]] = tour_cnt.get(e["tour"], 0) + 1
+            lkw_cnt = {}
+            for e in eintr:
+                lv = e.get("lkw","")
+                if lv and lv not in ("nan","None",""):
+                    lkw_cnt[lv] = lkw_cnt.get(lv, 0) + 1
             years_out[yr] = {
                 "krank":          sum(1 for e in eintr if "krank"     in e["tour"].lower()),
                 "urlaub":         sum(1 for e in eintr if "urlaub"    in e["tour"].lower()),
@@ -761,6 +767,7 @@ def parse_fahrer_excel(dateien: list) -> str:
                 "arbeit":         sum(1 for e in eintr if e["zeit"] != "n.A."),
                 "arbeit_samstag": sum(1 for e in eintr if e["samstag"] and e["zeit"] != "n.A."),
                 "touren":         dict(sorted(tour_cnt.items(), key=lambda x: (int(x[0]) if x[0].isdigit() else 9999, x[0]))),
+                "lkw":            dict(sorted(lkw_cnt.items(), key=lambda x: -x[1])),
                 "eintraege":      sorted(eintr, key=lambda x: (x["kw"],)),
             }
         result.append({"name": name, "years": years_out})
@@ -1164,7 +1171,7 @@ function showArea(s) {{
   telPanel.style.display = (s==="tel") ? "block" : "none";
   if(samPanel)      samPanel.style.display      = (s==="sam")       ? "block" : "none";
   var faPanel = document.getElementById("panel-fa");
-  if(faPanel) faPanel.style.display = (s==="fa") ? "block" : "none";
+  if(faPanel) faPanel.style.display = (s==="fa") ? "flex" : "none";
   if(kfzPanel)      kfzPanel.style.display      = (s==="kfz")       ? "block" : "none";
   if(kfzGraphPanel) kfzGraphPanel.style.display = (s==="kfz-graph") ? "block" : "none";
   if(s==="tel" && !telPanel.dataset.loaded) {{ telRender(""); telPanel.dataset.loaded="1"; }}
