@@ -602,11 +602,11 @@ def parse_fuhrpark_excel(datei) -> str:
     from openpyxl import load_workbook
 
     COLS = {
-        "touren":0+1,"verschiebung":1+1,"direkt_fremd":5+1,
-        "km":10+1,"diesel":11+1,"verbrauch":12+1,"ausfall":13+1,
-        "pda":14+1,"ma_da":16+1,"ma_urlaub":17+1,"ma_krank":18+1,
-        "azubis":19+1,"zbv_edeka":20+1,"zbv_fremd":21+1,
-        "fremd_abgesagt":22+1,"fremd1":23+1,"fremd2":24+1,"fremd3":25+1,
+        "touren":1,"verschiebung":2,"direkt_fremd":6,
+        "km":11,"diesel":12,"verbrauch":13,"ausfall":14,
+        "pda":15,"ma_da":17,"ma_urlaub":18,"ma_krank":19,
+        "azubis":20,"zbv_edeka":21,"zbv_fremd":22,
+        "fremd_abgesagt":23,"fremd1":24,"fremd2":25,"fremd3":26,
     }
     def fv(v):
         if v is None: return None
@@ -625,10 +625,10 @@ def parse_fuhrpark_excel(datei) -> str:
         ds = d.strftime("%d.%m.%Y") if isinstance(d, _dt.datetime) else str(d)
         if str(ds).startswith("KW"):
             if cur: weeks.append(cur)
-            cur = {"kw": ds, "summary": {k: fv(row[i-1]) for k,i in COLS.items()}, "days": []}
+            cur = {"kw": ds, "summary": {k: fv(row[i]) for k,i in COLS.items()}, "days": []}
         else:
             if cur is None: cur = {"kw": "—", "summary": {}, "days": []}
-            cur["days"].append({"datum": ds, **{k: fv(row[i-1]) for k,i in COLS.items()}})
+            cur["days"].append({"datum": ds, **{k: fv(row[i]) for k,i in COLS.items()}})
     if cur: weeks.append(cur)
     return _json.dumps(weeks, ensure_ascii=False)
 
