@@ -595,11 +595,51 @@ def parse_samstag_excel(dateien: list) -> str:
     return _json.dumps(result, ensure_ascii=False)
 
 
-def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", last_updated: str = "") -> str:
+def parse_fuhrpark_excel(datei) -> str:
+    """Liest erstes Blatt der Fuhrpark-Excel → JSON [{kw, summary, days}]."""
+    import json as _json, datetime as _dt
+    from io import BytesIO
+    from openpyxl import load_workbook
+
+    COLS = {
+        "touren":0+1,"verschiebung":1+1,"direkt_fremd":5+1,
+        "km":10+1,"diesel":11+1,"verbrauch":12+1,"ausfall":13+1,
+        "pda":14+1,"ma_da":16+1,"ma_urlaub":17+1,"ma_krank":18+1,
+        "azubis":19+1,"zbv_edeka":20+1,"zbv_fremd":21+1,
+        "fremd_abgesagt":22+1,"fremd1":23+1,"fremd2":24+1,"fremd3":25+1,
+    }
+    def fv(v):
+        if v is None: return None
+        if isinstance(v, _dt.datetime): return v.strftime("%d.%m.%Y")
+        if isinstance(v, float): return round(v,2)
+        return v
+
+    datei.seek(0)
+    wb = load_workbook(filename=BytesIO(datei.read()), data_only=True)
+    ws = wb.worksheets[0]
+
+    weeks, cur = [], None
+    for row in ws.iter_rows(min_row=3, values_only=True):
+        if row[0] is None: continue
+        d = row[0]
+        ds = d.strftime("%d.%m.%Y") if isinstance(d, _dt.datetime) else str(d)
+        if str(ds).startswith("KW"):
+            if cur: weeks.append(cur)
+            cur = {"kw": ds, "summary": {k: fv(row[i-1]) for k,i in COLS.items()}, "days": []}
+        else:
+            if cur is None: cur = {"kw": "—", "summary": {}, "days": []}
+            cur["days"].append({"datum": ds, **{k: fv(row[i-1]) for k,i in COLS.items()}})
+    if cur: weeks.append(cur)
+    return _json.dumps(weeks, ensure_ascii=False)
+
+
+def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", kfz_json: str = "[]", last_updated: str = "") -> str:
     """
     Bettet beliebig viele Suche+Druck-Paare (Instanzen) in eine HTML ein.
     Instanz-Wechsler im Topnav.
     """
+    kfz_js_code = '// ── Kennzahlen Fuhrpark ───────────────────────────────────────────────────────\nfunction kfzFilter(q) { kfzRender(q); }\nvar kfzOpenWeeks = {};\n\nfunction kfzRender(q) {\n  q = (q||"").toLowerCase().trim();\n  if(!KFZ_DATA || !KFZ_DATA.length) {\n    document.getElementById("kfz-content").innerHTML =\n      "<div style=\'color:#94a3b8;padding:40px;text-align:center;font-size:14px;\'>Keine Daten.<br>Fuhrpark-Excel in Streamlit hochladen.</div>";\n    return;\n  }\n  var filtered = KFZ_DATA.filter(function(w) {\n    return !q || w.kw.toLowerCase().includes(q);\n  });\n  document.getElementById("kfz-info").textContent =\n    filtered.length + " von " + KFZ_DATA.length + " Kalenderwochen";\n\n  var LABELS = {\n    touren:"Touren",verschiebung:"Verschib.",direkt_fremd:"Direkt Fremd",\n    km:"km EDEKA",diesel:"Diesel (L)",verbrauch:"\\u2205L/100",\n    ausfall:"Ausfall LKW",pda:"PDA",ma_da:"MA da",\n    ma_urlaub:"Urlaub",ma_krank:"Krank",azubis:"Azubis",\n    zbv_edeka:"ZBV EDEKA",zbv_fremd:"ZBV Fremd",fremd_abgesagt:"Fremd abges."\n  };\n  var ALL_KEYS = ["touren","verschiebung","direkt_fremd","km","diesel","verbrauch",\n                  "ausfall","pda","ma_da","ma_urlaub","ma_krank","azubis",\n                  "zbv_edeka","zbv_fremd","fremd_abgesagt"];\n\n  function badge(val, key) {\n    if(val===null||val===undefined) return "<span style=\'color:#cbd5e1\'>\\u2014</span>";\n    var color="#334155";\n    if(key==="ausfall"&&val>0) color="#dc2626";\n    if(key==="ma_krank"&&val>3) color="#f59e0b";\n    if(key==="fremd_abgesagt"&&val>0) color="#f59e0b";\n    return "<span style=\'font-weight:700;color:"+color+";\'>"+val+"</span>";\n  }\n\n  function pill(label,val,color) {\n    if(val===null||val===undefined) return "";\n    return "<span style=\'display:inline-flex;align-items:center;gap:3px;background:#f1f5f9;"\n         + "border-radius:12px;padding:2px 8px;margin:1px;font-size:11px;\'>"\n         + "<span style=\'color:#64748b;\'>"+label+"</span>"\n         + "<span style=\'font-weight:800;color:"+color+";\'>"+val+"</span></span>";\n  }\n\n  var html = "";\n  filtered.forEach(function(w) {\n    var open = !!kfzOpenWeeks[w.kw];\n    var s = w.summary||{};\n    html += "<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;margin-bottom:10px;overflow:hidden;\'>";\n    html += "<div onclick=\'kfzToggle(this,\\""+w.kw+"\\")\'";\n    html += " style=\'display:flex;align-items:center;gap:8px;padding:11px 16px;cursor:pointer;background:#f8fafc;border-bottom:1.5px solid #e2e8f0;flex-wrap:wrap;\'>";\n    html += "<span style=\'font-size:15px;font-weight:900;color:#1b66b3;min-width:56px;\'>"+w.kw+"</span>";\n    html += "<span style=\'font-size:11px;color:#94a3b8;\'>("+w.days.length+" Tage)</span>";\n    html += "<div style=\'display:flex;flex-wrap:wrap;flex:1;\'>";\n    html += pill("Touren",s.touren,"#1b66b3");\n    html += pill("km",s.km?Math.round(s.km).toLocaleString("de-DE"):null,"#0f4c8a");\n    html += pill("Diesel",s.diesel?Math.round(s.diesel).toLocaleString("de-DE")+"L":null,"#7c3aed");\n    html += pill("\\u2205Verbr.",s.verbrauch?s.verbrauch+"L/100":null,"#64748b");\n    html += pill("Ausfall",s.ausfall,s.ausfall>0?"#dc2626":"#64748b");\n    html += pill("MA\\u2205",s.ma_da?Math.round(s.ma_da):null,"#0f9d58");\n    html += pill("Krank",s.ma_krank?Math.round(s.ma_krank):null,s.ma_krank>3?"#f59e0b":"#64748b");\n    if(s.fremd_abgesagt>0) html += pill("Fremd abges.",s.fremd_abgesagt,"#f59e0b");\n    html += "</div>";\n    html += "<span style=\'color:#94a3b8;font-size:13px;display:inline-block;transition:.2s;transform:rotate("+(open?"180":"0")+"deg);\'>&#9660;</span>";\n    html += "</div>";\n    html += "<div class=\'kfz-days\' style=\'display:"+(open?"block":"none")+";overflow-x:auto;\'>";\n    html += "<table style=\'width:100%;border-collapse:collapse;font-size:11px;\'><thead>";\n    html += "<tr style=\'background:#f1f5fb;\'><th style=\'padding:5px 10px;text-align:left;font-weight:800;color:#1b66b3;border-bottom:2px solid #e2e8f0;white-space:nowrap;\'>Datum</th>";\n    ALL_KEYS.forEach(function(k) {\n      html += "<th style=\'padding:5px 6px;text-align:center;font-weight:800;color:#64748b;border-bottom:2px solid #e2e8f0;font-size:9px;white-space:nowrap;\'>"\n            + LABELS[k]+"</th>";\n    });\n    html += "<th style=\'padding:5px 6px;font-size:9px;font-weight:800;color:#64748b;border-bottom:2px solid #e2e8f0;\'>Fremdspedition</th></tr></thead><tbody>";\n    w.days.forEach(function(d,i) {\n      var weekend = d.datum&&(d.datum.startsWith("Sa")||d.datum.startsWith("So"));\n      var bg = weekend?"#fafafa":(i%2===0?"#fff":"#f8fafc");\n      var op = weekend?"opacity:.5;":"";\n      html += "<tr style=\'background:"+bg+";"+op+"\'>";\n      html += "<td style=\'padding:4px 10px;font-weight:700;white-space:nowrap;color:#0b1220;border-bottom:1px solid #f1f5f9;\'>"+d.datum+"</td>";\n      ALL_KEYS.forEach(function(k) {\n        html += "<td style=\'padding:4px 6px;text-align:center;border-bottom:1px solid #f1f5f9;\'>"+badge(d[k],k)+"</td>";\n      });\n      var f=[d.fremd1,d.fremd2,d.fremd3].filter(Boolean).join(", ");\n      html += "<td style=\'padding:4px 6px;color:#f59e0b;font-weight:700;font-size:10px;border-bottom:1px solid #f1f5f9;\'>"+f+"</td></tr>";\n    });\n    html += "</tbody></table></div></div>";\n  });\n  document.getElementById("kfz-content").innerHTML = html ||\n    "<div style=\'color:#94a3b8;padding:20px;\'>Keine KW gefunden.</div>";\n}\n\nfunction kfzToggle(el, kw) {\n  kfzOpenWeeks[kw] = !kfzOpenWeeks[kw];\n  var days  = el.parentElement.querySelector(".kfz-days");\n  var arrow = el.querySelector("span:last-child");\n  if(days)  days.style.display    = kfzOpenWeeks[kw] ? "block" : "none";\n  if(arrow) arrow.style.transform = "rotate("+(kfzOpenWeeks[kw]?"180":"0")+"deg)";\n}\n'
+
     def to_js_array(b64: str, width: int = 100) -> str:
         chunks = [b64[i:i+width] for i in range(0, len(b64), width)]
         return ",\n".join(f'"{c}"' for c in chunks)
@@ -726,6 +766,7 @@ iframe.active{{display:block}}
   </div>
   <button class="nav-btn" id="btn-tel" onclick="showArea('tel')">&#128222; Telefonliste</button>
   <button class="nav-btn" id="btn-sam" onclick="showArea('sam')">&#128664; Samstags Fahrer</button>
+  <button class="nav-btn" id="btn-kfz" onclick="showArea('kfz')">&#128663; Kennzahlen Fuhrpark</button>
   <span class="topnav-stamp">{last_updated}</span>
 </nav>
 
@@ -765,6 +806,19 @@ iframe.active{{display:block}}
     </div>
   </div>
 
+  <div id="panel-kfz" style="display:none;flex:1;overflow-y:auto;padding:24px 30px;background:#f4f6fa;font-family:Segoe UI,Arial,sans-serif">
+    <div style="max-width:1200px;margin:0 auto">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+        <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0">&#128663; Kennzahlen Fuhrpark</h2>
+        <div style="flex:1;min-width:160px;max-width:280px">
+          <input id="kfz-search" placeholder="KW suchen z.B. KW 48..." oninput="kfzFilter(this.value)"
+            style="width:100%;padding:7px 14px;border:2px solid #1b66b3;border-radius:20px;font-size:13px;font-family:inherit;outline:none">
+        </div>
+        <div style="font-size:12px;color:#64748b" id="kfz-info"></div>
+      </div>
+      <div id="kfz-content"></div>
+    </div>
+  </div>
   <div id="panel-sam" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#f4f6fa;font-family:Segoe UI,Arial,sans-serif">
     <div style="max-width:1000px;margin:0 auto">
       <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128664; Samstags Fahrer</h2>
@@ -1046,6 +1100,7 @@ function vzGenerateExcel(rows, day) {{
 // ── Telefonliste ──────────────────────────────────────────────────────────────
 var TEL_DATA = {tel_json};
 var SAM_DATA = {sam_json};
+var KFZ_DATA = {kfz_json};
 
 function telPDF() {{
   var w = window.open("","_blank","width=900,height=700");
@@ -1211,6 +1266,10 @@ function samToggle(el) {{
   el.style.borderColor = open ? "#e2e8f0" : "#1b66b3";
 }}
 
+
+
+
+{kfz_js_code}
 </script>
 
 </body>
@@ -1388,6 +1447,7 @@ if ready:
             instances=ready,
             tel_json=st.session_state.get("tel_json", "[]"),
             sam_json=st.session_state.get("sam_json", "[]"),
+            kfz_json=st.session_state.get("kfz_json", "[]"),
             last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
         )
     st.download_button(
