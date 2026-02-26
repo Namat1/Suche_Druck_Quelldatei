@@ -1007,8 +1007,6 @@ iframe.active{{display:block}}
       <div id="kfz-graph-content"></div>
     </div>
   </div>
-</div>
-</div>
   <!-- ── Fahrerauswertung Panel ───────────────────────────────────── -->
   <div id="panel-fa" style="display:none;flex:1;overflow-y:auto;padding:24px 30px;background:#f4f6fa;font-family:'Segoe UI',Arial,sans-serif">
     <div style="max-width:1100px;margin:0 auto">
@@ -1032,6 +1030,8 @@ iframe.active{{display:block}}
       <div id="fa-content"></div>
     </div>
   </div>
+</div>
+</div>
 
 
 <script>
