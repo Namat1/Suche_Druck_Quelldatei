@@ -1563,7 +1563,7 @@ function samRender(q) {{
   document.getElementById("sam-stats").innerHTML = statsHtml;
 
   // Cards
-  var html = "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;'>";
+  var html = "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;align-items:start;'>";
 
   var statusCfg = {{
     done: {{ border:"#16a34a", bg:"#f0fdf4", badge:"#16a34a", icon:"✓", label:"Jahresziel erreicht!" }},
