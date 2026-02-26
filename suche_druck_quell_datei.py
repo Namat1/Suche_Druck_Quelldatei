@@ -1831,13 +1831,13 @@ elif st.session_state.get("sam_json"):
     st.caption(f"✅ Samstags Fahrer bereits geladen: {n} Fahrer")
 
 fa_ups = st.file_uploader("👤 Fahrerauswertung (mehrere Touren-Excel möglich)", type=["xlsx"],
-                            accept_multiple_files=True, key="fa_upload_v2")
+                            accept_multiple_files=True, key="fa_upload")
 if fa_ups:
     with st.spinner("Verarbeite Fahrerauswertung …"):
-        st.session_state.fa_json_v2 = parse_fahrer_excel(fa_ups)
+        st.session_state.fa_json = parse_fahrer_excel(fa_ups)
     n = len(__import__("json").loads(st.session_state.fa_json))
     st.caption(f"✅ Fahrerauswertung: {n} Fahrer aus {len(fa_ups)} Dateien")
-elif st.session_state.get("fa_json_v2"):
+elif st.session_state.get("fa_json"):
     n = len(__import__("json").loads(st.session_state.fa_json))
     st.caption(f"✅ Fahrerauswertung bereits geladen: {n} Fahrer")
 
@@ -1861,7 +1861,7 @@ if ready:
             tel_json=st.session_state.get("tel_json", "[]"),
             sam_json=st.session_state.get("sam_json", "[]"),
             kfz_json=st.session_state.get("kfz_json", "[]"),
-            fa_json=st.session_state.get("fa_json_v2", "[]"),
+            fa_json=st.session_state.get("fa_json", "[]"),
             last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
         )
     st.download_button(
