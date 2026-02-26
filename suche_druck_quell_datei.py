@@ -1480,7 +1480,10 @@ function samToggle(el) {{
   dates.style.display = open ? "none" : "block";
 }}
 
-
+{kfz_js_code}
+{kfz_graph_js_code}
+{kfz_dd_js_code}
+{kfz_pdf_js_code}
 </script>
 
 </body>
