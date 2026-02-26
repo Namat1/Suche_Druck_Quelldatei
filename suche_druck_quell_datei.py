@@ -1166,6 +1166,7 @@ function showArea(s) {{
   if(s==="sam" && samPanel && !samPanel.dataset.loaded) {{ samRender(""); samPanel.dataset.loaded="1"; }}
   if(s==="kfz" && kfzPanel && !kfzPanel.dataset.loaded) {{ kfzRender(""); kfzPanel.dataset.loaded="1"; }}
   if(s==="kfz-graph" && kfzGraphPanel && !kfzGraphPanel.dataset.loaded) {{ kfzGraphRender(); kfzGraphPanel.dataset.loaded="1"; }}
+  if(s==="fa") {{ if(faPanel) faPanel.scrollTop = 0; if(faPanel && !faPanel.dataset.loaded) {{ faRender(""); faPanel.dataset.loaded="1"; }} }}
 }}
 
 if(INSTANCES.length > 0) {{
