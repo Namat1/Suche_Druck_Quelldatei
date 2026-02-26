@@ -1438,6 +1438,16 @@ elif st.session_state.get("sam_json"):
     n = len(__import__("json").loads(st.session_state.sam_json))
     st.caption(f"✅ Samstags Fahrer bereits geladen: {n} Fahrer")
 
+kfz_up = st.file_uploader("🚛 Kennzahlen Fuhrpark (Excel, erstes Blatt wird gelesen)", type=["xlsx"], key="kfz_upload")
+if kfz_up:
+    with st.spinner("Lese Fuhrpark-Kennzahlen …"):
+        st.session_state.kfz_json = parse_fuhrpark_excel(kfz_up)
+    n = len(__import__("json").loads(st.session_state.kfz_json))
+    st.caption(f"✅ Fuhrpark-Kennzahlen: {n} Kalenderwochen geladen")
+elif st.session_state.get("kfz_json"):
+    n = len(__import__("json").loads(st.session_state.kfz_json))
+    st.caption(f"✅ Fuhrpark-Kennzahlen bereits geladen: {n} KW")
+
 # ── Download ──────────────────────────────────────────────────────────────────
 st.divider()
 ready = [inst for inst in st.session_state.instances if inst["suche_html"] and inst["druck_html"]]
