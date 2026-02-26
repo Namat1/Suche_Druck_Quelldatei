@@ -837,22 +837,31 @@ iframe.active{{display:block}}
   <div id="panel-sam" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#f4f6fa;font-family:Segoe UI,Arial,sans-serif">
     <div style="max-width:1000px;margin:0 auto">
       <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128664; Samstags Fahrer</h2>
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <input id="sam-search" placeholder="Fahrer suchen..." oninput="samFilter(this.value)"
-          style="flex:1;min-width:200px;max-width:360px;padding:8px 14px;border:2px solid #1b66b3;
+          style="flex:1;min-width:180px;max-width:280px;padding:7px 14px;border:2px solid #1b66b3;
                  border-radius:20px;font-size:13px;font-family:inherit;outline:none">
-        <div id="sam-sort" style="display:flex;gap:6px;">
+        <select id="sam-year-sel" onchange="samYearChange(this.value)"
+          style="padding:7px 12px;border:2px solid #1b66b3;border-radius:20px;font-size:12px;font-weight:700;
+                 color:#1b66b3;cursor:pointer;font-family:inherit;outline:none;background:#fff;">
+          <option value="all">Alle Jahre</option>
+        </select>
+        <div style="display:flex;gap:5px;">
+          <button onclick="samSort('status')" id="sam-sort-status"
+            style="padding:6px 12px;border:2px solid #1b66b3;border-radius:20px;background:#1b66b3;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
+            Status &#8593;
+          </button>
           <button onclick="samSort('name')" id="sam-sort-name"
-            style="padding:6px 14px;border:2px solid #1b66b3;border-radius:20px;background:#1b66b3;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">
+            style="padding:6px 12px;border:2px solid #1b66b3;border-radius:20px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
             Name
           </button>
           <button onclick="samSort('count')" id="sam-sort-count"
-            style="padding:6px 14px;border:2px solid #1b66b3;border-radius:20px;background:#fff;color:#1b66b3;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">
+            style="padding:6px 12px;border:2px solid #1b66b3;border-radius:20px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
             Eins&#228;tze &#8595;
           </button>
         </div>
       </div>
-      <div id="sam-stats" style="margin-bottom:16px;font-size:13px;color:#64748b;"></div>
+      <div id="sam-stats" style="margin-bottom:12px;"></div>
       <div id="sam-content"></div>
     </div>
   </div>
@@ -1221,72 +1230,245 @@ function telRender(q) {{
   document.getElementById("tel-content").innerHTML = html;
 }}
 // ── Samstags Fahrer ───────────────────────────────────────────────────────────
-var samCurrentSort = "name";
+var samCurrentSort = "status"; // default: sort by status (critical first)
+var samYearFilter  = "all";
 
 function samSort(mode) {{
   samCurrentSort = mode;
-  document.getElementById("sam-sort-name").style.background  = mode==="name"  ? "#1b66b3" : "#fff";
-  document.getElementById("sam-sort-name").style.color       = mode==="name"  ? "#fff"    : "#1b66b3";
-  document.getElementById("sam-sort-count").style.background = mode==="count" ? "#1b66b3" : "#fff";
-  document.getElementById("sam-sort-count").style.color      = mode==="count" ? "#fff"    : "#1b66b3";
+  ["name","count","status"].forEach(function(m) {{
+    var btn = document.getElementById("sam-sort-"+m);
+    if(!btn) return;
+    btn.style.background = mode===m ? "#1b66b3" : "#fff";
+    btn.style.color      = mode===m ? "#fff"    : "#1b66b3";
+  }});
   samRender(document.getElementById("sam-search").value);
 }}
 
 function samFilter(q) {{ samRender(q); }}
 
+function samYearChange(yr) {{
+  samYearFilter = yr;
+  samRender(document.getElementById("sam-search").value);
+}}
+
+// Count Saturdays from Jan 1 of a year up to (but not including) a given date
+function samSaturdaysElapsed(year) {{
+  var today = new Date();
+  var start = new Date(year, 0, 1);
+  // find first saturday of year
+  var sat = new Date(start);
+  while(sat.getDay() !== 6) sat.setDate(sat.getDate()+1);
+  var count = 0;
+  var d = new Date(sat);
+  while(d <= today && d.getFullYear() === year) {{
+    count++;
+    d.setDate(d.getDate()+7);
+  }}
+  return count;
+}}
+
+// Total Saturdays in a year
+function samTotalSaturdays(year) {{
+  var count = 0;
+  var d = new Date(year, 0, 1);
+  while(d.getDay() !== 6) d.setDate(d.getDate()+1);
+  while(d.getFullYear() === year) {{ count++; d.setDate(d.getDate()+7); }}
+  return count;
+}}
+
+function samParseYear(datum) {{
+  // "01.02.2026 (KW5)"  or  "Sa 01.02.2026 (KW5)"
+  var m = datum.match(/(\d{{2}}\.\d{{2}}\.(\d{{4}}))/);
+  return m ? parseInt(m[2]) : null;
+}}
+
 function samRender(q) {{
   q = (q||"").toLowerCase().trim();
   if(!SAM_DATA || !SAM_DATA.length) {{
     document.getElementById("sam-content").innerHTML =
-      "<div style=\'color:#94a3b8;padding:40px;text-align:center;font-size:14px;\'>"
-      + "Keine Daten vorhanden.<br>Bitte Samstags-Dateien in Streamlit hochladen.</div>";
+      "<div style='color:#94a3b8;padding:40px;text-align:center;font-size:14px;'>" +
+      "Keine Daten vorhanden.<br>Bitte Samstags-Dateien in Streamlit hochladen.</div>";
     return;
   }}
-  var filtered = SAM_DATA.filter(function(d) {{
-    return !q || d.name.toLowerCase().includes(q);
-  }});
-  if(samCurrentSort === "count") {{
-    filtered.sort(function(a,b){{ return b.einsaetze - a.einsaetze; }});
-  }} else {{
-    filtered.sort(function(a,b){{ return a.name.localeCompare(b.name,"de"); }});
-  }}
-  var total = filtered.reduce(function(s,d){{ return s+d.einsaetze; }},0);
-  document.getElementById("sam-stats").textContent =
-    filtered.length + " Fahrer · " + total + " Einsätze gesamt";
 
-  var html = "<div style=\'display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;\'>";
-  filtered.forEach(function(d) {{
-    var dots = "";
-    for(var i=0;i<Math.min(d.einsaetze,20);i++) {{
-      dots += "<span style=\'display:inline-block;width:8px;height:8px;border-radius:50%;"
-            + "background:#1b66b3;margin:1px;opacity:" + (0.3+0.7*((i+1)/d.einsaetze)).toFixed(2) + "\'></span>";
-    }}
-    if(d.einsaetze>20) dots += "<span style=\'font-size:10px;color:#94a3b8;\'>+" + (d.einsaetze-20) + " weitere</span>";
+  var today    = new Date();
+  var curYear  = today.getFullYear();
+  var satElapsed = samSaturdaysElapsed(curYear);
+  var satTotal   = samTotalSaturdays(curYear);
+  var soll       = Math.round(12 * satElapsed / satTotal); // expected by today
+  var ZIEL       = 12; // annual target
 
-    var sorted_daten = d.daten.slice().sort(function(a,b){{
-      var pa=a.datum.split(" ")[0].split("."); var pb=b.datum.split(" ")[0].split(".");
-      return new Date(pa[2],pa[1]-1,pa[0]) - new Date(pb[2],pb[1]-1,pb[0]);
+  // Build per-driver data, filtered by year
+  var driverData = SAM_DATA.map(function(d) {{
+    // Group deployments by year
+    var byYear = {{}};
+    (d.daten||[]).forEach(function(e) {{
+      var yr = samParseYear(e.datum||"");
+      if(!yr) return;
+      if(!byYear[yr]) byYear[yr] = [];
+      byYear[yr].push(e);
     }});
-    var dates_html = sorted_daten.map(function(e) {{
-      return "<span style=\'display:inline-block;background:#f1f5f9;border-radius:4px;"
-           + "padding:2px 7px;margin:2px;font-size:10px;color:#334155;\'>"
-           + e.datum + (e.tour && e.tour!=="zbv" ? " <b style=\'color:#1b66b3;\'>T"+e.tour+"</b>" : "")
-           + "</span>";
+
+    // Deployments in current year
+    var curEinsaetze = (byYear[curYear]||[]).length;
+
+    // Status relative to today
+    var diff = curEinsaetze - soll;
+    var status; // "ok" | "warn" | "crit" | "done"
+    if(curEinsaetze >= ZIEL)        status = "done";
+    else if(diff >= 0)              status = "ok";
+    else if(diff >= -1)             status = "warn";
+    else                            status = "crit";
+
+    return Object.assign({{}}, d, {{
+      _byYear: byYear,
+      _curEinsaetze: curEinsaetze,
+      _status: status,
+      _diff: diff
+    }});
+  }});
+
+  // Year filter
+  var allYears = [];
+  driverData.forEach(function(d) {{
+    Object.keys(d._byYear).forEach(function(yr) {{
+      if(allYears.indexOf(yr)===-1) allYears.push(yr);
+    }});
+  }});
+  allYears.sort().reverse();
+
+  // Rebuild year-filter dropdown
+  var yrSel = document.getElementById("sam-year-sel");
+  if(yrSel) {{
+    var curVal = yrSel.value;
+    yrSel.innerHTML = "<option value='all'>Alle Jahre</option>" +
+      allYears.map(function(y){{
+        return "<option value='"+y+"'"+(y==curVal?" selected":"")+">"+y+"</option>";
+      }}).join("");
+  }}
+
+  // Filter by search + year
+  var filtered = driverData.filter(function(d) {{
+    if(q && !d.name.toLowerCase().includes(q)) return false;
+    if(samYearFilter !== "all") {{
+      if(!(d._byYear[samYearFilter] && d._byYear[samYearFilter].length)) return false;
+    }}
+    return true;
+  }});
+
+  // Sort
+  var statusOrder = {{crit:0, warn:1, ok:2, done:3}};
+  if(samCurrentSort === "status") {{
+    filtered.sort(function(a,b) {{
+      var sd = statusOrder[a._status] - statusOrder[b._status];
+      return sd !== 0 ? sd : a.name.localeCompare(b.name,"de");
+    }});
+  }} else if(samCurrentSort === "count") {{
+    filtered.sort(function(a,b) {{ return b._curEinsaetze - a._curEinsaetze; }});
+  }} else {{
+    filtered.sort(function(a,b) {{ return a.name.localeCompare(b.name,"de"); }});
+  }}
+
+  // Stats bar
+  var nDone = filtered.filter(function(d){{return d._status==="done";}}).length;
+  var nOk   = filtered.filter(function(d){{return d._status==="ok";}}).length;
+  var nWarn = filtered.filter(function(d){{return d._status==="warn";}}).length;
+  var nCrit = filtered.filter(function(d){{return d._status==="crit";}}).length;
+
+  var statsHtml =
+    "<div style='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;font-size:11px;'>" +
+    "<span style='color:#64748b;font-weight:700;'>"+filtered.length+" Fahrer</span>" +
+    "<span style='display:inline-flex;align-items:center;gap:3px;background:#dcfce7;border-radius:8px;padding:2px 8px;font-weight:800;color:#16a34a;'>&#10003; Ziel erreicht: "+nDone+"</span>" +
+    "<span style='display:inline-flex;align-items:center;gap:3px;background:#dbeafe;border-radius:8px;padding:2px 8px;font-weight:800;color:#1b66b3;'>&#8679; Im Soll: "+nOk+"</span>" +
+    "<span style='display:inline-flex;align-items:center;gap:3px;background:#fef9c3;border-radius:8px;padding:2px 8px;font-weight:800;color:#d97706;'>&#9888; Leicht hinter: "+nWarn+"</span>" +
+    "<span style='display:inline-flex;align-items:center;gap:3px;background:#fee2e2;border-radius:8px;padding:2px 8px;font-weight:800;color:#dc2626;'>&#8679;&#8595; Rückstand: "+nCrit+"</span>" +
+    "<span style='margin-left:auto;color:#94a3b8;font-size:10px;'>Soll heute: <b style='color:#1b66b3;'>"+soll+"</b> / "+ZIEL+" &nbsp;("+satElapsed+" von "+satTotal+" Samstagen)</span>" +
+    "</div>";
+  document.getElementById("sam-stats").innerHTML = statsHtml;
+
+  // Cards
+  var html = "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;'>";
+
+  var statusCfg = {{
+    done: {{ border:"#16a34a", bg:"#f0fdf4", badge:"#16a34a", icon:"✓", label:"Jahresziel erreicht!" }},
+    ok:   {{ border:"#1b66b3", bg:"#eff6ff", badge:"#1b66b3", icon:"↑", label:"Im Soll" }},
+    warn: {{ border:"#d97706", bg:"#fffbeb", badge:"#d97706", icon:"⚠", label:"Leicht hinter Soll" }},
+    crit: {{ border:"#dc2626", bg:"#fff1f2", badge:"#dc2626", icon:"↓", label:"Rückstand" }}
+  }};
+
+  filtered.forEach(function(d) {{
+    var cfg = statusCfg[d._status];
+    var yr  = samYearFilter !== "all" ? samYearFilter : ""+curYear;
+    var einsaetzeThisYear = (d._byYear[yr]||[]).length;
+    var pct = Math.min(100, Math.round(einsaetzeThisYear / ZIEL * 100));
+    var sollPct = Math.min(100, Math.round(soll / ZIEL * 100));
+
+    // Progress bar
+    var progressHtml =
+      "<div style='margin-top:10px;'>" +
+      "<div style='display:flex;justify-content:space-between;font-size:10px;color:#64748b;margin-bottom:3px;'>" +
+      "<span>0</span><span style='font-weight:800;color:"+cfg.badge+";'>Ist: "+einsaetzeThisYear+"</span>" +
+      "<span style='color:#94a3b8;'>Soll heute: "+soll+"</span><span style='color:#334155;font-weight:700;'>Ziel: "+ZIEL+"</span>" +
+      "</div>" +
+      "<div style='position:relative;height:14px;background:#f1f5f9;border-radius:7px;overflow:hidden;'>" +
+      // Actual bar
+      "<div style='position:absolute;top:0;left:0;height:100%;width:"+pct+"%;background:"+cfg.badge+";border-radius:7px;transition:width .4s;'></div>" +
+      // Soll marker
+      "<div style='position:absolute;top:0;left:"+sollPct+"%;width:2px;height:100%;background:#334155;opacity:.5;'></div>" +
+      "</div>" +
+      "<div style='display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;margin-top:2px;'>" +
+      "<span style='margin-left:"+sollPct+"%;transform:translateX(-50%);color:#64748b;font-weight:700;'>↑ heute</span>" +
+      "</div>" +
+      "</div>";
+
+    // Previous years compact
+    var otherYears = Object.keys(d._byYear).filter(function(y){{ return y !== ""+curYear; }}).sort().reverse();
+    var prevHtml = "";
+    if(otherYears.length) {{
+      prevHtml = "<div style='margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;'>";
+      otherYears.forEach(function(y) {{
+        var n = d._byYear[y].length;
+        var metTarget = n >= ZIEL;
+        prevHtml += "<span style='font-size:9px;padding:1px 6px;border-radius:8px;font-weight:700;" +
+          "background:"+(metTarget?"#dcfce7":"#fee2e2")+";color:"+(metTarget?"#16a34a":"#dc2626")+";'>" +
+          y+": "+n+(metTarget?" ✓":" ✗")+"</span>";
+      }});
+      prevHtml += "</div>";
+    }}
+
+    // Sorted dates for this year
+    var sortedDaten = (d._byYear[yr]||[]).slice().sort(function(a,b){{
+      var pa=a.datum.match(/(\\d{{2}})\\.(\\d{{2}})\\.(\\d{{4}})/);
+      var pb=b.datum.match(/(\\d{{2}})\\.(\\d{{2}})\\.(\\d{{4}})/);
+      if(!pa||!pb) return 0;
+      return new Date(pa[3],pa[2]-1,pa[1]) - new Date(pb[3],pb[2]-1,pb[1]);
+    }});
+    var datesHtml = sortedDaten.map(function(e) {{
+      return "<span style='display:inline-block;background:#f1f5f9;border-radius:4px;padding:2px 7px;margin:2px;font-size:10px;color:#334155;'>" +
+        e.datum + (e.tour && e.tour!=="zbv" ? " <b style='color:#1b66b3;'>T"+e.tour+"</b>" : "") + "</span>";
     }}).join("");
 
-    html += "<div onclick=\'samToggle(this)\' style=\'background:#fff;border:1.5px solid #e2e8f0;"
-          + "border-radius:10px;padding:14px 16px;cursor:pointer;\'>";
-    html += "<div style=\'display:flex;align-items:center;justify-content:space-between;\'>";
-    html += "<div><div style=\'font-weight:800;font-size:14px;color:#0b1220;\'>" + d.name + "</div>";
-    html += "<div style=\'margin-top:4px;\'>" + dots + "</div></div>";
-    html += "<div style=\'text-align:right;\'>"
-          + "<div style=\'font-size:22px;font-weight:900;color:#1b66b3;line-height:1;\'>" + d.einsaetze + "</div>"
-          + "<div style=\'font-size:10px;color:#94a3b8;font-weight:600;\'>Einsätze</div></div>";
-    html += "</div>";
-    html += "<div class=\'sam-dates\' style=\'display:none;margin-top:10px;"
-          + "border-top:1px solid #e2e8f0;padding-top:8px;\'>" + dates_html + "</div>";
-    html += "</div>";
+    html +=
+      "<div onclick='samToggle(this)' style='background:"+cfg.bg+";border:2px solid "+cfg.border+";border-radius:10px;padding:14px 16px;cursor:pointer;transition:box-shadow .15s;'>" +
+      // Header row
+      "<div style='display:flex;align-items:flex-start;justify-content:space-between;gap:8px;'>" +
+      "<div style='flex:1;'>" +
+      "<div style='font-weight:900;font-size:14px;color:#0b1220;'>"+d.name+"</div>" +
+      "<div style='margin-top:3px;display:inline-flex;align-items:center;gap:4px;background:"+cfg.badge+";color:#fff;border-radius:10px;padding:1px 8px;font-size:10px;font-weight:800;'>" +
+        cfg.icon+" "+cfg.label+"</div>" +
+      "</div>" +
+      // Big number
+      "<div style='text-align:right;flex-shrink:0;'>" +
+      "<div style='font-size:28px;font-weight:900;color:"+cfg.badge+";line-height:1;'>"+einsaetzeThisYear+"</div>" +
+      "<div style='font-size:9px;color:#94a3b8;font-weight:600;'>/ "+ZIEL+" Einsätze</div>" +
+      "</div>" +
+      "</div>" +
+      progressHtml +
+      prevHtml +
+      "<div class='sam-dates' style='display:none;margin-top:10px;border-top:1px solid #e2e8f0;padding-top:8px;'>"+datesHtml+"</div>" +
+      "</div>";
   }});
+
   html += "</div>";
   document.getElementById("sam-content").innerHTML = html;
 }}
@@ -1296,16 +1478,9 @@ function samToggle(el) {{
   if(!dates) return;
   var open = dates.style.display !== "none";
   dates.style.display = open ? "none" : "block";
-  el.style.borderColor = open ? "#e2e8f0" : "#1b66b3";
 }}
 
 
-
-
-{kfz_js_code}
-{kfz_graph_js_code}
-{kfz_dd_js_code}
-{kfz_pdf_js_code}
 </script>
 
 </body>
