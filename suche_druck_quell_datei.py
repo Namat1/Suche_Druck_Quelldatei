@@ -551,7 +551,8 @@ def parse_samstag_excel(dateien: list) -> str:
     def ist_ausgeschlossen(nachname):
         return any(a in str(nachname) for a in AUSGESCHLOSSEN)
 
-    gearbeitete_daten = {}
+    gearbeitete_daten = {}  # (nachname, vorname) → [einsätze]
+    alle_fahrer = set()     # alle bekannten Fahrer aus Touren-Sheet
 
     for datei in dateien:
         try:
@@ -568,16 +569,31 @@ def parse_samstag_excel(dateien: list) -> str:
                 continue
             kw = parsed_date.isocalendar()[1]
             datum_kw = f"{arbeitsdatum} (KW{kw})"
+            is_saturday = parsed_date.weekday() == 5  # 5 = Samstag
 
             datei.seek(0)
             df = pd.read_excel(BytesIO(datei.read()), sheet_name="Touren", header=None, engine="openpyxl")
             df.columns = [f"Spalte_{i}" for i in range(len(df.columns))]
+
+            # Collect all drivers from the full Touren sheet (rows 5+)
+            df_all = df.iloc[5:].reset_index(drop=True)
+            for _, row in df_all.iterrows():
+                for nc, vc in [("Spalte_3","Spalte_4"), ("Spalte_6","Spalte_7")]:
+                    n = str(row.get(nc,"")).strip() if pd.notna(row.get(nc)) else ""
+                    v = str(row.get(vc,"")).strip() if pd.notna(row.get(vc)) else ""
+                    if n and v and n not in ("0","nan") and v not in ("0","nan") and not ist_ausgeschlossen(n):
+                        alle_fahrer.add((n, v))
+
+            # Saturday deployments only
+            if not is_saturday:
+                continue
+
             start = df[df["Spalte_0"] == 6001].index.min()
             if pd.isna(start):
                 continue
-            df = df.loc[start:start+40]
+            df_sat = df.loc[start:start+40]
 
-            for _, row in df.iterrows():
+            for _, row in df_sat.iterrows():
                 paare = []
                 if pd.notna(row.get("Spalte_3")) and pd.notna(row.get("Spalte_4")):
                     paare.append((str(row["Spalte_3"]).strip(), str(row["Spalte_4"]).strip()))
@@ -596,10 +612,15 @@ def parse_samstag_excel(dateien: list) -> str:
             st.warning(f"Fehler bei {datei.name}: {e}")
             continue
 
+    # Merge: add all known drivers with 0 deployments if not already present
+    for key in alle_fahrer:
+        if key not in gearbeitete_daten:
+            gearbeitete_daten[key] = []
+
     result = []
     for (nachname, vorname), daten in sorted(gearbeitete_daten.items()):
         result.append({
-            "name": f"{vorname} {nachname}",
+            "name": f"{nachname}, {vorname}",
             "nachname": nachname,
             "vorname": vorname,
             "einsaetze": len(daten),
