@@ -833,6 +833,26 @@ def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", kf
         )
     instances_js = ",\n".join(inst_js_parts)
 
+    # Merge: add all fa drivers into sam_json with 0 deployments if missing
+    try:
+        import json as _j
+        sam_list = _j.loads(sam_json)
+        fa_list  = _j.loads(fa_json)
+        sam_names = {d["name"] for d in sam_list}
+        for fd in fa_list:
+            if fd["name"] not in sam_names:
+                sam_list.append({
+                    "name": fd["name"],
+                    "nachname": fd["name"].split(", ")[0] if ", " in fd["name"] else fd["name"],
+                    "vorname":  fd["name"].split(", ")[1] if ", " in fd["name"] else "",
+                    "einsaetze": 0,
+                    "daten": [],
+                })
+        sam_list.sort(key=lambda x: x["name"])
+        sam_json = _j.dumps(sam_list, ensure_ascii=False)
+    except Exception:
+        pass
+
     return f"""<!DOCTYPE html>
 <html lang="de">
 <head>
