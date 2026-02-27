@@ -584,8 +584,9 @@ def parse_samstag_excel(dateien: list) -> str:
                     if n and v and n not in ("0","nan") and v not in ("0","nan") and not ist_ausgeschlossen(n):
                         alle_fahrer.add((n, v))
 
-            # Saturday deployments only
-            if not is_saturday:
+            # Samstag oder Sonntag (Sonntag nur bis 15:00 Uhr)
+            is_sunday = parsed_date.weekday() == 6  # 6 = Sonntag
+            if not is_saturday and not is_sunday:
                 continue
 
             start = df[df["Spalte_0"] == 6001].index.min()
@@ -593,7 +594,35 @@ def parse_samstag_excel(dateien: list) -> str:
                 continue
             df_sat = df.loc[start:start+40]
 
+            def parse_time_minutes(val):
+                """Gibt Minuten seit Mitternacht zurück, oder None wenn nicht parsebar."""
+                try:
+                    if pd.isna(val): return None
+                except: pass
+                import datetime as _dt2
+                if isinstance(val, float) and val > 0:
+                    total_min = int(val * 1440)
+                    return total_min
+                if isinstance(val, (_dt2.datetime, pd.Timestamp)):
+                    return val.hour * 60 + val.minute
+                if isinstance(val, _dt2.time):
+                    return val.hour * 60 + val.minute
+                if isinstance(val, str):
+                    val = val.strip()
+                    if ":" in val:
+                        parts = val.split(":")
+                        try: return int(parts[0]) * 60 + int(parts[1])
+                        except: pass
+                return None
+
             for _, row in df_sat.iterrows():
+                # Sonntagsfilter: nur Touren mit Startzeit < 15:00
+                if is_sunday:
+                    zeit_raw = row.get("Spalte_8")
+                    mins = parse_time_minutes(zeit_raw)
+                    if mins is None or mins >= 15 * 60:
+                        continue
+
                 paare = []
                 if pd.notna(row.get("Spalte_3")) and pd.notna(row.get("Spalte_4")):
                     paare.append((str(row["Spalte_3"]).strip(), str(row["Spalte_4"]).strip()))
@@ -604,10 +633,11 @@ def parse_samstag_excel(dateien: list) -> str:
                         continue
                     tour = row.get("Spalte_0","zbv")
                     if pd.isna(tour): tour = "zbv"
+                    tag_label = "So" if is_sunday else "Sa"
                     key = (nachname, vorname)
                     if key not in gearbeitete_daten:
                         gearbeitete_daten[key] = []
-                    gearbeitete_daten[key].append({"datum": datum_kw, "tour": str(tour)})
+                    gearbeitete_daten[key].append({"datum": datum_kw, "tour": str(tour), "tag": tag_label})
         except Exception as e:
             st.warning(f"Fehler bei {datei.name}: {e}")
             continue
