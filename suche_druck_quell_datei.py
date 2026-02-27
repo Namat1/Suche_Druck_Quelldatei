@@ -563,7 +563,10 @@ def parse_samstag_excel(dateien: list) -> str:
             if not arbeitsdatum:
                 continue
             arbeitsdatum = arbeitsdatum.strftime("%d.%m.%Y") if hasattr(arbeitsdatum,"strftime") else str(arbeitsdatum)
-            kw = datetime.strptime(arbeitsdatum, "%d.%m.%Y").isocalendar()[1]
+            parsed_date = datetime.strptime(arbeitsdatum, "%d.%m.%Y")
+            if parsed_date.year != datetime.now().year:
+                continue
+            kw = parsed_date.isocalendar()[1]
             datum_kw = f"{arbeitsdatum} (KW{kw})"
 
             datei.seek(0)
