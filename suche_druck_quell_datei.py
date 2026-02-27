@@ -863,21 +863,65 @@ def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", kf
         )
     instances_js = ",\n".join(inst_js_parts)
 
-    # Merge: add all fa drivers into sam_json with 0 deployments if missing
+    # Merge: add all fa drivers into sam_json + add Sunday < 15:00 deployments
     try:
         import json as _j
+        import datetime as _dt2
         sam_list = _j.loads(sam_json)
         fa_list  = _j.loads(fa_json)
-        sam_names = {d["name"] for d in sam_list}
+
+        # Build sam lookup by name
+        sam_by_name = {d["name"]: d for d in sam_list}
+
+        def parse_mins(zeit_str):
+            """Parse 'HH:MM' → minutes since midnight, or None."""
+            if not zeit_str or zeit_str == "n.A.": return None
+            try:
+                parts = zeit_str.strip().split(":")
+                return int(parts[0]) * 60 + int(parts[1])
+            except: return None
+
+        # Scan fa_json for Sunday entries before 15:00
         for fd in fa_list:
-            if fd["name"] not in sam_names:
-                sam_list.append({
+            name = fd["name"]
+            for yr_data in fd.get("years", {}).values():
+                for e in yr_data.get("eintraege", []):
+                    if not e.get("datum", "").startswith("Sonntag"):
+                        continue
+                    mins = parse_mins(e.get("zeit", ""))
+                    if mins is None or mins >= 15 * 60:
+                        continue
+                    # This is a Sunday tour before 15:00 → count as Samstag-Einsatz
+                    datum_str = e["datum"].replace("Sonntag, ", "") + f" (KW{e['kw']})"
+                    entry = {"datum": datum_str, "tour": e.get("tour", ""), "tag": "So"}
+                    if name not in sam_by_name:
+                        sam_by_name[name] = {
+                            "name": name,
+                            "nachname": name.split(", ")[0] if ", " in name else name,
+                            "vorname":  name.split(", ")[1] if ", " in name else "",
+                            "einsaetze": 0,
+                            "daten": [],
+                        }
+                        sam_list.append(sam_by_name[name])
+                    sam_by_name[name]["daten"].append(entry)
+
+        # Add all fa drivers with 0 deployments if still missing
+        for fd in fa_list:
+            if fd["name"] not in sam_by_name:
+                d = {
                     "name": fd["name"],
                     "nachname": fd["name"].split(", ")[0] if ", " in fd["name"] else fd["name"],
                     "vorname":  fd["name"].split(", ")[1] if ", " in fd["name"] else "",
                     "einsaetze": 0,
                     "daten": [],
-                })
+                }
+                sam_list.append(d)
+                sam_by_name[fd["name"]] = d
+
+        # Update einsaetze count
+        for d in sam_list:
+            d["einsaetze"] = len(d["daten"])
+
         sam_list.sort(key=lambda x: x["name"])
         sam_json = _j.dumps(sam_list, ensure_ascii=False)
     except Exception:
