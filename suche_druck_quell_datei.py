@@ -1577,7 +1577,10 @@ function samRender(q) {{
   var filtered = driverData.filter(function(d) {{
     if(q && !d.name.toLowerCase().includes(q)) return false;
     if(samYearFilter !== "all") {{
-      if(!(d._byYear[samYearFilter] && d._byYear[samYearFilter].length)) return false;
+      // Always include drivers with 0 deployments (they have no year entries)
+      var hasYear = d._byYear[samYearFilter] && d._byYear[samYearFilter].length;
+      var hasNoDeployments = Object.keys(d._byYear).length === 0;
+      if(!hasYear && !hasNoDeployments) return false;
     }}
     return true;
   }});
