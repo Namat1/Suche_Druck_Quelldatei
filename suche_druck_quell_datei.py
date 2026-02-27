@@ -1826,25 +1826,25 @@ elif st.session_state.get("tel_json"):
     st.caption("✅ Telefonliste bereits geladen")
 
 sam_ups = st.file_uploader("🚗 Samstags-Dateien (mehrere Excel möglich)", type=["xlsx"],
-                            accept_multiple_files=True, key="sam_upload")
+                            accept_multiple_files=True, key="sam_upload_v3")
 if sam_ups:
     with st.spinner("Verarbeite Samstags-Dateien …"):
-        st.session_state.sam_json = parse_samstag_excel(sam_ups)
-    n = len(__import__("json").loads(st.session_state.sam_json))
+        st.session_state.sam_json_v3 = parse_samstag_excel(sam_ups)
+    n = len(__import__("json").loads(st.session_state.sam_json_v3))
     st.caption(f"✅ Samstags Fahrer: {n} Fahrer aus {len(sam_ups)} Dateien")
-elif st.session_state.get("sam_json"):
-    n = len(__import__("json").loads(st.session_state.sam_json))
+elif st.session_state.get("sam_json_v3"):
+    n = len(__import__("json").loads(st.session_state.sam_json_v3))
     st.caption(f"✅ Samstags Fahrer bereits geladen: {n} Fahrer")
 
 fa_ups = st.file_uploader("👤 Fahrerauswertung (mehrere Touren-Excel möglich)", type=["xlsx"],
-                            accept_multiple_files=True, key="fa_upload")
+                            accept_multiple_files=True, key="fa_upload_v3")
 if fa_ups:
     with st.spinner("Verarbeite Fahrerauswertung …"):
-        st.session_state.fa_json = parse_fahrer_excel(fa_ups)
-    n = len(__import__("json").loads(st.session_state.fa_json))
+        st.session_state.fa_json_v3 = parse_fahrer_excel(fa_ups)
+    n = len(__import__("json").loads(st.session_state.fa_json_v3))
     st.caption(f"✅ Fahrerauswertung: {n} Fahrer aus {len(fa_ups)} Dateien")
-elif st.session_state.get("fa_json"):
-    n = len(__import__("json").loads(st.session_state.fa_json))
+elif st.session_state.get("fa_json_v3"):
+    n = len(__import__("json").loads(st.session_state.fa_json_v3))
     st.caption(f"✅ Fahrerauswertung bereits geladen: {n} Fahrer")
 
 kfz_up = st.file_uploader("🚛 Kennzahlen Fuhrpark (Excel, erstes Blatt wird gelesen)", type=["xlsx"], key="kfz_upload")
@@ -1865,9 +1865,9 @@ if ready:
         app_html = combine_html(
             instances=ready,
             tel_json=st.session_state.get("tel_json", "[]"),
-            sam_json=st.session_state.get("sam_json", "[]"),
+            sam_json=st.session_state.get("sam_json_v3", "[]"),
             kfz_json=st.session_state.get("kfz_json", "[]"),
-            fa_json=st.session_state.get("fa_json", "[]"),
+            fa_json=st.session_state.get("fa_json_v3", "[]"),
             last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
         )
     st.download_button(
