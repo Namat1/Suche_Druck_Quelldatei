@@ -1034,7 +1034,7 @@ iframe.active{{display:block}}
     <div class="dd-menu" id="ddmenu-vz"></div>
   </div>
   <button class="nav-btn" id="btn-tel" onclick="showArea('tel')">&#128222; Telefonliste</button>
-  <button class="nav-btn" id="btn-sam" onclick="showArea('sam')">&#128664; Samstags Fahrer</button>
+  <button class="nav-btn" id="btn-sam" onclick="showArea('sam')">&#128664; Sa + So Einstätze</button>
   <button class="nav-btn" id="btn-fa" onclick="showArea('fa')">&#128101; Fahrerauswertung</button>
   <div class="nav-dd" id="dd-kfz">
     <button class="nav-dd-btn" id="btn-kfz" onclick="ddToggle('kfz',event)">
@@ -1097,7 +1097,7 @@ iframe.active{{display:block}}
   </div>
   <div id="panel-sam" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#f4f6fa;font-family:Segoe UI,Arial,sans-serif">
     <div style="max-width:1000px;margin:0 auto">
-      <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128664; Samstags Fahrer</h2>
+      <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128664; Sa + So Einstätze</h2>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <input id="sam-search" placeholder="Fahrer suchen..." oninput="samFilter(this.value)"
           style="flex:1;min-width:180px;max-width:280px;padding:7px 14px;border:2px solid #1b66b3;
@@ -1748,7 +1748,7 @@ function samRender(q) {{
     }});
     var datesHtml = sortedDaten.map(function(e) {{
       return "<span style='display:inline-block;background:#f1f5f9;border-radius:4px;padding:2px 7px;margin:2px;font-size:10px;color:#334155;'>" +
-        e.datum + (e.tour && e.tour!=="zbv" ? " <b style='color:#1b66b3;'>T"+e.tour+"</b>" : "") + "</span>";
+        (e.tag||"Sa")+" "+e.datum + (e.tour && e.tour!=="zbv" ? " <b style='color:#1b66b3;'>"+e.tour+"</b>" : "") + "</span>";
     }}).join("");
 
     html +=
