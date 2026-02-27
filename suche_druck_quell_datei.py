@@ -1748,7 +1748,7 @@ function samRender(q) {{
     }});
     var datesHtml = sortedDaten.map(function(e) {{
       return "<span style='display:inline-block;background:#f1f5f9;border-radius:4px;padding:2px 7px;margin:2px;font-size:10px;color:#334155;'>" +
-        (e.tag||"Sa")+" "+e.datum + (e.tour && e.tour!=="zbv" ? " <b style='color:#1b66b3;'>"+e.tour+"</b>" : "") + "</span>";
+        (e.tag||"Sa")+" "+e.datum + " <b style=\'color:#1b66b3;\'>\"+(e.tour && e.tour!=="zbv" ? e.tour : "z.b.v.")+\"</b>" + "</span>";
     }}).join("");
 
     html +=
