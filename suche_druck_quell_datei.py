@@ -1102,6 +1102,7 @@ iframe.active{{display:block}}
         <input id="sam-search" placeholder="Fahrer suchen..." oninput="samFilter(this.value)"
           style="flex:1;min-width:180px;max-width:280px;padding:7px 14px;border:2px solid #1b66b3;
                  border-radius:20px;font-size:13px;font-family:inherit;outline:none">
+        <button onclick="document.getElementById('sam-search').value='';samFilter('');" style="padding:5px 10px;border:1px solid #cbd5e1;border-radius:16px;font-size:12px;cursor:pointer;background:#f1f5f9;color:#64748b;">&#215; Reset</button>
         <select id="sam-year-sel" onchange="samYearChange(this.value)"
           style="padding:7px 12px;border:2px solid #1b66b3;border-radius:20px;font-size:12px;font-weight:700;
                  color:#1b66b3;cursor:pointer;font-family:inherit;outline:none;background:#fff;">
@@ -1141,6 +1142,7 @@ iframe.active{{display:block}}
       <h2 style="color:#1b66b3;font-size:16px;font-weight:900;margin:0;">&#128101; Fahrerauswertung</h2>
       <input id="fa-search" placeholder="Fahrer suchen..." oninput="faSearchQuery=this.value;faBuildSidebarHighlight(faSelectedName);"
         style="flex:1;min-width:130px;max-width:200px;padding:5px 12px;border:2px solid #1b66b3;border-radius:20px;font-size:12px;font-family:inherit;outline:none">
+      <button onclick="document.getElementById('fa-search').value='';faSearchQuery='';faRender();" style="padding:4px 10px;border:1px solid #cbd5e1;border-radius:16px;font-size:11px;cursor:pointer;background:#f1f5f9;color:#64748b;">&#215; Reset</button>
       <select id="fa-year-sel" onchange="faYearChange(this.value)"
         style="padding:5px 10px;border:2px solid #1b66b3;border-radius:20px;font-size:12px;font-weight:700;color:#1b66b3;cursor:pointer;font-family:inherit;outline:none;background:#fff;">
         </select>
