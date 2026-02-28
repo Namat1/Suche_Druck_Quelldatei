@@ -831,7 +831,7 @@ def parse_fahrer_excel(dateien: list) -> str:
     return _json.dumps(result, ensure_ascii=False)
 
 
-def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", kfz_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", last_updated: str = "") -> str:
+def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", kfz_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", last_updated: str = "") -> str:
     """
     Bettet beliebig viele Suche+Druck-Paare (Instanzen) in eine HTML ein.
     Instanz-Wechsler im Topnav.
@@ -841,8 +841,7 @@ def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", kf
     kfz_graph_js_code = '// ── Kennzahlen Graphen ────────────────────────────────────────────────────────\nvar kfzChartInstances = {};\nvar kfzActiveMetrics = ["touren"];\n\nvar KFZ_METRIC_CONFIG = {\n  touren:         { label:"Touren Gesamt",      color:"#1b66b3", unit:""        },\n  verschiebung:   { label:"Kundenverschiebung", color:"#6366f1", unit:""        },\n  direkt_fremd:   { label:"Direkt Fremdsp.",    color:"#8b5cf6", unit:""        },\n  km:             { label:"km FP EDEKA",        color:"#0f4c8a", unit:" km"     },\n  diesel:         { label:"Diesel Gesamt",      color:"#7c3aed", unit:" L"      },\n  verbrauch:      { label:"⌀ Verbrauch L/100",  color:"#0891b2", unit:" L/100"  },\n  ausfall:        { label:"Ausfall LKW",        color:"#dc2626", unit:""        },\n  ma_da:          { label:"MA anwesend",        color:"#16a34a", unit:""        },\n  ma_krank:       { label:"MA Krank",           color:"#f59e0b", unit:""        },\n  ma_urlaub:      { label:"MA Urlaub/ZA",       color:"#fb923c", unit:""        },\n  zbv_edeka:      { label:"ZBV EDEKA",          color:"#0d9488", unit:""        },\n  fremd_abgesagt: { label:"Fremd abgesagt",     color:"#f43f5e", unit:""        }\n};\n\nfunction kfzGraphRender() {\n  var container = document.getElementById("kfz-graph-content");\n  if(!container) return;\n  if(!KFZ_DATA || !KFZ_DATA.length) {\n    container.innerHTML = "<div style=\'color:#94a3b8;padding:40px;text-align:center;font-size:14px;\'>Keine Daten vorhanden.</div>";\n    return;\n  }\n  Object.values(kfzChartInstances).forEach(function(c){ try{c.destroy();}catch(e){} });\n  kfzChartInstances = {};\n\n  // Toggle buttons\n  var toggleHtml = "<div style=\'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;align-items:center;\'>";\n  toggleHtml += "<span style=\'font-size:11px;font-weight:800;color:#64748b;margin-right:4px;\'>KENNZAHLEN:</span>";\n  Object.keys(KFZ_METRIC_CONFIG).forEach(function(k) {\n    var cfg = KFZ_METRIC_CONFIG[k];\n    var active = kfzActiveMetrics.indexOf(k) !== -1;\n    toggleHtml += "<button id=\'kfz-toggle-"+k+"\' onclick=\'kfzToggleMetric(\\""+k+"\\")\'";\n    toggleHtml += " style=\'padding:3px 10px;border-radius:12px;border:2px solid "+cfg.color+";font-size:11px;font-weight:700;cursor:pointer;";\n    toggleHtml += "background:"+(active?cfg.color:"#fff")+";color:"+(active?"#fff":cfg.color)+";transition:all .15s;\'>";\n    toggleHtml += cfg.label+"</button>";\n  });\n  toggleHtml += "</div>";\n  container.innerHTML = toggleHtml + "<div id=\'kfz-chart-area\'></div>";\n  kfzBuildCharts();\n}\n\nfunction kfzToggleMetric(k) {\n  var idx = kfzActiveMetrics.indexOf(k);\n  if(idx === -1) kfzActiveMetrics.push(k);\n  else kfzActiveMetrics.splice(idx,1);\n  var cfg = KFZ_METRIC_CONFIG[k];\n  var btn = document.getElementById("kfz-toggle-"+k);\n  var active = kfzActiveMetrics.indexOf(k) !== -1;\n  if(btn){ btn.style.background = active?cfg.color:"#fff"; btn.style.color = active?"#fff":cfg.color; }\n  kfzBuildCharts();\n}\n\nfunction kfzBuildCharts() {\n  var area = document.getElementById("kfz-chart-area");\n  if(!area) return;\n  Object.values(kfzChartInstances).forEach(function(c){ try{c.destroy();}catch(e){} });\n  kfzChartInstances = {};\n  area.innerHTML = "";\n\n  if(!kfzActiveMetrics.length) {\n    area.innerHTML = "<div style=\'color:#94a3b8;padding:20px;text-align:center;\'>Keine Kennzahl ausgewählt.</div>";\n    return;\n  }\n\n  var kwData = KFZ_DATA.filter(function(w){ return w.kw && w.kw.startsWith("KW") && w.summary; });\n  var labels = kwData.map(function(w){ return w.kw; });\n\n  // ONE chart per active metric — guarantees independent y-axis scale\n  kfzActiveMetrics.forEach(function(k, chartIdx) {\n    var cfg = KFZ_METRIC_CONFIG[k];\n    var data = kwData.map(function(w){\n      var v = w.summary[k];\n      if(v === null || v === undefined) return null;\n      return Math.round(v * 100) / 100;\n    });\n\n    var wrap = document.createElement("div");\n    wrap.style.cssText = "background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px 18px;margin-bottom:14px;";\n\n    var title = document.createElement("div");\n    title.style.cssText = "font-size:12px;font-weight:900;margin-bottom:10px;text-transform:uppercase;letter-spacing:.4px;color:"+cfg.color+";";\n    title.textContent = cfg.label + (cfg.unit ? "  ("+cfg.unit.trim()+")" : "");\n\n    var canvas = document.createElement("canvas");\n    canvas.id = "kfz-chart-"+chartIdx;\n    canvas.style.cssText = "max-height:220px;";\n\n    wrap.appendChild(title);\n    wrap.appendChild(canvas);\n    area.appendChild(wrap);\n\n    // compute nice min/max\n    var vals = data.filter(function(v){ return v !== null; });\n    var minV = Math.min.apply(null, vals);\n    var maxV = Math.max.apply(null, vals);\n    var padding = Math.max((maxV - minV) * 0.15, maxV * 0.05, 1);\n    var yMin = Math.max(0, Math.floor(minV - padding));\n    var yMax = Math.ceil(maxV + padding);\n\n    kfzChartInstances[k] = new Chart(canvas, {\n      type: "line",\n      data: {\n        labels: labels,\n        datasets: [{\n          label: cfg.label,\n          data: data,\n          borderColor: cfg.color,\n          backgroundColor: cfg.color + "18",\n          borderWidth: 2.5,\n          pointRadius: 5,\n          pointHoverRadius: 8,\n          pointBackgroundColor: cfg.color,\n          tension: 0.35,\n          fill: true,\n          spanGaps: true\n        }]\n      },\n      options: {\n        responsive: true,\n        interaction: { mode:"index", intersect:false },\n        plugins: {\n          legend: { display: false },\n          tooltip: {\n            callbacks: {\n              label: function(ctx) {\n                var v = ctx.raw;\n                return " "+cfg.label+": "+(v !== null ? v.toLocaleString("de-DE") : "—")+(cfg.unit||"");\n              }\n            }\n          }\n        },\n        scales: {\n          x: {\n            grid: { color:"#f1f5f9" },\n            ticks: { font:{ size:10 }, maxRotation:45, minRotation:30 }\n          },\n          y: {\n            min: yMin,\n            max: yMax,\n            grid: { color:"#f1f5f9" },\n            ticks: {\n              font: { size:10 },\n              callback: function(v){ return v.toLocaleString("de-DE")+(cfg.unit||""); }\n            }\n          }\n        }\n      }\n    });\n  });\n}\n'
     kfz_dd_js_code = '\n// ── KFZ Dropdown-Menü ────────────────────────────────────────────────────────\nfunction buildKfzMenu() {\n  var menu = document.getElementById("ddmenu-kfz");\n  if(!menu) return;\n  menu.innerHTML =\n    "<div class=\\\'dd-item\\\' onclick=\\\'showArea(\\"kfz\\");document.getElementById(\\"dd-kfz\\").classList.remove(\\"open\\");\\\'>&#128203; Tabelle</div>" +\n    "<div class=\\\'dd-item\\\' onclick=\\\'showArea(\\"kfz-graph\\");document.getElementById(\\"dd-kfz\\").classList.remove(\\"open\\");\\\'>&#128200; Graphen</div>";\n}\n// KFZ ddToggle: add kfz to existing ddToggle via area check\nvar _kfzOrigDdToggle = null;\n(function() {\n  var _orig = ddToggle;\n  ddToggle = function(area, e) {\n    if(area === "kfz") {\n      e.stopPropagation();\n      var dd = document.getElementById("dd-kfz");\n      var wasOpen = dd.classList.contains("open");\n      document.querySelectorAll(".nav-dd").forEach(function(d){d.classList.remove("open");});\n      if(!wasOpen) {\n        buildKfzMenu();\n        dd.classList.add("open");\n        var btn  = document.getElementById("btn-kfz");\n        var rect = btn.getBoundingClientRect();\n        var menu = document.getElementById("ddmenu-kfz");\n        menu.style.top  = (rect.bottom + 4) + "px";\n        menu.style.left = rect.left + "px";\n      }\n    } else {\n      _orig(area, e);\n    }\n  };\n})();\n'
     kfz_graph_pdf_js_code = '// ── Kennzahlen Fuhrpark – Graphen PDF Export ─────────────────────────────────\nfunction kfzGraphPDF() {\n  if(!kfzActiveMetrics || !kfzActiveMetrics.length) {\n    alert("Keine aktiven Graphen zum Exportieren."); return;\n  }\n\n  // Collect canvas images from active charts\n  var images = [];\n  kfzActiveMetrics.forEach(function(k, i) {\n    var chart = kfzChartInstances[k];\n    if(!chart) return;\n    var canvas = chart.canvas;\n    if(!canvas) return;\n    var cfg = KFZ_METRIC_CONFIG[k];\n    images.push({\n      label: cfg.label,\n      unit:  cfg.unit  || "",\n      color: cfg.color,\n      dataUrl: canvas.toDataURL("image/png", 1.0),\n      width:   canvas.width,\n      height:  canvas.height\n    });\n  });\n\n  if(!images.length) { alert("Keine Charts gefunden."); return; }\n\n  var today = new Date().toLocaleDateString("de-DE", {day:"2-digit",month:"long",year:"numeric"});\n\n  var css = `\n    @page { size: A4 portrait; margin: 12mm 10mm; }\n    * { box-sizing: border-box; margin: 0; padding: 0; }\n    body { font-family: \'Segoe UI\', Arial, sans-serif; color: #1e293b; background: #fff; }\n    .cover { text-align: center; padding: 18mm 0 10mm; border-bottom: 3px solid #1b66b3; margin-bottom: 8mm; }\n    .cover h1 { font-size: 18pt; color: #1b66b3; font-weight: 900; margin-bottom: 3mm; }\n    .cover .sub { font-size: 9pt; color: #64748b; }\n    .active-list { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; margin-top: 5mm; }\n    .active-badge { font-size: 8pt; font-weight: 800; padding: 2px 10px; border-radius: 10px;\n                    color: #fff; }\n    .chart-block { margin-bottom: 10mm; page-break-inside: avoid; }\n    .chart-title { font-size: 11pt; font-weight: 900; margin-bottom: 3mm; padding-left: 3px;\n                   border-left: 4px solid var(--c); color: var(--c); }\n    .chart-img { width: 100%; border: 1px solid #e2e8f0; border-radius: 6px; display: block; }\n    .footer { text-align: right; color: #94a3b8; font-size: 7pt; margin-top: 2mm; border-top: 1px solid #f1f5f9; padding-top: 2mm; }\n  `;\n\n  var body = `\n    <div class="cover">\n      <div style="font-size:30pt;margin-bottom:4mm;">&#128200;</div>\n      <h1>Kennzahlen Fuhrpark – Graphen</h1>\n      <div class="sub">NordFrischeCenter &nbsp;·&nbsp; Erstellt am ${today}</div>\n      <div class="active-list">\n  `;\n  images.forEach(function(img) {\n    body += `<span class="active-badge" style="background:${img.color};">${img.label}</span>`;\n  });\n  body += \'</div></div>\';\n\n  images.forEach(function(img) {\n    body += `\n      <div class="chart-block">\n        <div class="chart-title" style="--c:${img.color};">${img.label}${img.unit ? "  ("+img.unit.trim()+")" : ""}</div>\n        <img class="chart-img" src="${img.dataUrl}" alt="${img.label}">\n      </div>\n    `;\n  });\n\n  body += `<div class="footer">NordFrischeCenter &nbsp;·&nbsp; Kennzahlen Fuhrpark &nbsp;·&nbsp; ${today}</div>`;\n\n  var w = window.open("", "_blank", "width=900,height=700");\n  w.document.write("<!DOCTYPE html><html><head><meta charset=\'utf-8\'>");\n  w.document.write("<title>Kennzahlen Fuhrpark Graphen</title>");\n  w.document.write("<style>" + css + "</style></head><body>" + body + "</body></html>");\n  w.document.close();\n  w.focus();\n  setTimeout(function() { w.print(); }, 500);\n}\n'
-    zulage_js_code = '\n// ── ZULAGEN ─────────────────────────────────────────────────────────────\nvar _zTab = "sonder";\n\nfunction zulagenInit() {\n  zulagenBuildMonthSel();\n  zulagenRender();\n}\n\nfunction zulagenTab(tab) {\n  _zTab = tab;\n  var s = document.getElementById("ztab-sonder");\n  var f = document.getElementById("ztab-fuengers");\n  if(s){s.style.background=tab==="sonder"?"#1b66b3":"#fff";s.style.color=tab==="sonder"?"#fff":"#1b66b3";}\n  if(f){f.style.background=tab==="fuengers"?"#1b66b3":"#fff";f.style.color=tab==="fuengers"?"#fff":"#1b66b3";}\n  zulagenBuildMonthSel();\n  zulagenRender();\n}\n\nfunction zulagenBuildMonthSel() {\n  var sel = document.getElementById("zulage-month-sel");\n  if(!sel || !ZULAGE_DATA) return;\n  var arr = _zTab==="sonder" ? (ZULAGE_DATA.sonder||[]) : (ZULAGE_DATA.fuengers||[]);\n  var cur = sel.value;\n  sel.innerHTML = "<option value=\'all\'>Alle Monate</option>" +\n    arr.map(function(m){ return "<option value=\'"+m.monat+"\'"+(m.monat===cur?" selected":"")+">"+m.monat+"</option>"; }).join("");\n}\n\nfunction zulagenRender() {\n  var el = document.getElementById("zulage-content");\n  var stats = document.getElementById("zulage-stats");\n  if(!el) return;\n  if(!ZULAGE_DATA || typeof ZULAGE_DATA !== "object" || (!ZULAGE_DATA.sonder && !ZULAGE_DATA.fuengers)) {\n    el.innerHTML = "<div style=\'color:#94a3b8;padding:60px;text-align:center;font-size:14px;\'>Keine Zulage-Daten vorhanden.<br>Bitte Touren-Excel-Dateien hochladen.</div>";\n    if(stats) stats.innerHTML = "";\n    return;\n  }\n  var arr = _zTab==="sonder" ? (ZULAGE_DATA.sonder||[]) : (ZULAGE_DATA.fuengers||[]);\n  if(!arr.length) {\n    el.innerHTML = "<div style=\'color:#94a3b8;padding:60px;text-align:center;\'>Keine Daten f\\u00fcr diesen Tab.</div>";\n    if(stats) stats.innerHTML = "";\n    return;\n  }\n  var sel = document.getElementById("zulage-month-sel");\n  var filterM = sel ? sel.value : "all";\n  var data = filterM!=="all" ? arr.filter(function(m){return m.monat===filterM;}) : arr;\n  var totalAll=0, html="";\n  data.forEach(function(monat) {\n    var mSum = monat.fahrer.reduce(function(s,f){return s+f.gesamt;},0);\n    totalAll += mSum;\n    html += "<div style=\'margin-bottom:28px;background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden;\'>";\n    html += "<div style=\'display:flex;align-items:center;justify-content:space-between;padding:11px 18px;background:#1b66b3;color:#fff;\'>";\n    html += "<span style=\'font-weight:900;font-size:15px;\'>"+monat.monat+"</span>";\n    html += "<span style=\'background:rgba(255,255,255,.18);padding:3px 12px;border-radius:20px;font-weight:800;font-size:13px;\'>\\u03a3 "+mSum.toFixed(2)+" \\u20ac</span>";\n    html += "</div><div style=\'overflow-x:auto;\'><table style=\'width:100%;border-collapse:collapse;font-size:12px;\'>";\n    html += "<thead><tr style=\'background:#dbeafe;color:#1e40af;\'>";\n    if(_zTab==="sonder") {\n      html += "<th style=\'padding:8px 14px;text-align:left;\'>Name</th><th style=\'padding:8px;\'>Datum</th><th style=\'padding:8px;\'>Tour</th><th style=\'padding:8px;\'>LKW</th><th style=\'padding:8px;\'>Art</th><th style=\'padding:8px;text-align:right;\'>Verdienst</th>";\n    } else {\n      html += "<th style=\'padding:8px 14px;text-align:left;\'>Name</th><th style=\'padding:8px;\'>Datum</th><th style=\'padding:8px;\'>Kommentar</th><th style=\'padding:8px;text-align:right;\'>Verdienst</th>";\n    }\n    html += "</tr></thead><tbody>";\n    monat.fahrer.forEach(function(f) {\n      f.tage.forEach(function(t,ti) {\n        var rowBg = ti%2===0 ? "#f8fafc" : "#fff";\n        html += "<tr style=\'background:"+rowBg+";\'>";\n        if(ti===0) {\n          html += "<td rowspan=\'"+(f.tage.length+1)+"\' style=\'padding:7px 14px;font-weight:800;color:#1b66b3;border-right:1px solid #e2e8f0;vertical-align:top;\'>"+f.name+"<br><small style=\'color:#94a3b8;font-weight:400;\'>"+f.persnr+"</small></td>";\n        }\n        html += "<td style=\'padding:5px 8px;border-bottom:1px solid #e2e8f0;\'>"+t.datum+"</td>";\n        if(_zTab==="sonder") {\n          html += "<td style=\'padding:5px 8px;border-bottom:1px solid #e2e8f0;text-align:center;\'>"+(t.tour&&t.tour!==\"zbv\"&&t.tour!==\"\"?t.tour:\"z.b.v.\")+"</td>";\n          html += "<td style=\'padding:5px 8px;border-bottom:1px solid #e2e8f0;font-family:monospace;text-align:center;\'>"+t.lkw+"</td>";\n          var artColor = t.art==="Gigaliner"?"background:#fef3c7;color:#92400e":t.art==="Tandem"?"background:#dbeafe;color:#1e40af":"background:#dcfce7;color:#166534";\n          html += "<td style=\'padding:5px 8px;border-bottom:1px solid #e2e8f0;\'><span style=\'"+artColor+";padding:2px 7px;border-radius:9px;font-size:10px;font-weight:700;\'>"+t.art+"</span></td>";\n        } else {\n          html += "<td style=\'padding:5px 8px;border-bottom:1px solid #e2e8f0;max-width:260px;\'>"+t.kommentar+"</td>";\n        }\n        html += "<td style=\'padding:5px 8px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:600;color:#15803d;\'>"+t.verdienst.toFixed(2)+" \\u20ac</td>";\n        html += "</tr>";\n      });\n      var cs = _zTab==="sonder" ? 4 : 2;\n      html += "<tr style=\'background:#f0fdf4;\'><td colspan=\'"+cs+"\' style=\'padding:5px 8px;font-weight:700;color:#15803d;text-align:right;border-top:2px solid #bbf7d0;\'>Gesamt</td><td style=\'padding:5px 8px;font-weight:900;color:#15803d;text-align:right;border-top:2px solid #bbf7d0;\'>"+f.gesamt.toFixed(2)+" \\u20ac</td></tr>";\n    });\n    html += "</tbody></table></div></div>";\n  });\n  el.innerHTML = html || "<div style=\'color:#94a3b8;padding:40px;text-align:center;\'>Keine Daten.</div>";\n  if(stats) stats.innerHTML = totalAll > 0 ? "\\u03a3 <b>"+totalAll.toFixed(2)+" \\u20ac</b>" : "";\n}\n\nfunction zulagenExportPDF() {\n  var el = document.getElementById("zulage-content");\n  if(!el) return;\n  var tab = _zTab==="sonder" ? "Sonderfahrzeuge" : "F\\u00fcngers";\n  var w = window.open("","_blank","width=1100,height=800");\n  w.document.write("<!DOCTYPE html><html><head><meta charset=\'UTF-8\'><title>Zulagen "+tab+"</title><style>body{font-family:Calibri,Arial,sans-serif;font-size:10pt;margin:20px;}h2{color:#1b66b3;}table{width:100%;border-collapse:collapse;margin-bottom:20px;font-size:9.5pt;}thead tr{background:#dbeafe;color:#1e40af;}th,td{padding:5px 9px;border:1px solid #e2e8f0;}tr:nth-child(even){background:#f8fafc;}.tot{background:#f0fdf4;font-weight:700;color:#15803d;}@media print{button{display:none;}}</style></head><body>");\n  w.document.write("<h2>Zulagen \\u2013 "+tab+"</h2>");\n  w.document.write(el.innerHTML);\n  w.document.write("<br><button onclick=\'window.print()\' style=\'padding:8px 20px;background:#1b66b3;color:#fff;border:none;border-radius:8px;cursor:pointer;\'>Drucken / Als PDF speichern</button>");\n  w.document.write("</body></html>");\n  w.document.close();\n}\n\nfunction zulagenExportExcel() {\n  if(typeof XLSX === "undefined") { alert("SheetJS nicht geladen"); return; }\n  var arr = _zTab==="sonder" ? (ZULAGE_DATA.sonder||[]) : (ZULAGE_DATA.fuengers||[]);\n  var sel = document.getElementById("zulage-month-sel");\n  var fm = sel ? sel.value : "all";\n  if(fm!=="all") arr = arr.filter(function(m){return m.monat===fm;});\n\n  var wb = XLSX.utils.book_new();\n\n  arr.forEach(function(monat) {\n    var rows = [];\n    var merges = [];\n    var rowStyles = []; // track row types for styling\n\n    // Month title row\n    rows.push([monat.monat]);\n    rowStyles.push("title");\n\n    // Column headers\n    if(_zTab==="sonder") {\n      rows.push(["Name","Datum","Tour","LKW","Art","Verdienst"]);\n    } else {\n      rows.push(["Name","Datum","Kommentar","Verdienst"]);\n    }\n    rowStyles.push("header");\n\n    monat.fahrer.forEach(function(f) {\n      var dataStart = rows.length;\n      f.tage.forEach(function(t) {\n        if(_zTab==="sonder") {\n          rows.push([f.name, t.datum, t.tour&&t.tour!=="zbv"&&t.tour!==""?t.tour:"z.b.v.", t.lkw, t.art, t.verdienst]);\n        } else {\n          rows.push([f.name, t.datum, t.kommentar, t.verdienst]);\n        }\n        rowStyles.push("data");\n      });\n      // Gesamt row\n      var colCount = _zTab==="sonder" ? 6 : 4;\n      var gesamtRow = new Array(colCount).fill("");\n      gesamtRow[colCount-2] = "Gesamt";\n      gesamtRow[colCount-1] = f.gesamt;\n      rows.push(gesamtRow);\n      rowStyles.push("gesamt");\n      // Spacer\n      rows.push(new Array(colCount).fill(""));\n      rowStyles.push("spacer");\n    });\n\n    // Monatssumme\n    var colCount = _zTab==="sonder" ? 6 : 4;\n    var sumRow = new Array(colCount).fill("");\n    var mSum = monat.fahrer.reduce(function(s,f){return s+f.gesamt;},0);\n    sumRow[colCount-2] = "Monatsgesamt";\n    sumRow[colCount-1] = mSum;\n    rows.push(sumRow);\n    rowStyles.push("total");\n\n    var ws = XLSX.utils.aoa_to_sheet(rows);\n    var lastCol = colCount - 1;\n    var colLetter = String.fromCharCode(65 + lastCol); // A=65\n\n    // Column widths\n    ws["!cols"] = _zTab==="sonder"\n      ? [{wch:22},{wch:28},{wch:12},{wch:8},{wch:12},{wch:12}]\n      : [{wch:22},{wch:28},{wch:35},{wch:12}];\n\n    // Apply styles via cell properties\n    rows.forEach(function(row, ri) {\n      var type = rowStyles[ri];\n      row.forEach(function(cell, ci) {\n        var addr = XLSX.utils.encode_cell({r:ri, c:ci});\n        if(!ws[addr]) ws[addr] = {v:"", t:"s"};\n        var isVerdienst = (ci === lastCol) && (type==="data"||type==="gesamt"||type==="total");\n        if(isVerdienst && typeof ws[addr].v === "number") {\n          ws[addr].t = "n";\n          ws[addr].z = \'#,##0.00 "\\u20ac"\';\n        }\n        ws[addr].s = (function(){\n          var base = {font:{name:"Calibri"}, alignment:{vertical:"center",wrapText:false}};\n          if(type==="title") {\n            return {font:{name:"Calibri",bold:true,sz:13,color:{rgb:"FFFFFF"}},\n                    fill:{fgColor:{rgb:"1F4E78"}},\n                    alignment:{vertical:"center",horizontal:"center"}};\n          }\n          if(type==="header") {\n            return {font:{name:"Calibri",bold:true,sz:10,color:{rgb:"1F4E78"}},\n                    fill:{fgColor:{rgb:"D9E2F3"}},\n                    alignment:{vertical:"center",horizontal:"center"},\n                    border:{bottom:{style:"thin",color:{rgb:"4472C4"}}}};\n          }\n          if(type==="data") {\n            var isVerd = ci===lastCol;\n            return {font:{name:"Calibri",sz:10,color:{rgb:isVerd?"16A34A":"2C3E50"},bold:isVerd},\n                    fill:{fgColor:{rgb:ri%2===0?"F8F9FA":"FFFFFF"}},\n                    alignment:{vertical:"center",horizontal:isVerd?"right":"left"},\n                    border:{bottom:{style:"thin",color:{rgb:"E2E8F0"}}}};\n          }\n          if(type==="gesamt") {\n            return {font:{name:"Calibri",bold:true,sz:11,color:{rgb:"FFFFFF"}},\n                    fill:{fgColor:{rgb:"70AD47"}},\n                    alignment:{vertical:"center",horizontal:ci===lastCol?"right":"right"},\n                    border:{top:{style:"medium",color:{rgb:"70AD47"}},\n                            bottom:{style:"medium",color:{rgb:"70AD47"}}}};\n          }\n          if(type==="total") {\n            return {font:{name:"Calibri",bold:true,sz:12,color:{rgb:"FFFFFF"}},\n                    fill:{fgColor:{rgb:"1F4E78"}},\n                    alignment:{vertical:"center",horizontal:"right"},\n                    border:{top:{style:"medium",color:{rgb:"1F4E78"}}}};\n          }\n          return base;\n        })();\n      });\n    });\n\n    // Title row spans all columns\n    if(!ws["!merges"]) ws["!merges"]=[];\n    ws["!merges"].push({s:{r:0,c:0},e:{r:0,c:lastCol}});\n    // Gesamt/Total label cell merges\n    rows.forEach(function(row, ri) {\n      var type = rowStyles[ri];\n      if(type==="gesamt"||type==="total") {\n        ws["!merges"].push({s:{r:ri,c:0},e:{r:ri,c:lastCol-2}});\n      }\n    });\n\n    // Row heights\n    ws["!rows"] = rows.map(function(_,ri){\n      var t = rowStyles[ri];\n      return {hpx: t==="title"?28:t==="header"?22:t==="spacer"?8:20};\n    });\n\n    var sheetName = monat.monat.replace(/[/\\\\?*[\\]]/g,"").substring(0,31);\n    XLSX.utils.book_append_sheet(wb, ws, sheetName);\n  });\n\n  if(wb.SheetNames.length===0) { alert("Keine Daten"); return; }\n\n  var tab = _zTab==="sonder" ? "Sonderfahrzeuge" : "Fuengers";\n  var fname = "Zulagen_"+tab+(fm!=="all"?"_"+fm:"")+".xlsx";\n  XLSX.writeFile(wb, fname);\n}\n'
-
+    zulage_js_code = '\n// ── ZULAGEN ──────────────────────────────────────────────────────────────\nvar _zTab = "sonder";\n\nfunction zulagenInit() { zulagenBuildMonthSel(); zulagenRender(); }\n\nfunction zulagenTab(tab) {\n  _zTab = tab;\n  var s = document.getElementById("ztab-sonder");\n  var f = document.getElementById("ztab-fuengers");\n  if(s){s.style.background=tab==="sonder"?"#1b66b3":"#fff";s.style.color=tab==="sonder"?"#fff":"#1b66b3";}\n  if(f){f.style.background=tab==="fuengers"?"#1b66b3":"#fff";f.style.color=tab==="fuengers"?"#fff":"#1b66b3";}\n  zulagenBuildMonthSel(); zulagenRender();\n}\n\nfunction zulagenBuildMonthSel() {\n  var sel = document.getElementById("zulage-month-sel");\n  if(!sel || !ZULAGE_DATA) return;\n  var arr = _zTab==="sonder" ? (ZULAGE_DATA.sonder||[]) : (ZULAGE_DATA.fuengers||[]);\n  var cur = sel.value;\n  sel.innerHTML = "<option value=\'all\'>Alle Monate</option>" +\n    arr.map(function(m){ return "<option value=\'"+m.monat+"\'"+(m.monat===cur?" selected":"")+">" + m.monat + "</option>"; }).join("");\n}\n\nfunction zulagenRender() {\n  var el = document.getElementById("zulage-content");\n  var stats = document.getElementById("zulage-stats");\n  if(!el) return;\n  if(!ZULAGE_DATA || typeof ZULAGE_DATA !== "object" || (!ZULAGE_DATA.sonder && !ZULAGE_DATA.fuengers)) {\n    el.innerHTML = "<div style=\'color:#94a3b8;padding:60px;text-align:center;font-size:14px;\'>Keine Zulage-Daten \\u2013 bitte Touren-Excel hochladen.</div>";\n    if(stats) stats.innerHTML = ""; return;\n  }\n  var arr = _zTab==="sonder" ? (ZULAGE_DATA.sonder||[]) : (ZULAGE_DATA.fuengers||[]);\n  if(!arr.length) {\n    el.innerHTML = "<div style=\'color:#94a3b8;padding:60px;text-align:center;\'>Keine Daten f\\u00fcr diesen Tab.</div>";\n    if(stats) stats.innerHTML = ""; return;\n  }\n  var sel = document.getElementById("zulage-month-sel");\n  var filterM = sel ? sel.value : "all";\n  var data = filterM!=="all" ? arr.filter(function(m){return m.monat===filterM;}) : arr;\n  var totalAll=0, html="";\n  data.forEach(function(monat) {\n    var mSum = monat.fahrer.reduce(function(s,f){return s+f.gesamt;},0);\n    totalAll += mSum;\n    html += "<div style=\'margin-bottom:28px;background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden;\'>";\n    html += "<div style=\'display:flex;align-items:center;justify-content:space-between;padding:11px 18px;background:#1b66b3;color:#fff;\'>";\n    html += "<span style=\'font-weight:900;font-size:15px;\'>" + monat.monat + "</span>";\n    html += "<span style=\'background:rgba(255,255,255,.18);padding:3px 12px;border-radius:20px;font-weight:800;font-size:13px;\'>\\u03a3 " + mSum.toFixed(2) + " \\u20ac</span>";\n    html += "</div><div style=\'overflow-x:auto;\'><table style=\'width:100%;border-collapse:collapse;font-size:12px;\'>";\n    html += "<thead><tr style=\'background:#dbeafe;color:#1e40af;\'>";\n    if(_zTab==="sonder") {\n      html += "<th style=\'padding:8px 14px;text-align:left;\'>Name</th>";\n      html += "<th style=\'padding:8px;\'>Datum</th><th style=\'padding:8px;\'>Tour</th>";\n      html += "<th style=\'padding:8px;\'>LKW</th><th style=\'padding:8px;\'>Art</th>";\n      html += "<th style=\'padding:8px;text-align:right;\'>Verdienst</th>";\n    } else {\n      html += "<th style=\'padding:8px 14px;text-align:left;\'>Name</th>";\n      html += "<th style=\'padding:8px;\'>Datum</th><th style=\'padding:8px;\'>Kommentar</th>";\n      html += "<th style=\'padding:8px;text-align:right;\'>Verdienst</th>";\n    }\n    html += "</tr></thead><tbody>";\n    monat.fahrer.forEach(function(f) {\n      f.tage.forEach(function(t,ti) {\n        var rowBg = ti%2===0 ? "#f8fafc" : "#fff";\n        html += "<tr style=\'background:"+rowBg+";\'>";\n        if(ti===0) {\n          html += "<td rowspan=\'"+(f.tage.length+1)+"\' style=\'padding:7px 14px;font-weight:800;color:#1b66b3;border-right:1px solid #e2e8f0;vertical-align:top;\'>" +\n                  f.name + "<br><small style=\'color:#94a3b8;font-weight:400;\'>" + f.persnr + "</small></td>";\n        }\n        html += "<td style=\'padding:5px 8px;border-bottom:1px solid #e2e8f0;\'>" + t.datum + "</td>";\n        if(_zTab==="sonder") {\n          var td = t.tour && t.tour!=="zbv" && t.tour!=="" ? t.tour : "z.b.v.";\n          html += "<td style=\'padding:5px 8px;border-bottom:1px solid #e2e8f0;text-align:center;\'>" + td + "</td>";\n          html += "<td style=\'padding:5px 8px;border-bottom:1px solid #e2e8f0;font-family:monospace;text-align:center;\'>" + t.lkw + "</td>";\n          var ac = t.art==="Gigaliner"?"background:#fef3c7;color:#92400e":t.art==="Tandem"?"background:#dbeafe;color:#1e40af":"background:#dcfce7;color:#166534";\n          html += "<td style=\'padding:5px 8px;border-bottom:1px solid #e2e8f0;\'><span style=\'"+ac+";padding:2px 7px;border-radius:9px;font-size:10px;font-weight:700;\'>" + t.art + "</span></td>";\n        } else {\n          html += "<td style=\'padding:5px 8px;border-bottom:1px solid #e2e8f0;max-width:260px;\'>" + t.kommentar + "</td>";\n        }\n        html += "<td style=\'padding:5px 8px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:600;color:#15803d;\'>" + t.verdienst.toFixed(2) + " \\u20ac</td>";\n        html += "</tr>";\n      });\n      var cs = _zTab==="sonder" ? 4 : 2;\n      html += "<tr style=\'background:#f0fdf4;\'><td colspan=\'"+cs+"\' style=\'padding:5px 8px;font-weight:700;color:#15803d;text-align:right;border-top:2px solid #bbf7d0;\'>Gesamt</td>";\n      html += "<td style=\'padding:5px 8px;font-weight:900;color:#15803d;text-align:right;border-top:2px solid #bbf7d0;\'>" + f.gesamt.toFixed(2) + " \\u20ac</td></tr>";\n    });\n    html += "</tbody></table></div></div>";\n  });\n  el.innerHTML = html || "<div style=\'color:#94a3b8;padding:40px;text-align:center;\'>Keine Daten.</div>";\n  if(stats) stats.innerHTML = totalAll>0 ? "\\u03a3 <b>"+totalAll.toFixed(2)+" \\u20ac</b>" : "";\n}\n\nfunction zulagenExportPDF() {\n  var el = document.getElementById("zulage-content");\n  if(!el) return;\n  var tab = _zTab==="sonder" ? "Sonderfahrzeuge" : "F\\u00fcngers";\n  var w = window.open("","_blank","width=1100,height=800");\n  w.document.write("<!DOCTYPE html><html><head><meta charset=\'UTF-8\'><title>Zulagen "+tab+"</title><style>body{font-family:Calibri,Arial,sans-serif;font-size:10pt;margin:20px;}h2{color:#1b66b3;}table{width:100%;border-collapse:collapse;margin-bottom:20px;}th,td{padding:5px 9px;border:1px solid #e2e8f0;}thead tr{background:#dbeafe;color:#1e40af;}@media print{button{display:none;}}</style></head><body>");\n  w.document.write("<h2>Zulagen \\u2013 "+tab+"</h2>"+el.innerHTML);\n  w.document.write("<br><button onclick=\'window.print()\' style=\'padding:8px 20px;background:#1b66b3;color:#fff;border:none;border-radius:8px;cursor:pointer;\'>Drucken</button>");\n  w.document.write("</body></html>"); w.document.close();\n}\n\nfunction zulagenExportExcel() {\n  var b64 = _zTab==="sonder" ? ZULAGE_XLSX_SONDER : ZULAGE_XLSX_FUENGERS;\n  if(!b64) { alert("Keine Excel-Daten.\\nBitte Touren-Dateien in Streamlit hochladen und App neu generieren."); return; }\n  var bc = atob(b64), bytes = new Uint8Array(bc.length);\n  for(var i=0;i<bc.length;i++) bytes[i]=bc.charCodeAt(i);\n  var blob = new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});\n  var url = URL.createObjectURL(blob);\n  var a = document.createElement("a"); a.href=url;\n  a.download = "Zulagen_"+(_zTab==="sonder"?"Sonderfahrzeuge":"Fuengers")+".xlsx";\n  a.click(); URL.revokeObjectURL(url);\n}\n'
     kfz_pdf_js_code = '// ── Kennzahlen Fuhrpark – PDF Export mit Jahres-/Monatsauswahl ───────────────\nfunction kfzPDF() {\n  if(!KFZ_DATA || !KFZ_DATA.length) { alert("Keine Daten vorhanden."); return; }\n\n  // ── Hilfsfunktionen ─────────────────────────────────────────────────────────\n  var MONTH_NAMES = ["Januar","Februar","März","April","Mai","Juni",\n                     "Juli","August","September","Oktober","November","Dezember"];\n\n  function parseDate(datum) {\n    // "Mo 24.11.2025" or "So  23.11.2025"\n    var clean = datum.replace(/^(Mo|Di|Mi|Do|Fr|Sa|So)\\s+/,"").trim();\n    var p = clean.split(".");\n    if(p.length < 3) return null;\n    return { d: parseInt(p[0]), m: parseInt(p[1]), y: parseInt(p[2]), raw: clean };\n  }\n\n  // Build year→month→[days] index from all day rows\n  var index = {}; // { "2025": { "11": [dayObj,...], "12": [...] } }\n  // Also track which KW a day belongs to\n  KFZ_DATA.forEach(function(w) {\n    (w.days||[]).forEach(function(d) {\n      var pd = parseDate(d.datum||"");\n      if(!pd || !pd.y) return;\n      var yr = ""+pd.y, mo = pd.m<10?"0"+pd.m:""+pd.m;\n      if(!index[yr]) index[yr] = {};\n      if(!index[yr][mo]) index[yr][mo] = [];\n      index[yr][mo].push(Object.assign({}, d, {_kw: w.kw, _pd: pd}));\n    });\n  });\n\n  var years  = Object.keys(index).sort();\n  var months = ["01","02","03","04","05","06","07","08","09","10","11","12"];\n\n  // ── Dialog bauen ────────────────────────────────────────────────────────────\n  var overlay = document.createElement("div");\n  overlay.id = "kfz-pdf-overlay";\n  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center;";\n\n  var dialog = document.createElement("div");\n  dialog.style.cssText = "background:#fff;border-radius:14px;padding:28px 32px;width:420px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,.25);font-family:\'Segoe UI\',Arial,sans-serif;";\n\n  var yearOpts = years.map(function(y){ return "<option value=\'"+y+"\'>"+y+"</option>"; }).join("");\n  var monthOpts = MONTH_NAMES.map(function(n,i){\n    var v = i<9?"0"+(i+1):""+(i+1);\n    return "<option value=\'"+v+"\'>"+n+"</option>";\n  }).join("");\n  monthOpts = "<option value=\'all\'>Alle Monate</option>" + monthOpts;\n\n  dialog.innerHTML = `\n    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">\n      <span style="font-size:20px;">&#128196;</span>\n      <h3 style="margin:0;font-size:15px;font-weight:900;color:#1b66b3;">Kennzahlen Fuhrpark – PDF Export</h3>\n    </div>\n    <div style="margin-bottom:14px;">\n      <label style="font-size:12px;font-weight:800;color:#64748b;display:block;margin-bottom:5px;">JAHR</label>\n      <select id="kfz-pdf-year" style="width:100%;padding:8px 12px;border:2px solid #1b66b3;border-radius:8px;font-size:13px;font-weight:700;color:#1b66b3;outline:none;cursor:pointer;">\n        <option value="all">Alle Jahre</option>${yearOpts}\n      </select>\n    </div>\n    <div style="margin-bottom:20px;">\n      <label style="font-size:12px;font-weight:800;color:#64748b;display:block;margin-bottom:5px;">MONAT</label>\n      <select id="kfz-pdf-month" style="width:100%;padding:8px 12px;border:2px solid #1b66b3;border-radius:8px;font-size:13px;font-weight:700;color:#1b66b3;outline:none;cursor:pointer;">\n        ${monthOpts}\n      </select>\n    </div>\n    <div style="display:flex;gap:10px;">\n      <button onclick="kfzPDFGenerate()" style="flex:1;padding:10px;background:#1b66b3;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;">\n        &#128196; PDF erstellen\n      </button>\n      <button onclick="document.getElementById(\'kfz-pdf-overlay\').remove()" style="padding:10px 18px;background:#f1f5f9;color:#64748b;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">\n        Abbrechen\n      </button>\n    </div>\n  `;\n\n  overlay.appendChild(dialog);\n  document.body.appendChild(overlay);\n  overlay.addEventListener("click", function(e){ if(e.target===overlay) overlay.remove(); });\n}\n\nfunction kfzPDFGenerate() {\n  var selYear  = document.getElementById("kfz-pdf-year").value;\n  var selMonth = document.getElementById("kfz-pdf-month").value;\n  document.getElementById("kfz-pdf-overlay").remove();\n\n  var MONTH_NAMES = ["Januar","Februar","März","April","Mai","Juni",\n                     "Juli","August","September","Oktober","November","Dezember"];\n  var COLS = [\n    {key:"touren",         label:"Touren"},\n    {key:"km",             label:"km EDEKA"},\n    {key:"diesel",         label:"Diesel (L)"},\n    {key:"verbrauch",      label:"⌀L/100"},\n    {key:"ausfall",        label:"Ausfall LKW"},\n    {key:"ma_da",          label:"MA da"},\n    {key:"ma_krank",       label:"Krank"},\n    {key:"ma_urlaub",      label:"Urlaub"},\n    {key:"zbv_edeka",      label:"ZBV EDEKA"},\n    {key:"zbv_fremd",      label:"ZBV Fremd"},\n    {key:"fremd_abgesagt", label:"Fremd abges."},\n    {key:"_fremdnames",    label:"Fremdspedition"}\n  ];\n\n  function parseDate(datum) {\n    var clean = datum.replace(/^(Mo|Di|Mi|Do|Fr|Sa|So)\\s+/,"").trim();\n    var p = clean.split(".");\n    if(p.length < 3) return null;\n    return { d:+p[0], m:+p[1], y:+p[2] };\n  }\n\n  function fmt(val, key) {\n    if(val===null||val===undefined||val==="") return "<span style=\'color:#bbb\'>—</span>";\n    if(key==="km"||key==="diesel") return "<span style=\'text-align:right;display:block\'>"+Math.round(val).toLocaleString("de-DE")+"</span>";\n    if(key==="verbrauch") return "<span style=\'text-align:right;display:block\'>"+(+val).toFixed(2)+"</span>";\n    if(key==="ma_da"||key==="ma_urlaub"||key==="ma_krank") return "<span style=\'text-align:right;display:block\'>"+(Math.round(+val*10)/10)+"</span>";\n    if(typeof val==="number") return "<span style=\'text-align:right;display:block\'>"+val+"</span>";\n    return val;\n  }\n\n  function warn(val, key) {\n    if(!val && val!==0) return "";\n    if(key==="ausfall"   && val>0) return "color:#dc2626;font-weight:800;";\n    if(key==="ma_krank"  && val>3) return "color:#d97706;font-weight:800;";\n    if(key==="fremd_abgesagt"&&val>0) return "color:#d97706;font-weight:800;";\n    return "";\n  }\n\n  // Collect all days matching filter\n  var allDays = [];\n  KFZ_DATA.forEach(function(w){\n    (w.days||[]).forEach(function(d){\n      var pd = parseDate(d.datum||"");\n      if(!pd) return;\n      if(selYear  !== "all" && ""+pd.y !== selYear)  return;\n      if(selMonth !== "all" && pd.m !== +selMonth)    return;\n      var fremd = [d.fremd1,d.fremd2,d.fremd3].filter(Boolean).join(", ");\n      allDays.push(Object.assign({},d,{_kw:w.kw, _pd:pd, _fremdnames:fremd, _summary:w.summary}));\n    });\n  });\n\n  if(!allDays.length){ alert("Keine Daten für die Auswahl."); return; }\n\n  // Group: year → month → [days]\n  var structure = {};\n  allDays.forEach(function(d){\n    var yr = ""+d._pd.y;\n    var mo = d._pd.m<10?"0"+d._pd.m:""+d._pd.m;\n    if(!structure[yr]) structure[yr]={};\n    if(!structure[yr][mo]) structure[yr][mo]=[];\n    structure[yr][mo].push(d);\n  });\n\n  var css = `\n    @page { size: A4 landscape; margin: 10mm 8mm 10mm; }\n    * { box-sizing: border-box; margin: 0; padding: 0; }\n    body { font-family: \'Segoe UI\', Arial, sans-serif; font-size: 7pt; color: #1e293b; }\n    .cover { height: 100vh; display: flex; flex-direction: column; align-items: center;\n             justify-content: center; page-break-after: always; }\n    .cover-inner { text-align: center; border: 3px solid #1b66b3; border-radius: 12px;\n                   padding: 24mm 30mm; background: #f0f7ff; }\n    .cover h1 { font-size: 24pt; color: #1b66b3; font-weight: 900; margin-bottom: 4mm; }\n    .cover .sub { font-size: 11pt; color: #475569; margin-bottom: 6mm; }\n    .cover .meta { font-size: 9pt; color: #64748b; }\n    .month-block { page-break-before: always; }\n    .month-block:first-of-type { page-break-before: avoid; }\n    .month-header { background: linear-gradient(135deg, #1b66b3, #0f4c8a);\n                    color: #fff; padding: 4mm 6mm; border-radius: 6px 6px 0 0;\n                    display: flex; align-items: baseline; gap: 8px; margin-bottom: 0; }\n    .month-header .mname { font-size: 14pt; font-weight: 900; }\n    .month-header .myr   { font-size: 9pt; opacity: .8; }\n    .month-header .mstats{ margin-left: auto; font-size: 8pt; opacity: .9; }\n    table { width: 100%; border-collapse: collapse; font-size: 6.2pt; }\n    thead tr { background: #1e3a5f; color: #fff; }\n    thead th { padding: 3px 4px; border: 1px solid #2d4f7c; font-weight: 800;\n               text-align: center; white-space: nowrap; }\n    thead th:first-child { text-align: left; width: 100px; }\n    tbody tr.kw-row { background: #dbeafe; }\n    tbody tr.kw-row td { padding: 3px 4px; border: 1px solid #93c5fd;\n                         color: #1e3a5f; font-weight: 800; font-size: 6.5pt; }\n    tbody tr.kw-row td:first-child { color: #1b66b3; }\n    tbody tr.day-row td { padding: 2.5px 4px; border-bottom: 1px solid #f1f5f9;\n                          border-right: 1px solid #f5f5f5; }\n    tbody tr.day-row:nth-child(even) { background: #f8fafc; }\n    tbody tr.weekend { opacity: .4; }\n    td.num { text-align: right; }\n    .kw-badge { display: inline-block; background: #1b66b3; color: #fff;\n                border-radius: 4px; padding: 0 4px; font-size: 5.5pt; margin-left: 4px; font-weight: 700; }\n    .footer { text-align: right; color: #94a3b8; font-size: 6pt; margin-top: 2mm; }\n  `;\n\n  var selYearLabel  = selYear==="all"  ? "Alle Jahre"  : selYear;\n  var selMonthLabel = selMonth==="all" ? "Alle Monate" : MONTH_NAMES[+selMonth-1];\n\n  var body = `\n    <div class="cover">\n      <div class="cover-inner">\n        <div style="font-size:36pt;margin-bottom:6mm;">&#128663;</div>\n        <h1>Kennzahlen Fuhrpark</h1>\n        <div class="sub">NordFrischeCenter</div>\n        <div class="meta">\n          <strong>${selMonthLabel} ${selYearLabel}</strong><br>\n          <span style="color:#94a3b8;">Erstellt am ${new Date().toLocaleDateString(\'de-DE\',{day:\'2-digit\',month:\'long\',year:\'numeric\'})}</span>\n        </div>\n      </div>\n    </div>\n  `;\n\n  var sortedYears = Object.keys(structure).sort();\n  var firstBlock = true;\n\n  sortedYears.forEach(function(yr) {\n    var sortedMonths = Object.keys(structure[yr]).sort();\n    sortedMonths.forEach(function(mo) {\n      var days = structure[yr][mo];\n      var moName = MONTH_NAMES[+mo-1];\n      var workDays = days.filter(function(d){ return !/^(Sa|So)/.test(d.datum); });\n      var totalTouren = workDays.reduce(function(s,d){ return s+(+d.touren||0); },0);\n      var avgKrank = workDays.length ? (workDays.reduce(function(s,d){ return s+(+d.ma_krank||0); },0)/workDays.length).toFixed(1) : "—";\n\n      body += "<div class=\'month-block"+(firstBlock?" first-block":"")+"\'>";\n      firstBlock = false;\n      body += "<div class=\'month-header\'>";\n      body += "<span class=\'mname\'>"+moName+"</span><span class=\'myr\'>"+yr+"</span>";\n      body += "<span class=\'mstats\'>"+workDays.length+" Arbeitstage &nbsp;·&nbsp; "+totalTouren+" Touren &nbsp;·&nbsp; Ø "+avgKrank+" Krank</span>";\n      body += "</div>";\n\n      body += "<table><thead><tr><th>Datum</th>";\n      COLS.forEach(function(c){ body += "<th>"+c.label+"</th>"; });\n      body += "</tr></thead><tbody>";\n\n      // Group days by KW\n      var kwGroups = {};\n      var kwOrder = [];\n      days.forEach(function(d){\n        var kw = d._kw || "—";\n        if(!kwGroups[kw]){ kwGroups[kw]=[]; kwOrder.push(kw); }\n        kwGroups[kw].push(d);\n      });\n      // deduplicate kwOrder\n      kwOrder = kwOrder.filter(function(v,i,a){ return a.indexOf(v)===i; });\n\n      kwOrder.forEach(function(kw) {\n        var kwDays = kwGroups[kw];\n        // KW summary row\n        var s = (kwDays[0]._summary)||{};\n        body += "<tr class=\'kw-row\'><td>"+kw+"</td>";\n        COLS.forEach(function(c){\n          if(c.key==="_fremdnames"){ body += "<td></td>"; return; }\n          var v = s[c.key];\n          var ws = warn(v,c.key);\n          body += "<td class=\'num\' style=\'"+ws+"\'>"+fmt(v,c.key)+"</td>";\n        });\n        body += "</tr>";\n\n        // Day rows\n        kwDays.forEach(function(d){\n          var weekend = /^(Sa|So)/.test(d.datum);\n          body += "<tr class=\'day-row"+(weekend?" weekend":"")+"\'><td style=\'font-weight:700;\'>"+d.datum+"</td>";\n          COLS.forEach(function(c){\n            var v = d[c.key];\n            var ws = warn(v,c.key);\n            body += "<td class=\'num\' style=\'"+ws+"\'>"+fmt(v,c.key)+"</td>";\n          });\n          body += "</tr>";\n        });\n      });\n\n      body += "</tbody></table>";\n      body += "<div class=\'footer\'>NordFrischeCenter &nbsp;·&nbsp; Kennzahlen Fuhrpark &nbsp;·&nbsp; "+moName+" "+yr+"</div>";\n      body += "</div>";\n    });\n  });\n\n  var w2 = window.open("","_blank","width=1200,height=820");\n  w2.document.write("<!DOCTYPE html><html><head><meta charset=\'utf-8\'>");\n  w2.document.write("<title>Kennzahlen Fuhrpark – "+selMonthLabel+" "+selYearLabel+"</title>");\n  w2.document.write("<style>"+css+"</style></head><body>"+body+"</body></html>");\n  w2.document.close();\n  w2.focus();\n  setTimeout(function(){ w2.print(); }, 600);\n}\n'
 
 
@@ -1164,20 +1163,20 @@ iframe.active{{display:block}}
     </div>
   </div>
 
-<div id="panel-zulage" style="display:none;flex:1;flex-direction:column;background:#f4f6fa;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;">
-  <div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:#fff;border-bottom:1.5px solid #e2e8f0;flex-wrap:wrap;flex-shrink:0;">
-    <h2 style="margin:0;font-size:16px;font-weight:900;color:#1b66b3;">&#128176; Zulagen</h2>
-    <div style="display:flex;gap:4px;">
-      <button id="ztab-sonder"   onclick="zulagenTab('sonder')"   style="padding:5px 12px;border-radius:16px;border:2px solid #1b66b3;cursor:pointer;font-weight:700;font-size:12px;background:#1b66b3;color:#fff;">Sonderfahrzeuge</button>
-      <button id="ztab-fuengers" onclick="zulagenTab('fuengers')" style="padding:5px 12px;border-radius:16px;border:2px solid #1b66b3;cursor:pointer;font-weight:700;font-size:12px;background:#fff;color:#1b66b3;">F&#252;ngers</button>
+  <div id="panel-zulage" style="display:none;flex:1;flex-direction:column;background:#f4f6fa;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;">
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:#fff;border-bottom:1.5px solid #e2e8f0;flex-wrap:wrap;flex-shrink:0;">
+      <h2 style="margin:0;font-size:16px;font-weight:900;color:#1b66b3;">&#128176; Zulagen</h2>
+      <div style="display:flex;gap:4px;">
+        <button id="ztab-sonder" onclick="zulagenTab('sonder')" style="padding:5px 12px;border-radius:16px;border:2px solid #1b66b3;cursor:pointer;font-weight:700;font-size:12px;background:#1b66b3;color:#fff;">Sonderfahrzeuge</button>
+        <button id="ztab-fuengers" onclick="zulagenTab('fuengers')" style="padding:5px 12px;border-radius:16px;border:2px solid #1b66b3;cursor:pointer;font-weight:700;font-size:12px;background:#fff;color:#1b66b3;">F&#252;ngers</button>
+      </div>
+      <select id="zulage-month-sel" onchange="zulagenRender()" style="padding:5px 12px;border:2px solid #1b66b3;border-radius:16px;font-size:12px;outline:none;cursor:pointer;"></select>
+      <button onclick="zulagenExportPDF()" style="padding:5px 12px;background:#c53030;color:#fff;border:none;border-radius:16px;font-weight:700;font-size:12px;cursor:pointer;">&#128196; PDF</button>
+      <button onclick="zulagenExportExcel()" style="padding:5px 12px;background:#1d6f42;color:#fff;border:none;border-radius:16px;font-weight:700;font-size:12px;cursor:pointer;">&#128196; Excel</button>
+      <span id="zulage-stats" style="font-size:12px;color:#64748b;margin-left:auto;font-weight:600;"></span>
     </div>
-    <select id="zulage-month-sel" onchange="zulagenRender()" style="padding:5px 12px;border:2px solid #1b66b3;border-radius:16px;font-size:12px;outline:none;cursor:pointer;"></select>
-    <button onclick="zulagenExportPDF()"   style="padding:5px 12px;background:#c53030;color:#fff;border:none;border-radius:16px;font-weight:700;font-size:12px;cursor:pointer;">&#128196; PDF</button>
-    <button onclick="zulagenExportExcel()" style="padding:5px 12px;background:#1d6f42;color:#fff;border:none;border-radius:16px;font-weight:700;font-size:12px;cursor:pointer;">&#128196; Excel</button>
-    <span id="zulage-stats" style="font-size:12px;color:#64748b;margin-left:auto;font-weight:600;"></span>
+    <div id="zulage-content" style="flex:1;overflow-y:auto;padding:20px;"></div>
   </div>
-  <div id="zulage-content" style="flex:1;overflow-y:auto;padding:20px;"></div>
-</div>
 
 </div>
 </div>
@@ -1458,10 +1457,12 @@ function vzGenerateExcel(rows, day) {{
 
 // ── Telefonliste ──────────────────────────────────────────────────────────────
 var TEL_DATA = {tel_json};
-var SAM_DATA    = {sam_json};
-var KFZ_DATA    = {kfz_json};
-var FA_DATA     = {fa_json};
-var ZULAGE_DATA = {zulage_json};
+var SAM_DATA             = {sam_json};
+var KFZ_DATA             = {kfz_json};
+var FA_DATA              = {fa_json};
+var ZULAGE_DATA          = {zulage_json};
+var ZULAGE_XLSX_SONDER   = "{zulage_xlsx_sonder}";
+var ZULAGE_XLSX_FUENGERS = "{zulage_xlsx_fuengers}";
 
 function telPDF() {{
   var w = window.open("","_blank","width=900,height=700");
@@ -1819,9 +1820,90 @@ function samToggle(el) {{
 </body>
 </html>"""
 
-# =============================================================================
-# ZULAGE PARSER (Sonderfahrzeuge + Füngers)
-# =============================================================================
+
+def generate_zulage_excel(zulage_json_str: str, tab: str = "sonder") -> bytes:
+    """Formatierte Excel mit openpyxl."""
+    import io as _io, json as _j
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.utils import get_column_letter
+    try:
+        data = _j.loads(zulage_json_str)
+    except Exception:
+        return None
+    months = data.get(tab, [])
+    if not months:
+        return None
+    wb = Workbook(); wb.remove(wb.active)
+    def _s(st="thin",c="CCCCCC"): return Side(style=st, color=c)
+    thin = Border(left=_s(),right=_s(),top=_s(),bottom=_s())
+    med  = Border(left=_s("medium","1F4E78"),right=_s("medium","1F4E78"),top=_s("medium","1F4E78"),bottom=_s("medium","1F4E78"))
+    gmed = Border(left=_s("medium","70AD47"),right=_s("medium","70AD47"),top=_s("medium","70AD47"),bottom=_s("medium","70AD47"))
+    FT=PatternFill("solid",fgColor="1F4E78"); FH=PatternFill("solid",fgColor="D9E2F3")
+    FN=PatternFill("solid",fgColor="4472C4"); FG=PatternFill("solid",fgColor="70AD47")
+    FL=PatternFill("solid",fgColor="1F4E78"); FW=PatternFill("solid",fgColor="FFFFFF")
+    FA=PatternFill("solid",fgColor="F8F9FA")
+    for monat in months:
+        ws = wb.create_sheet(title=monat["monat"][:31])
+        is_s = (tab=="sonder")
+        hdrs  = ["Name","Datum","Tour","LKW","Art","Verdienst"] if is_s else ["Name","Datum","Kommentar","Verdienst"]
+        widths= [24,32,14,10,14,14] if is_s else [24,32,40,14]
+        nc = len(hdrs)
+        # Title
+        ws.append([monat["monat"]]+[""]*( nc-1)); tr=ws.max_row
+        ws.merge_cells(start_row=tr,start_column=1,end_row=tr,end_column=nc)
+        c=ws.cell(tr,1); c.font=Font(name="Calibri",bold=True,size=14,color="FFFFFF")
+        c.fill=FT; c.alignment=Alignment(horizontal="center",vertical="center"); c.border=med
+        ws.row_dimensions[tr].height=28
+        # Header
+        ws.append(hdrs); hr=ws.max_row
+        for col in range(1,nc+1):
+            c=ws.cell(hr,col); c.font=Font(name="Calibri",bold=True,size=10,color="1F4E78")
+            c.fill=FH; c.alignment=Alignment(horizontal="center",vertical="center"); c.border=thin
+        ws.row_dimensions[hr].height=22
+        alt=False
+        for fahrer in monat["fahrer"]:
+            r0=ws.max_row+1
+            for ti,tag in enumerate(fahrer["tage"]):
+                if is_s:
+                    tour=tag.get("tour","")
+                    if not tour or tour=="zbv": tour="z.b.v."
+                    row=[fahrer["name"] if ti==0 else "",tag["datum"],tour,tag.get("lkw",""),tag.get("art",""),tag["verdienst"]]
+                else:
+                    row=[fahrer["name"] if ti==0 else "",tag["datum"],tag.get("kommentar",""),tag["verdienst"]]
+                ws.append(row); r=ws.max_row; fill=FA if alt else FW
+                for col in range(1,nc+1):
+                    if col==1 and ti==0: continue
+                    c=ws.cell(r,col); iv=(col==nc)
+                    c.font=Font(name="Calibri",size=10,color="16A34A" if iv else "2C3E50",bold=iv)
+                    c.fill=fill; c.border=thin
+                    c.alignment=Alignment(horizontal="right" if iv else "left",vertical="center")
+                    if iv and isinstance(c.value,(int,float)): c.number_format='#,##0.00 "€"'
+                ws.row_dimensions[r].height=20; alt=not alt
+            ws.merge_cells(start_row=r0,start_column=1,end_row=ws.max_row,end_column=1)
+            nc2=ws.cell(r0,1); nc2.font=Font(name="Calibri",bold=True,size=11,color="FFFFFF")
+            nc2.fill=FN; nc2.alignment=Alignment(horizontal="left",vertical="center"); nc2.border=med
+            gv=[""]*nc; gv[nc-2]="Gesamt"; gv[nc-1]=fahrer["gesamt"]
+            ws.append(gv); gr=ws.max_row
+            ws.merge_cells(start_row=gr,start_column=1,end_row=gr,end_column=nc-1)
+            for col in range(1,nc+1):
+                c=ws.cell(gr,col); c.font=Font(name="Calibri",bold=True,size=11,color="FFFFFF")
+                c.fill=FG; c.alignment=Alignment(horizontal="right",vertical="center"); c.border=gmed
+                if col==nc and isinstance(c.value,(int,float)): c.number_format='#,##0.00 "€"'
+            ws.row_dimensions[gr].height=20; alt=False
+            ws.append([""]*nc); ws.row_dimensions[ws.max_row].height=6
+        tv=[""]*nc; tv[nc-2]="Monatsgesamt"; tv[nc-1]=sum(f["gesamt"] for f in monat["fahrer"])
+        ws.append(tv); tr2=ws.max_row
+        ws.merge_cells(start_row=tr2,start_column=1,end_row=tr2,end_column=nc-1)
+        for col in range(1,nc+1):
+            c=ws.cell(tr2,col); c.font=Font(name="Calibri",bold=True,size=13,color="FFFFFF")
+            c.fill=FL; c.alignment=Alignment(horizontal="right",vertical="center"); c.border=med
+            if col==nc and isinstance(c.value,(int,float)): c.number_format='#,##0.00 "€"'
+        ws.row_dimensions[tr2].height=26
+        for i,w in enumerate(widths,1): ws.column_dimensions[get_column_letter(i)].width=w
+        ws.freeze_panes="A3"
+    buf=_io.BytesIO(); wb.save(buf); return buf.getvalue()
+
 
 _ZULAGE_PERSNR = {
     "Adler":{"Philipp":"00041450"},"Auer":{"Frank":"00020795"},
@@ -1875,8 +1957,6 @@ _ZULAGE_PERSNR = {
     "Wisniewski":{"Krzysztof":"00046550"},"Zander":{"Jan":"00042454"},
     "Zosel":{"Ingo":"00026303"},
 }
-_ZP_MONTHS = ["","Januar","Februar","ärz","April","Mai","Juni",
-               "Juli","August","September","Oktober","November","Dezember"]
 _ZP_MONTHS_DE = ["","Januar","Februar","März","April","Mai","Juni",
                   "Juli","August","September","Oktober","November","Dezember"]
 _ZP_DAYS = ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"]
@@ -1884,334 +1964,106 @@ _ZP_DAYS = ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Son
 
 def _zp_norm(s):
     import unicodedata as _uc
-    s = (s or "").strip().lower().replace(" ", " ")
-    s = _uc.normalize("NFKC", s).replace("-", " ")
-    for a, b in [("ä","ae"),("ö","oe"),("ü","ue"),("ß","ss")]:
-        s = s.replace(a, b)
+    s=(s or "").strip().lower().replace(" "," ")
+    s=_uc.normalize("NFKC",s).replace("-"," ")
+    for a,b in [("ä","ae"),("ö","oe"),("ü","ue"),("ß","ss")]: s=s.replace(a,b)
     return " ".join(s.split())
 
 
-def _zp_persnr(nachname, vorname):
-    nk, vk = _zp_norm(nachname), _zp_norm(vorname)
-    for ln, inner in _ZULAGE_PERSNR.items():
-        if _zp_norm(ln) == nk:
-            for fn, pn in inner.items():
-                if _zp_norm(fn) == vk:
-                    return pn
-            for fn, pn in inner.items():
-                fn2 = _zp_norm(fn)
-                if vk.startswith(fn2) or fn2.startswith(vk):
-                    return pn
+def _zp_persnr(nn,vn):
+    nk,vk=_zp_norm(nn),_zp_norm(vn)
+    for ln,inner in _ZULAGE_PERSNR.items():
+        if _zp_norm(ln)==nk:
+            for fn,pn in inner.items():
+                if _zp_norm(fn)==vk: return pn
+            for fn,pn in inner.items():
+                fn2=_zp_norm(fn)
+                if vk.startswith(fn2) or fn2.startswith(vk): return pn
             return "Unbekannt"
     return "Unbekannt"
 
 
 def _zp_art(val):
     try:
-        v = int(str(val).split("-")[-1].strip())
-        if v in [602, 156]: return "Gigaliner"
-        if v in [350, 620]: return "Tandem"
-        if v in [520, 266, 458, 548, 541, 542, 543, 558]: return "Gliederzug"
-    except Exception:
-        pass
+        v=int(str(val).split("-")[-1].strip())
+        if v in [602,156]: return "Gigaliner"
+        if v in [350,620]: return "Tandem"
+        if v in [520,266,458,548,541,542,543,558]: return "Gliederzug"
+    except Exception: pass
     return "Unbekannt"
 
 
-def _zp_verdienst(lkw1, lkw2):
-    total = 0
-    for v in [lkw1, lkw2]:
+def _zp_verdienst(lkw1,lkw2):
+    total=0
+    for v in [lkw1,lkw2]:
         try:
             if v is None: continue
-            vi = int(str(v).split("-")[-1].strip())
-            if vi in [602, 156]: total += 40
-            elif vi in [350, 620, 520, 266, 458, 548, 541, 542, 543, 558]: total += 20
-        except Exception:
-            pass
+            vi=int(str(v).split("-")[-1].strip())
+            if vi in [602,156]: total+=40
+            elif vi in [350,620,520,266,458,548,541,542,543,558]: total+=20
+        except Exception: pass
     return total
 
 
-def generate_zulage_excel(zulage_json_str: str, tab: str = "sonder", monat_filter: str = "all") -> bytes:
-    """Generiert formatierte Excel-Datei mit openpyxl für Zulagen."""
-    import io as _io
-    import json as _j
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side, numbers
-    from openpyxl.utils import get_column_letter
-
-    data = _j.loads(zulage_json_str)
-    months = data.get(tab, [])
-    if monat_filter != "all":
-        months = [m for m in months if m["monat"] == monat_filter]
-
-    if not months:
-        return None
-
-    wb = Workbook()
-    wb.remove(wb.active)
-
-    # Styles
-    def side(style="thin", color="CCCCCC"):
-        return Side(style=style, color=color)
-
-    thin_border = Border(left=side(), right=side(), top=side(), bottom=side())
-    medium_border = Border(
-        left=side("medium","1F4E78"), right=side("medium","1F4E78"),
-        top=side("medium","1F4E78"), bottom=side("medium","1F4E78")
-    )
-    green_border = Border(
-        left=side("medium","70AD47"), right=side("medium","70AD47"),
-        top=side("medium","70AD47"), bottom=side("medium","70AD47")
-    )
-
-    fill_title    = PatternFill("solid", fgColor="1F4E78")
-    fill_header   = PatternFill("solid", fgColor="D9E2F3")
-    fill_name     = PatternFill("solid", fgColor="4472C4")
-    fill_gesamt   = PatternFill("solid", fgColor="70AD47")
-    fill_total    = PatternFill("solid", fgColor="1F4E78")
-    fill_white    = PatternFill("solid", fgColor="FFFFFF")
-    fill_light    = PatternFill("solid", fgColor="F8F9FA")
-
-    for monat in months:
-        sheet_name = monat["monat"][:31].replace("/","").replace("\\","")
-        ws = wb.create_sheet(title=sheet_name)
-
-        is_sonder = tab == "sonder"
-        if is_sonder:
-            headers = ["Name", "Datum", "Tour", "LKW", "Art", "Verdienst"]
-            col_widths = [24, 32, 14, 10, 14, 14]
-        else:
-            headers = ["Name", "Datum", "Kommentar", "Verdienst"]
-            col_widths = [24, 32, 40, 14]
-
-        ncols = len(headers)
-        last_col = ncols  # 1-indexed
-
-        # ── Title row ──────────────────────────────────────────────────
-        ws.append([monat["monat"]] + [""] * (ncols - 1))
-        title_row = ws.max_row
-        ws.merge_cells(start_row=title_row, start_column=1,
-                       end_row=title_row, end_column=last_col)
-        title_cell = ws.cell(title_row, 1)
-        title_cell.font = Font(name="Calibri", bold=True, size=14, color="FFFFFF")
-        title_cell.fill = fill_title
-        title_cell.alignment = Alignment(horizontal="center", vertical="center")
-        title_cell.border = medium_border
-        ws.row_dimensions[title_row].height = 28
-
-        # ── Header row ─────────────────────────────────────────────────
-        ws.append(headers)
-        hdr_row = ws.max_row
-        for c in range(1, ncols + 1):
-            cell = ws.cell(hdr_row, c)
-            cell.font = Font(name="Calibri", bold=True, size=10, color="1F4E78")
-            cell.fill = fill_header
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-            cell.border = thin_border
-        ws.row_dimensions[hdr_row].height = 22
-
-        # ── Data rows ──────────────────────────────────────────────────
-        alt = False
-        for fahrer in monat["fahrer"]:
-            name_row_start = ws.max_row + 1
-            tage = fahrer["tage"]
-
-            for ti, tag in enumerate(tage):
-                if is_sonder:
-                    tour = tag.get("tour","")
-                    if not tour or tour == "zbv":
-                        tour = "z.b.v."
-                    row_vals = [
-                        fahrer["name"] if ti == 0 else "",
-                        tag["datum"], tour, tag.get("lkw",""),
-                        tag.get("art",""), tag["verdienst"]
-                    ]
-                else:
-                    row_vals = [
-                        fahrer["name"] if ti == 0 else "",
-                        tag["datum"], tag.get("kommentar",""), tag["verdienst"]
-                    ]
-                ws.append(row_vals)
-                r = ws.max_row
-                row_fill = fill_light if alt else fill_white
-                for c in range(1, ncols + 1):
-                    cell = ws.cell(r, c)
-                    if c == 1 and ti == 0:
-                        continue  # styled after merge
-                    is_verd = (c == last_col)
-                    cell.font = Font(name="Calibri", size=10,
-                                     color="16A34A" if is_verd else "2C3E50",
-                                     bold=is_verd)
-                    cell.fill = row_fill
-                    cell.alignment = Alignment(
-                        horizontal="right" if is_verd else "left",
-                        vertical="center"
-                    )
-                    cell.border = thin_border
-                    if is_verd and isinstance(cell.value, (int, float)):
-                        cell.number_format = '#,##0.00 "€"'
-                ws.row_dimensions[r].height = 20
-                alt = not alt
-
-            # Merge name column over all tage rows
-            name_row_end = ws.max_row
-            ws.merge_cells(start_row=name_row_start, start_column=1,
-                           end_row=name_row_end, end_column=1)
-            name_cell = ws.cell(name_row_start, 1)
-            name_cell.font = Font(name="Calibri", bold=True, size=11, color="FFFFFF")
-            name_cell.fill = fill_name
-            name_cell.alignment = Alignment(horizontal="left", vertical="center",
-                                            wrap_text=False)
-            name_cell.border = medium_border
-
-            # Gesamt row
-            gesamt_vals = [""] * ncols
-            gesamt_vals[ncols - 2] = "Gesamt"
-            gesamt_vals[ncols - 1] = fahrer["gesamt"]
-            ws.append(gesamt_vals)
-            g_row = ws.max_row
-            ws.merge_cells(start_row=g_row, start_column=1,
-                           end_row=g_row, end_column=ncols - 1)
-            for c in range(1, ncols + 1):
-                cell = ws.cell(g_row, c)
-                cell.font = Font(name="Calibri", bold=True, size=11, color="FFFFFF")
-                cell.fill = fill_gesamt
-                cell.alignment = Alignment(horizontal="right", vertical="center")
-                cell.border = green_border
-                if c == last_col and isinstance(cell.value, (int, float)):
-                    cell.number_format = '#,##0.00 "€"'
-            ws.row_dimensions[g_row].height = 20
-            alt = False
-
-            # Spacer
-            ws.append([""] * ncols)
-            ws.row_dimensions[ws.max_row].height = 6
-
-        # ── Monatssumme ────────────────────────────────────────────────
-        msum = sum(f["gesamt"] for f in monat["fahrer"])
-        total_vals = [""] * ncols
-        total_vals[ncols - 2] = "Monatsgesamt"
-        total_vals[ncols - 1] = msum
-        ws.append(total_vals)
-        t_row = ws.max_row
-        ws.merge_cells(start_row=t_row, start_column=1,
-                       end_row=t_row, end_column=ncols - 1)
-        for c in range(1, ncols + 1):
-            cell = ws.cell(t_row, c)
-            cell.font = Font(name="Calibri", bold=True, size=13, color="FFFFFF")
-            cell.fill = fill_total
-            cell.alignment = Alignment(horizontal="right", vertical="center")
-            cell.border = medium_border
-            if c == last_col and isinstance(cell.value, (int, float)):
-                cell.number_format = '#,##0.00 "€"'
-        ws.row_dimensions[t_row].height = 26
-
-        # ── Column widths ──────────────────────────────────────────────
-        for i, w in enumerate(col_widths, start=1):
-            ws.column_dimensions[get_column_letter(i)].width = w
-
-        ws.freeze_panes = "A3"
-
-    buf = _io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
-
-
 def parse_zulage_excel(dateien: list) -> str:
-    """Liest Touren-Excels: Sonder-Zulage (AZ) + Füngers-Zulage."""
     import json as _j
     from io import BytesIO
     import datetime as _dt
-
-    sonder_map = {}
-    fuengers_map = {}
-    cur_year = _dt.datetime.now().year
-
+    sonder_map={}; fuengers_map={}
+    cur_year=_dt.datetime.now().year
     for datei in dateien:
         try:
-            datei.seek(0)
-            df_h = pd.read_excel(BytesIO(datei.read()), sheet_name="Touren", header=0)
-            datei.seek(0)
-            df_nh = pd.read_excel(BytesIO(datei.read()), sheet_name="Touren", header=None)
-            df_nh = df_nh.iloc[4:].reset_index(drop=True)
-            df_nh.columns = range(df_nh.shape[1])
-        except Exception:
-            continue
-
-        # Sonderzulage (AZ)
+            datei.seek(0); df_h=pd.read_excel(BytesIO(datei.read()),sheet_name="Touren",header=0)
+            datei.seek(0); df_nh=pd.read_excel(BytesIO(datei.read()),sheet_name="Touren",header=None)
+            df_nh=df_nh.iloc[4:].reset_index(drop=True); df_nh.columns=range(df_nh.shape[1])
+        except Exception: continue
         try:
-            mask = df_h.iloc[:, 13].astype(str).str.strip().str.upper() == "AZ"
-            for _, row in df_h[mask].iterrows():
-                datum = pd.to_datetime(row.iloc[14], errors="coerce")
-                if pd.isna(datum) or datum.year != cur_year:
-                    continue
-                mk = f"{datum.month:02d}-{datum.year}"
-                mlabel = f"{_ZP_MONTHS_DE[datum.month]} {datum.year}"
-                kw = int(datum.strftime("%W")) + 1
-                datum_str = f"{_ZP_DAYS[datum.weekday()]}, {datum.strftime('%d.%m.%Y')} (KW{kw})"
-
+            mask=df_h.iloc[:,13].astype(str).str.strip().str.upper()=="AZ"
+            for _,row in df_h[mask].iterrows():
+                datum=pd.to_datetime(row.iloc[14],errors="coerce")
+                if pd.isna(datum) or datum.year!=cur_year: continue
+                mk=f"{datum.month:02d}-{datum.year}"; ml=f"{_ZP_MONTHS_DE[datum.month]} {datum.year}"
+                kw=int(datum.strftime("%W"))+1
+                ds=f"{_ZP_DAYS[datum.weekday()]}, {datum.strftime('%d.%m.%Y')} (KW{kw})"
                 def _c(x): return str(x).replace(" "," ").strip() if pd.notnull(x) else ""
-                nn = _c(row.iloc[3] if len(row)>3 else "")
-                vn = _c(row.iloc[4] if len(row)>4 else "")
-                if not nn or not vn or nn in ("0","nan") or vn in ("0","nan"):
-                    nn = _c(row.iloc[6] if len(row)>6 else "")
-                    vn = _c(row.iloc[7] if len(row)>7 else "")
-                if not nn or not vn or nn in ("0","nan") or vn in ("0","nan"):
-                    continue
-
-                lkw1 = row.iloc[10] if len(row)>10 and pd.notnull(row.iloc[10]) else None
-                lkw2 = row.iloc[11] if len(row)>11 and pd.notnull(row.iloc[11]) else None
-                tour = str(row.iloc[0]).strip() if pd.notnull(row.iloc[0]) else ""
-                verd = _zp_verdienst(lkw1, lkw2)
-                if verd == 0: continue
-
-                if mk not in sonder_map:
-                    sonder_map[mk] = {"label": mlabel, "fahrer": {}}
-                sonder_map[mk]["fahrer"].setdefault((nn, vn), []).append({
-                    "datum": datum_str, "tour": tour,
-                    "lkw": str(lkw2 or lkw1 or "").strip(),
-                    "art": _zp_art(lkw2 or lkw1), "verdienst": verd
-                })
-        except Exception:
-            pass
-
-        # Füngers-Zulage
+                nn=_c(row.iloc[3] if len(row)>3 else ""); vn=_c(row.iloc[4] if len(row)>4 else "")
+                if not nn or not vn or nn in("0","nan") or vn in("0","nan"):
+                    nn=_c(row.iloc[6] if len(row)>6 else ""); vn=_c(row.iloc[7] if len(row)>7 else "")
+                if not nn or not vn or nn in("0","nan") or vn in("0","nan"): continue
+                lkw1=row.iloc[10] if len(row)>10 and pd.notnull(row.iloc[10]) else None
+                lkw2=row.iloc[11] if len(row)>11 and pd.notnull(row.iloc[11]) else None
+                tour=str(row.iloc[0]).strip() if pd.notnull(row.iloc[0]) else ""
+                verd=_zp_verdienst(lkw1,lkw2)
+                if verd==0: continue
+                if mk not in sonder_map: sonder_map[mk]={"label":ml,"fahrer":{}}
+                sonder_map[mk]["fahrer"].setdefault((nn,vn),[]).append(
+                    {"datum":ds,"tour":tour,"lkw":str(lkw2 or lkw1 or "").strip(),"art":_zp_art(lkw2 or lkw1),"verdienst":verd})
+        except Exception: pass
         try:
-            for _, row in df_nh.iterrows():
-                komm = str(row[15]).strip() if 15 in row and pd.notnull(row[15]) else ""
-                if "füngers" not in komm.lower() and "fuengers" not in komm.lower():
-                    continue
-                nn = str(row[3]).replace(" "," ").strip() if 3 in row and pd.notnull(row[3]) else ""
-                vn = str(row[4]).replace(" "," ").strip() if 4 in row and pd.notnull(row[4]) else ""
-                if not nn or not vn or nn in ("0","nan") or vn in ("0","nan"):
-                    continue
-                datum = pd.to_datetime(row[14] if 14 in row else None, errors="coerce")
-                if pd.isna(datum) or datum.year != cur_year:
-                    continue
-                mk = f"{datum.month:02d}-{datum.year}"
-                mlabel = f"{_ZP_MONTHS_DE[datum.month]} {datum.year}"
-                kw = datum.isocalendar()[1]
-                datum_str = datum.strftime("%d.%m.%Y") + f" (KW {kw})"
-                if mk not in fuengers_map:
-                    fuengers_map[mk] = {"label": mlabel, "fahrer": {}}
-                fuengers_map[mk]["fahrer"].setdefault((nn, vn), []).append(
-                    {"datum": datum_str, "kommentar": komm, "verdienst": 20}
-                )
-        except Exception:
-            pass
-
-    def _build(data_map):
-        result = []
-        for mk in sorted(data_map.keys()):
-            entry = data_map[mk]
-            fl = []
-            for (nn, vn), tage in sorted(entry["fahrer"].items()):
-                fl.append({"name": f"{vn} {nn}", "persnr": _zp_persnr(nn, vn),
-                           "gesamt": sum(t["verdienst"] for t in tage), "tage": tage})
-            fl.sort(key=lambda x: x["name"])
-            result.append({"monat": entry["label"], "fahrer": fl})
-        return result
-
-    return _j.dumps({"sonder": _build(sonder_map), "fuengers": _build(fuengers_map)}, ensure_ascii=False)
+            for _,row in df_nh.iterrows():
+                komm=str(row[15]).strip() if 15 in row and pd.notnull(row[15]) else ""
+                if "füngers" not in komm.lower() and "fuengers" not in komm.lower(): continue
+                nn=str(row[3]).replace(" "," ").strip() if 3 in row and pd.notnull(row[3]) else ""
+                vn=str(row[4]).replace(" "," ").strip() if 4 in row and pd.notnull(row[4]) else ""
+                if not nn or not vn or nn in("0","nan") or vn in("0","nan"): continue
+                datum=pd.to_datetime(row[14] if 14 in row else None,errors="coerce")
+                if pd.isna(datum) or datum.year!=cur_year: continue
+                mk=f"{datum.month:02d}-{datum.year}"; ml=f"{_ZP_MONTHS_DE[datum.month]} {datum.year}"
+                kw=datum.isocalendar()[1]; ds=datum.strftime("%d.%m.%Y")+f" (KW {kw})"
+                if mk not in fuengers_map: fuengers_map[mk]={"label":ml,"fahrer":{}}
+                fuengers_map[mk]["fahrer"].setdefault((nn,vn),[]).append(
+                    {"datum":ds,"kommentar":komm,"verdienst":20})
+        except Exception: pass
+    def _build(dm):
+        res=[]
+        for mk in sorted(dm.keys()):
+            e=dm[mk]; fl=[]
+            for (nn,vn),tage in sorted(e["fahrer"].items()):
+                fl.append({"name":f"{vn} {nn}","persnr":_zp_persnr(nn,vn),
+                           "gesamt":sum(t["verdienst"] for t in tage),"tage":tage})
+            fl.sort(key=lambda x:x["name"]); res.append({"monat":e["label"],"fahrer":fl})
+        return res
+    return _j.dumps({"sonder":_build(sonder_map),"fuengers":_build(fuengers_map)},ensure_ascii=False)
 
 
 def parse_telefon_excel(up) -> str:
@@ -2384,33 +2236,15 @@ if zulage_ups:
         st.session_state.zulage_json = parse_zulage_excel(zulage_ups)
     import json as _zj
     _zd = _zj.loads(st.session_state.zulage_json)
-    ns = sum(len(m["fahrer"]) for m in _zd.get("sonder", []))
-    nf = sum(len(m["fahrer"]) for m in _zd.get("fuengers", []))
-    st.caption(f"✅ Zulagen: {ns} Sonder · {nf} Füngers")
+    _ns = sum(len(m["fahrer"]) for m in _zd.get("sonder", []))
+    _nf = sum(len(m["fahrer"]) for m in _zd.get("fuengers", []))
+    st.caption(f"✅ Zulagen: {_ns} Sonder · {_nf} Füngers")
 elif st.session_state.get("zulage_json"):
     import json as _zj
     _zd = _zj.loads(st.session_state.zulage_json)
-    ns = sum(len(m["fahrer"]) for m in _zd.get("sonder", []))
-    nf = sum(len(m["fahrer"]) for m in _zd.get("fuengers", []))
-    st.caption(f"✅ Zulagen: {ns} Sonder · {nf} Füngers (bereits geladen)")
-
-if st.session_state.get("zulage_json") and st.session_state["zulage_json"] != "{}":
-    import json as _zj2
-    _zd2 = _zj2.loads(st.session_state["zulage_json"])
-    _tabs = []
-    if _zd2.get("sonder"): _tabs.append(("sonder", "🏠 Sonderfahrzeuge"))
-    if _zd2.get("fuengers"): _tabs.append(("fuengers", "🚗 Füngers"))
-    for _tab_key, _tab_label in _tabs:
-        _xlsx = generate_zulage_excel(st.session_state["zulage_json"], tab=_tab_key)
-        if _xlsx:
-            st.download_button(
-                label=f"📥 Excel herunterladen: {_tab_label}",
-                data=_xlsx,
-                file_name=f"Zulagen_{_tab_key.capitalize()}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key=f"dl_zulage_{_tab_key}"
-            )
-
+    _ns = sum(len(m["fahrer"]) for m in _zd.get("sonder", []))
+    _nf = sum(len(m["fahrer"]) for m in _zd.get("fuengers", []))
+    st.caption(f"✅ Zulagen bereits geladen: {_ns} Sonder · {_nf} Füngers")
 
 fa_ups = st.file_uploader("👤 Fahrerauswertung (mehrere Touren-Excel möglich)", type=["xlsx"],
                             accept_multiple_files=True, key="fa_upload")
@@ -2445,6 +2279,12 @@ if ready:
             kfz_json=st.session_state.get("kfz_json", "[]"),
             fa_json=st.session_state.get("fa_json", "[]"),
             zulage_json=st.session_state.get("zulage_json", "{}"),
+            zulage_xlsx_sonder=(__import__("base64").b64encode(
+                generate_zulage_excel(st.session_state.get("zulage_json","{}"), tab="sonder") or b""
+            ).decode() if st.session_state.get("zulage_json","{}") not in ("{}","") else ""),
+            zulage_xlsx_fuengers=(__import__("base64").b64encode(
+                generate_zulage_excel(st.session_state.get("zulage_json","{}"), tab="fuengers") or b""
+            ).decode() if st.session_state.get("zulage_json","{}") not in ("{}","") else ""),
             last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
         )
     st.download_button(
