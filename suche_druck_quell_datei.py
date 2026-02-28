@@ -2104,7 +2104,7 @@ def parse_zulage_excel(dateien: list) -> str:
             mask=df_h.iloc[:,13].astype(str).str.strip().str.upper()=="AZ"
             for _,row in df_h[mask].iterrows():
                 datum=pd.to_datetime(row.iloc[14],errors="coerce")
-                if pd.isna(datum) or datum.year!=cur_year: continue
+                if pd.isna(datum) or datum.year < 2026: continue
                 mk=f"{datum.month:02d}-{datum.year}"; ml=f"{_ZP_MONTHS_DE[datum.month]} {datum.year}"
                 kw=int(datum.strftime("%W"))+1
                 ds=f"{_ZP_DAYS[datum.weekday()]}, {datum.strftime('%d.%m.%Y')} (KW{kw})"
@@ -2130,7 +2130,7 @@ def parse_zulage_excel(dateien: list) -> str:
                 vn=str(row[4]).replace(" "," ").strip() if 4 in row and pd.notnull(row[4]) else ""
                 if not nn or not vn or nn in("0","nan") or vn in("0","nan"): continue
                 datum=pd.to_datetime(row[14] if 14 in row else None,errors="coerce")
-                if pd.isna(datum) or datum.year!=cur_year: continue
+                if pd.isna(datum) or datum.year < 2026: continue
                 mk=f"{datum.month:02d}-{datum.year}"; ml=f"{_ZP_MONTHS_DE[datum.month]} {datum.year}"
                 kw=datum.isocalendar()[1]; ds=datum.strftime("%d.%m.%Y")+f" (KW {kw})"
                 if mk not in fuengers_map: fuengers_map[mk]={"label":ml,"fahrer":{}}
@@ -2184,7 +2184,7 @@ def parse_drittkunden_excel(dateien: list) -> str:
             if not _dk_check(kommentar):
                 continue
             datum = pd.to_datetime(row[14] if 14 in row else None, errors="coerce")
-            if pd.isna(datum):
+            if pd.isna(datum) or datum.year < 2026:
                 continue
             lkw = str(row[11]).strip() if 11 in row and pd.notna(row[11]) else ""
             info = str(row[1]).strip() if 1 in row and pd.notna(row[1]) else ""
