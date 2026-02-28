@@ -666,9 +666,12 @@ def parse_fuhrpark_excel(datei) -> str:
     from openpyxl import load_workbook
 
     COLS = {
-        "touren":1,"verschiebung":2,"direkt_fremd":6,
+        "touren":1,"verschiebung":2,
+        "gk_touren_mg":3,"gk_fp_edeka":4,"gk_touren":5,
+        "direkt_fremd":6,
+        "gk_tonnage":7,"shuttle_touren":8,"shuttle_sonder":9,"hupa_touren":10,
         "km":11,"diesel":12,"verbrauch":13,"ausfall":14,
-        "pda":15,"ma_da":17,"ma_urlaub":18,"ma_krank":19,
+        "pda":15,"ma_anwesend":16,"ma_da":17,"ma_urlaub":18,"ma_krank":19,
         "azubis":20,"zbv_edeka":21,"zbv_fremd":22,
         "fremd_abgesagt":23,"fremd1":24,"fremd2":25,"fremd3":26,
     }
