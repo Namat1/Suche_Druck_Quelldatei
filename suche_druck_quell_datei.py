@@ -1822,7 +1822,7 @@ function samToggle(el) {{
 
 
 def generate_zulage_excel(zulage_json_str: str, tab: str = "sonder") -> bytes:
-    """Formatierte Excel mit openpyxl."""
+    """Formatierte Excel mit openpyxl – inkl. Persnr. und Zusammenfassung."""
     import io as _io, json as _j
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -1841,48 +1841,74 @@ def generate_zulage_excel(zulage_json_str: str, tab: str = "sonder") -> bytes:
     gmed = Border(left=_s("medium","70AD47"),right=_s("medium","70AD47"),top=_s("medium","70AD47"),bottom=_s("medium","70AD47"))
     FT=PatternFill("solid",fgColor="1F4E78"); FH=PatternFill("solid",fgColor="D9E2F3")
     FN=PatternFill("solid",fgColor="4472C4"); FG=PatternFill("solid",fgColor="70AD47")
-    FL=PatternFill("solid",fgColor="1F4E78"); FW=PatternFill("solid",fgColor="FFFFFF")
-    FA=PatternFill("solid",fgColor="F8F9FA")
+    FL=PatternFill("solid",fgColor="1F4E78"); FA=PatternFill("solid",fgColor="F8F9FA")
+    FW=PatternFill("solid",fgColor="FFFFFF"); FS=PatternFill("solid",fgColor="EEF4FF")
+
+    # Track summary: {(name, persnr): total}
+    summary = {}
+
     for monat in months:
         ws = wb.create_sheet(title=monat["monat"][:31])
-        is_s = (tab=="sonder")
-        hdrs  = ["Name","Datum","Tour","LKW","Art","Verdienst"] if is_s else ["Name","Datum","Kommentar","Verdienst"]
-        widths= [24,32,14,10,14,14] if is_s else [24,32,40,14]
+        is_s = (tab == "sonder")
+        # Columns: Name | Persnr. | Datum | Tour | LKW | Art | Verdienst
+        #      or: Name | Persnr. | Datum | Kommentar | Verdienst
+        hdrs   = ["Name","Persnr.","Datum","Tour","LKW","Art","Verdienst"] if is_s else ["Name","Persnr.","Datum","Kommentar","Verdienst"]
+        widths = [24,13,32,14,10,14,14]                                    if is_s else [24,13,32,40,14]
         nc = len(hdrs)
+
         # Title
         ws.append([monat["monat"]]+[""]*( nc-1)); tr=ws.max_row
         ws.merge_cells(start_row=tr,start_column=1,end_row=tr,end_column=nc)
         c=ws.cell(tr,1); c.font=Font(name="Calibri",bold=True,size=14,color="FFFFFF")
         c.fill=FT; c.alignment=Alignment(horizontal="center",vertical="center"); c.border=med
         ws.row_dimensions[tr].height=28
+
         # Header
         ws.append(hdrs); hr=ws.max_row
         for col in range(1,nc+1):
             c=ws.cell(hr,col); c.font=Font(name="Calibri",bold=True,size=10,color="1F4E78")
             c.fill=FH; c.alignment=Alignment(horizontal="center",vertical="center"); c.border=thin
         ws.row_dimensions[hr].height=22
+
         alt=False
         for fahrer in monat["fahrer"]:
             r0=ws.max_row+1
+            # Accumulate for summary
+            key=(fahrer["name"], fahrer["persnr"])
+            summary[key] = summary.get(key, 0) + fahrer["gesamt"]
+
             for ti,tag in enumerate(fahrer["tage"]):
                 if is_s:
                     tour=tag.get("tour","")
                     if not tour or tour=="zbv": tour="z.b.v."
-                    row=[fahrer["name"] if ti==0 else "",tag["datum"],tour,tag.get("lkw",""),tag.get("art",""),tag["verdienst"]]
+                    row=[fahrer["name"] if ti==0 else "",
+                         fahrer["persnr"] if ti==0 else "",
+                         tag["datum"],tour,tag.get("lkw",""),tag.get("art",""),tag["verdienst"]]
                 else:
-                    row=[fahrer["name"] if ti==0 else "",tag["datum"],tag.get("kommentar",""),tag["verdienst"]]
+                    row=[fahrer["name"] if ti==0 else "",
+                         fahrer["persnr"] if ti==0 else "",
+                         tag["datum"],tag.get("kommentar",""),tag["verdienst"]]
                 ws.append(row); r=ws.max_row; fill=FA if alt else FW
                 for col in range(1,nc+1):
-                    if col==1 and ti==0: continue
+                    if col in (1,2) and ti==0: continue   # styled after merge
                     c=ws.cell(r,col); iv=(col==nc)
                     c.font=Font(name="Calibri",size=10,color="16A34A" if iv else "2C3E50",bold=iv)
                     c.fill=fill; c.border=thin
-                    c.alignment=Alignment(horizontal="right" if iv else "left",vertical="center")
+                    c.alignment=Alignment(horizontal="right" if iv else ("center" if col==2 else "left"),vertical="center")
                     if iv and isinstance(c.value,(int,float)): c.number_format='#,##0.00 "€"'
                 ws.row_dimensions[r].height=20; alt=not alt
+
+            # Merge Name column over all tage
             ws.merge_cells(start_row=r0,start_column=1,end_row=ws.max_row,end_column=1)
             nc2=ws.cell(r0,1); nc2.font=Font(name="Calibri",bold=True,size=11,color="FFFFFF")
             nc2.fill=FN; nc2.alignment=Alignment(horizontal="left",vertical="center"); nc2.border=med
+
+            # Merge Persnr column over all tage
+            ws.merge_cells(start_row=r0,start_column=2,end_row=ws.max_row,end_column=2)
+            pc=ws.cell(r0,2); pc.font=Font(name="Calibri",bold=False,size=10,color="FFFFFF")
+            pc.fill=FN; pc.alignment=Alignment(horizontal="center",vertical="center"); pc.border=med
+
+            # Gesamt row
             gv=[""]*nc; gv[nc-2]="Gesamt"; gv[nc-1]=fahrer["gesamt"]
             ws.append(gv); gr=ws.max_row
             ws.merge_cells(start_row=gr,start_column=1,end_row=gr,end_column=nc-1)
@@ -1891,7 +1917,11 @@ def generate_zulage_excel(zulage_json_str: str, tab: str = "sonder") -> bytes:
                 c.fill=FG; c.alignment=Alignment(horizontal="right",vertical="center"); c.border=gmed
                 if col==nc and isinstance(c.value,(int,float)): c.number_format='#,##0.00 "€"'
             ws.row_dimensions[gr].height=20; alt=False
+
+            # Spacer
             ws.append([""]*nc); ws.row_dimensions[ws.max_row].height=6
+
+        # Monatsgesamt
         tv=[""]*nc; tv[nc-2]="Monatsgesamt"; tv[nc-1]=sum(f["gesamt"] for f in monat["fahrer"])
         ws.append(tv); tr2=ws.max_row
         ws.merge_cells(start_row=tr2,start_column=1,end_row=tr2,end_column=nc-1)
@@ -1900,8 +1930,57 @@ def generate_zulage_excel(zulage_json_str: str, tab: str = "sonder") -> bytes:
             c.fill=FL; c.alignment=Alignment(horizontal="right",vertical="center"); c.border=med
             if col==nc and isinstance(c.value,(int,float)): c.number_format='#,##0.00 "€"'
         ws.row_dimensions[tr2].height=26
+
         for i,w in enumerate(widths,1): ws.column_dimensions[get_column_letter(i)].width=w
-        ws.freeze_panes="A3"
+        ws.freeze_panes="B3"   # freeze Name+Persnr columns + title+header rows
+
+    # ── Zusammenfassung sheet ─────────────────────────────────────────────
+    if summary:
+        ws_sum = wb.create_sheet(title="Zusammenfassung", index=0)
+        tab_label = "Sonderfahrzeuge" if tab=="sonder" else "F\u00fcngers"
+        # Title
+        ws_sum.append([f"Zusammenfassung \u2013 {tab_label}","",""])
+        tr=ws_sum.max_row
+        ws_sum.merge_cells(start_row=tr,start_column=1,end_row=tr,end_column=3)
+        c=ws_sum.cell(tr,1); c.font=Font(name="Calibri",bold=True,size=14,color="FFFFFF")
+        c.fill=FT; c.alignment=Alignment(horizontal="center",vertical="center"); c.border=med
+        ws_sum.row_dimensions[tr].height=30
+
+        # Header
+        ws_sum.append(["Name","Personalnummer","Gesamt"]); hr=ws_sum.max_row
+        for col in range(1,4):
+            c=ws_sum.cell(hr,col); c.font=Font(name="Calibri",bold=True,size=11,color="1F4E78")
+            c.fill=FH; c.alignment=Alignment(horizontal="center",vertical="center"); c.border=thin
+        ws_sum.row_dimensions[hr].height=24
+
+        # Data rows sorted by name
+        total_all = 0
+        for ri,(( name, persnr), total) in enumerate(sorted(summary.items(), key=lambda x:x[0][0])):
+            fill = FA if ri%2==0 else FW
+            ws_sum.append([name, persnr, total]); r=ws_sum.max_row
+            total_all += total
+            for col in range(1,4):
+                c=ws_sum.cell(r,col); iv=(col==3)
+                c.font=Font(name="Calibri",size=11,color="16A34A" if iv else "2C3E50",bold=iv)
+                c.fill=fill; c.border=thin
+                c.alignment=Alignment(horizontal="right" if iv else ("center" if col==2 else "left"),vertical="center")
+                if iv: c.number_format='#,##0.00 "€"'
+            ws_sum.row_dimensions[r].height=21
+
+        # Gesamtsumme
+        ws_sum.append(["","Gesamtsumme", total_all]); gr=ws_sum.max_row
+        for col in range(1,4):
+            c=ws_sum.cell(gr,col); c.font=Font(name="Calibri",bold=True,size=13,color="FFFFFF")
+            c.fill=FL; c.border=med
+            c.alignment=Alignment(horizontal="right",vertical="center")
+            if col==3: c.number_format='#,##0.00 "€"'
+        ws_sum.row_dimensions[gr].height=28
+
+        ws_sum.column_dimensions["A"].width=26
+        ws_sum.column_dimensions["B"].width=18
+        ws_sum.column_dimensions["C"].width=16
+        ws_sum.freeze_panes="A3"
+
     buf=_io.BytesIO(); wb.save(buf); return buf.getvalue()
 
 
