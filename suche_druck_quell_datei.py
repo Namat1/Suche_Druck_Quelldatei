@@ -667,7 +667,7 @@ def parse_fuhrpark_excel(datei) -> str:
 
     COLS = {
         "touren":1,"verschiebung":2,
-        "gk_touren_tag":3,"gk_touren_fp":4,"gk_gewicht":5,
+        "gk_gewicht":7,
         "direkt_fremd":6,
         "km":11,"diesel":12,"verbrauch":13,"ausfall":14,
         "pda":15,"ma_da":17,"ma_urlaub":18,"ma_krank":19,
