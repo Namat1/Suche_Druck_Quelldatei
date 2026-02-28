@@ -1930,6 +1930,192 @@ def _zp_verdienst(lkw1, lkw2):
     return total
 
 
+def generate_zulage_excel(zulage_json_str: str, tab: str = "sonder", monat_filter: str = "all") -> bytes:
+    """Generiert formatierte Excel-Datei mit openpyxl für Zulagen."""
+    import io as _io
+    import json as _j
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side, numbers
+    from openpyxl.utils import get_column_letter
+
+    data = _j.loads(zulage_json_str)
+    months = data.get(tab, [])
+    if monat_filter != "all":
+        months = [m for m in months if m["monat"] == monat_filter]
+
+    if not months:
+        return None
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    # Styles
+    def side(style="thin", color="CCCCCC"):
+        return Side(style=style, color=color)
+
+    thin_border = Border(left=side(), right=side(), top=side(), bottom=side())
+    medium_border = Border(
+        left=side("medium","1F4E78"), right=side("medium","1F4E78"),
+        top=side("medium","1F4E78"), bottom=side("medium","1F4E78")
+    )
+    green_border = Border(
+        left=side("medium","70AD47"), right=side("medium","70AD47"),
+        top=side("medium","70AD47"), bottom=side("medium","70AD47")
+    )
+
+    fill_title    = PatternFill("solid", fgColor="1F4E78")
+    fill_header   = PatternFill("solid", fgColor="D9E2F3")
+    fill_name     = PatternFill("solid", fgColor="4472C4")
+    fill_gesamt   = PatternFill("solid", fgColor="70AD47")
+    fill_total    = PatternFill("solid", fgColor="1F4E78")
+    fill_white    = PatternFill("solid", fgColor="FFFFFF")
+    fill_light    = PatternFill("solid", fgColor="F8F9FA")
+
+    for monat in months:
+        sheet_name = monat["monat"][:31].replace("/","").replace("\\","")
+        ws = wb.create_sheet(title=sheet_name)
+
+        is_sonder = tab == "sonder"
+        if is_sonder:
+            headers = ["Name", "Datum", "Tour", "LKW", "Art", "Verdienst"]
+            col_widths = [24, 32, 14, 10, 14, 14]
+        else:
+            headers = ["Name", "Datum", "Kommentar", "Verdienst"]
+            col_widths = [24, 32, 40, 14]
+
+        ncols = len(headers)
+        last_col = ncols  # 1-indexed
+
+        # ── Title row ──────────────────────────────────────────────────
+        ws.append([monat["monat"]] + [""] * (ncols - 1))
+        title_row = ws.max_row
+        ws.merge_cells(start_row=title_row, start_column=1,
+                       end_row=title_row, end_column=last_col)
+        title_cell = ws.cell(title_row, 1)
+        title_cell.font = Font(name="Calibri", bold=True, size=14, color="FFFFFF")
+        title_cell.fill = fill_title
+        title_cell.alignment = Alignment(horizontal="center", vertical="center")
+        title_cell.border = medium_border
+        ws.row_dimensions[title_row].height = 28
+
+        # ── Header row ─────────────────────────────────────────────────
+        ws.append(headers)
+        hdr_row = ws.max_row
+        for c in range(1, ncols + 1):
+            cell = ws.cell(hdr_row, c)
+            cell.font = Font(name="Calibri", bold=True, size=10, color="1F4E78")
+            cell.fill = fill_header
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.border = thin_border
+        ws.row_dimensions[hdr_row].height = 22
+
+        # ── Data rows ──────────────────────────────────────────────────
+        alt = False
+        for fahrer in monat["fahrer"]:
+            name_row_start = ws.max_row + 1
+            tage = fahrer["tage"]
+
+            for ti, tag in enumerate(tage):
+                if is_sonder:
+                    tour = tag.get("tour","")
+                    if not tour or tour == "zbv":
+                        tour = "z.b.v."
+                    row_vals = [
+                        fahrer["name"] if ti == 0 else "",
+                        tag["datum"], tour, tag.get("lkw",""),
+                        tag.get("art",""), tag["verdienst"]
+                    ]
+                else:
+                    row_vals = [
+                        fahrer["name"] if ti == 0 else "",
+                        tag["datum"], tag.get("kommentar",""), tag["verdienst"]
+                    ]
+                ws.append(row_vals)
+                r = ws.max_row
+                row_fill = fill_light if alt else fill_white
+                for c in range(1, ncols + 1):
+                    cell = ws.cell(r, c)
+                    if c == 1 and ti == 0:
+                        continue  # styled after merge
+                    is_verd = (c == last_col)
+                    cell.font = Font(name="Calibri", size=10,
+                                     color="16A34A" if is_verd else "2C3E50",
+                                     bold=is_verd)
+                    cell.fill = row_fill
+                    cell.alignment = Alignment(
+                        horizontal="right" if is_verd else "left",
+                        vertical="center"
+                    )
+                    cell.border = thin_border
+                    if is_verd and isinstance(cell.value, (int, float)):
+                        cell.number_format = '#,##0.00 "€"'
+                ws.row_dimensions[r].height = 20
+                alt = not alt
+
+            # Merge name column over all tage rows
+            name_row_end = ws.max_row
+            ws.merge_cells(start_row=name_row_start, start_column=1,
+                           end_row=name_row_end, end_column=1)
+            name_cell = ws.cell(name_row_start, 1)
+            name_cell.font = Font(name="Calibri", bold=True, size=11, color="FFFFFF")
+            name_cell.fill = fill_name
+            name_cell.alignment = Alignment(horizontal="left", vertical="center",
+                                            wrap_text=False)
+            name_cell.border = medium_border
+
+            # Gesamt row
+            gesamt_vals = [""] * ncols
+            gesamt_vals[ncols - 2] = "Gesamt"
+            gesamt_vals[ncols - 1] = fahrer["gesamt"]
+            ws.append(gesamt_vals)
+            g_row = ws.max_row
+            ws.merge_cells(start_row=g_row, start_column=1,
+                           end_row=g_row, end_column=ncols - 1)
+            for c in range(1, ncols + 1):
+                cell = ws.cell(g_row, c)
+                cell.font = Font(name="Calibri", bold=True, size=11, color="FFFFFF")
+                cell.fill = fill_gesamt
+                cell.alignment = Alignment(horizontal="right", vertical="center")
+                cell.border = green_border
+                if c == last_col and isinstance(cell.value, (int, float)):
+                    cell.number_format = '#,##0.00 "€"'
+            ws.row_dimensions[g_row].height = 20
+            alt = False
+
+            # Spacer
+            ws.append([""] * ncols)
+            ws.row_dimensions[ws.max_row].height = 6
+
+        # ── Monatssumme ────────────────────────────────────────────────
+        msum = sum(f["gesamt"] for f in monat["fahrer"])
+        total_vals = [""] * ncols
+        total_vals[ncols - 2] = "Monatsgesamt"
+        total_vals[ncols - 1] = msum
+        ws.append(total_vals)
+        t_row = ws.max_row
+        ws.merge_cells(start_row=t_row, start_column=1,
+                       end_row=t_row, end_column=ncols - 1)
+        for c in range(1, ncols + 1):
+            cell = ws.cell(t_row, c)
+            cell.font = Font(name="Calibri", bold=True, size=13, color="FFFFFF")
+            cell.fill = fill_total
+            cell.alignment = Alignment(horizontal="right", vertical="center")
+            cell.border = medium_border
+            if c == last_col and isinstance(cell.value, (int, float)):
+                cell.number_format = '#,##0.00 "€"'
+        ws.row_dimensions[t_row].height = 26
+
+        # ── Column widths ──────────────────────────────────────────────
+        for i, w in enumerate(col_widths, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+
+        ws.freeze_panes = "A3"
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def parse_zulage_excel(dateien: list) -> str:
     """Liest Touren-Excels: Sonder-Zulage (AZ) + Füngers-Zulage."""
     import json as _j
@@ -2207,6 +2393,24 @@ elif st.session_state.get("zulage_json"):
     ns = sum(len(m["fahrer"]) for m in _zd.get("sonder", []))
     nf = sum(len(m["fahrer"]) for m in _zd.get("fuengers", []))
     st.caption(f"✅ Zulagen: {ns} Sonder · {nf} Füngers (bereits geladen)")
+
+if st.session_state.get("zulage_json") and st.session_state["zulage_json"] != "{}":
+    import json as _zj2
+    _zd2 = _zj2.loads(st.session_state["zulage_json"])
+    _tabs = []
+    if _zd2.get("sonder"): _tabs.append(("sonder", "🏠 Sonderfahrzeuge"))
+    if _zd2.get("fuengers"): _tabs.append(("fuengers", "🚗 Füngers"))
+    for _tab_key, _tab_label in _tabs:
+        _xlsx = generate_zulage_excel(st.session_state["zulage_json"], tab=_tab_key)
+        if _xlsx:
+            st.download_button(
+                label=f"📥 Excel herunterladen: {_tab_label}",
+                data=_xlsx,
+                file_name=f"Zulagen_{_tab_key.capitalize()}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key=f"dl_zulage_{_tab_key}"
+            )
+
 
 fa_ups = st.file_uploader("👤 Fahrerauswertung (mehrere Touren-Excel möglich)", type=["xlsx"],
                             accept_multiple_files=True, key="fa_upload")
