@@ -150,12 +150,15 @@ def detect_bspalten(columns: List[str]) -> dict:
 def detect_neue_triplets(columns: list) -> list:
     """
     Erkennt neue Spaltenstruktur: Montag_Zeit, Montag_Sort, Montag_Tag (ggf. mit .1, .2 Suffixen).
-    Gibt eine Liste von Dicts zurück:
+    Gibt eine Liste von Dicts zurueck:
       {"liefertag": "Montag", "zeit_col": "Montag_Zeit", "sort_col": "Montag_Sort", "tag_col": "Montag_Tag"}
     """
     import re as _re
+    TAGE = "Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag"
+    FELDER = "Zeit|Sort|Tag"
+    # Suffix wie .1 .2 usw. (pandas doppelte Spaltennamen)
     rx = _re.compile(
-        r"^(Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag)_(Zeit|Sort|Tag)(\.(\d+))?$",
+        "^(" + TAGE + ")_(" + FELDER + ")(?:[.](\d+))?$",
         _re.IGNORECASE,
     )
     groups: dict = {}
@@ -165,8 +168,8 @@ def detect_neue_triplets(columns: list) -> list:
         if not m:
             continue
         day   = m.group(1).capitalize()
-        field = m.group(2).lower()
-        suf   = int(m.group(4)) if m.group(4) else 0
+        field = m.group(2).lower()          # zeit | sort | tag
+        suf   = int(m.group(3)) if m.group(3) else 0
         key   = (day, suf)
         if key not in groups:
             groups[key] = {}
