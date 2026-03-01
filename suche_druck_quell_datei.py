@@ -147,6 +147,44 @@ def detect_bspalten(columns: List[str]) -> dict:
     return mapping
 
 
+def detect_neue_triplets(columns: list) -> list:
+    """
+    Erkennt neue Spaltenstruktur: Montag_Zeit, Montag_Sort, Montag_Tag (ggf. mit .1, .2 Suffixen).
+    Gibt eine Liste von Dicts zurück:
+      {"liefertag": "Montag", "zeit_col": "Montag_Zeit", "sort_col": "Montag_Sort", "tag_col": "Montag_Tag"}
+    """
+    import re as _re
+    rx = _re.compile(
+        r"^(Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag)_(Zeit|Sort|Tag)(\.(\d+))?$",
+        _re.IGNORECASE,
+    )
+    groups: dict = {}
+    order:  list = []
+    for col in columns:
+        m = rx.match(str(col).strip())
+        if not m:
+            continue
+        day   = m.group(1).capitalize()
+        field = m.group(2).lower()          # zeit | sort | tag
+        suf   = int(m.group(4)) if m.group(4) else 0
+        key   = (day, suf)
+        if key not in groups:
+            groups[key] = {}
+            order.append(key)
+        groups[key][field] = col
+    result = []
+    for key in order:
+        g = groups[key]
+        if "zeit" in g or "sort" in g or "tag" in g:
+            result.append({
+                "liefertag": key[0],
+                "zeit_col":  g.get("zeit"),
+                "sort_col":  g.get("sort"),
+                "tag_col":   g.get("tag"),
+            })
+    return result
+
+
 def detect_triplets(columns: List[str]) -> dict:
     rx = re.compile(
         r"^(Mo|Die|Di|Mitt|Mit|Mi|Don|Donn|Do|Fr|Sam|Sa)\s+(.+?)\s+"
@@ -444,6 +482,7 @@ def generate_druck_html(up, logo_up) -> str:
 
         cols    = df.columns.tolist()
         trip    = detect_triplets(cols)
+        neue    = detect_neue_triplets(cols)   # neues Format: Montag_Zeit / Montag_Sort / Montag_Tag
         bmap    = detect_bspalten(cols)
         ds_trip = detect_ds_triplets(cols)
         data: dict = {}
@@ -465,6 +504,19 @@ def generate_druck_html(up, logo_up) -> str:
                                 "bestelltag": tag, "bestellschluss": t,
                                 "prio": SORT_PRIO.get(canon_group_id(s), 50),
                             })
+                # Neues Format: Montag_Zeit / Montag_Sort / Montag_Tag
+                for nt in neue:
+                    if nt["liefertag"] != d_de:
+                        continue
+                    s   = norm_val(r.get(nt["sort_col"]))   if nt.get("sort_col") else ""
+                    t   = safe_time(r.get(nt["zeit_col"]))  if nt.get("zeit_col") else ""
+                    tag = norm_val(r.get(nt["tag_col"]))    if nt.get("tag_col")  else ""
+                    if s or t or tag:
+                        day_items.append({
+                            "liefertag": d_de, "sortiment": s,
+                            "bestelltag": tag, "bestellschluss": t,
+                            "prio": SORT_PRIO.get(canon_group_id(s), 50),
+                        })
                 for bk in [k for k in bmap if k[0] == d_de]:
                     bf    = bmap[bk]
                     s     = norm_val(r.get(bf.get("sort", "")))
