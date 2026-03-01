@@ -147,6 +147,44 @@ def detect_bspalten(columns: List[str]) -> dict:
     return mapping
 
 
+def detect_neue_triplets(columns: list) -> list:
+    """
+    Erkennt neue Spaltenstruktur: Montag_Zeit, Montag_Sort, Montag_Tag (ggf. mit .1, .2 Suffixen).
+    Gibt eine Liste von Dicts zurück:
+      {"liefertag": "Montag", "zeit_col": "Montag_Zeit", "sort_col": "Montag_Sort", "tag_col": "Montag_Tag"}
+    """
+    import re as _re
+    rx = _re.compile(
+        r"^(Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag)_(Zeit|Sort|Tag)(\.(\d+))?$",
+        _re.IGNORECASE,
+    )
+    groups: dict = {}
+    order:  list = []
+    for col in columns:
+        m = rx.match(str(col).strip())
+        if not m:
+            continue
+        day   = m.group(1).capitalize()
+        field = m.group(2).lower()
+        suf   = int(m.group(4)) if m.group(4) else 0
+        key   = (day, suf)
+        if key not in groups:
+            groups[key] = {}
+            order.append(key)
+        groups[key][field] = col
+    result = []
+    for key in order:
+        g = groups[key]
+        if "zeit" in g or "sort" in g or "tag" in g:
+            result.append({
+                "liefertag": key[0],
+                "zeit_col":  g.get("zeit"),
+                "sort_col":  g.get("sort"),
+                "tag_col":   g.get("tag"),
+            })
+    return result
+
+
 def detect_triplets(columns: List[str]) -> dict:
     rx = re.compile(
         r"^(Mo|Die|Di|Mitt|Mit|Mi|Don|Donn|Do|Fr|Sam|Sa)\s+(.+?)\s+"
