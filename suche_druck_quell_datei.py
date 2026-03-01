@@ -1176,23 +1176,25 @@ html,body{{height:100%;font-family:'Segoe UI',Arial,sans-serif}}
 .topnav{{
   height:52px;
   background:#ffffff;
-  display:flex;align-items:center;padding:0 16px;gap:8px;
+  display:flex;align-items:center;padding:0 12px;gap:4px;
   box-shadow:0 1px 4px rgba(0,0,0,.12);
   border-bottom:3px solid #1b66b3;
   flex-shrink:0;
   overflow-x:auto;
+  scrollbar-width:none;
 }}
+.topnav::-webkit-scrollbar{{display:none;}}
 .topnav-title{{
-  color:#1b66b3;font-weight:800;font-size:15px;
-  margin-right:6px;letter-spacing:.2px;white-space:nowrap;
+  color:#1b66b3;font-weight:800;font-size:14px;
+  margin-right:4px;letter-spacing:.2px;white-space:nowrap;
 }}
 .nav-sep{{
-  width:1px;height:24px;background:#d5dde9;flex-shrink:0;margin:0 4px;
+  width:1px;height:20px;background:#d5dde9;flex-shrink:0;margin:0 2px;
 }}
 .nav-btn{{
-  padding:5px 14px;border-radius:20px;
+  padding:4px 10px;border-radius:20px;
   border:2px solid #1b66b3;
-  cursor:pointer;font-weight:700;font-size:12px;
+  cursor:pointer;font-weight:700;font-size:11px;
   transition:all .15s ease;background:#fff;color:#1b66b3;
   white-space:nowrap;flex-shrink:0;
   position:relative;
@@ -2405,7 +2407,7 @@ _ZULAGE_PERSNR = {
     "Fechner":{"Danny":"00043696","Klaus":"00038278"},
     "Findeklee":{"Bernd":"00020804"},"Flint":{"Henryk":"00042414"},
     "Fuhlbruegge":{"Justin":"00046289"},"Gehrmann":{"Rayk":"00046702"},
-    "Gheonea":{"Daniel-Costel":"00054489"},"Glanz":{"Bjoern":"00041914"},
+    "Gheonea":{"Costel-Daniel":"00054489"},"Glanz":{"Bjoern":"00041914"},
     "Gnech":{"Torsten":"00018613"},"Greve":{"Nicole":"00040760"},
     "Guthmann":{"Fred":"00018328"},"Hagen":{"Andy":"00020271"},
     "Hartig":{"Sebastian":"00044120"},"Haus":{"David":"00046101"},
