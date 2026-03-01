@@ -210,7 +210,7 @@ def logo_file_to_data_uri(f) -> str:
 # SUCHE – Hilfsfunktionen
 # =============================================================================
 
-BLATTNAMEN = ["Direkt", "MK", "HuPa_NMS", "HuPa_Malchow", "Direkt 1 - 99", "Hupa MK 882", "Hupa 2221-4444", "Hupa 7773-7779"]
+BLATTNAMEN = ["Direkt", "MK", "HuPa_NMS", "HuPa_Malchow"]
 SPALTEN_MAPPING = {
     "csb_nummer":   "Nr",
     "sap_nummer":   "SAP-Nr.",
@@ -386,24 +386,28 @@ def generate_suche_html(excel_file, key_file, logo_file,
                 tour_dict.setdefault(tournr, []).append(entry)
 
     with st.spinner("Verarbeite Kundendatei ..."):
-        # Erstmal Blattnamen der Datei ermitteln
+        # Blattnamen der Datei ermitteln (openpyxl)
         excel_file.seek(0)
+        alle_blaetter: list = []
         try:
             import openpyxl as _opx
             _wb = _opx.load_workbook(excel_file, read_only=True, data_only=True)
-            alle_blaetter = _wb.sheetnames
+            alle_blaetter = list(_wb.sheetnames)
             _wb.close()
         except Exception:
-            alle_blaetter = []
+            pass
         excel_file.seek(0)
 
-        # Vordefinierte Blattnamen versuchen
-        zu_lesen = [b for b in BLATTNAMEN if b in alle_blaetter] or alle_blaetter
+        # Vordefinierte Blattnamen die wirklich vorhanden sind
+        vorhandene  = [b for b in BLATTNAMEN if b in alle_blaetter]
+        # Fallback: alle Blätter probieren, oder wenn openpyxl fehlschlug: BLATTNAMEN
+        zu_lesen    = vorhandene or alle_blaetter or BLATTNAMEN
+
         for blatt in zu_lesen:
             try:
                 excel_file.seek(0)
                 kunden_sammeln(pd.read_excel(excel_file, sheet_name=blatt))
-            except (ValueError, KeyError):
+            except (ValueError, KeyError, Exception):
                 pass
 
     if not tour_dict:
@@ -440,10 +444,10 @@ def generate_suche_html(excel_file, key_file, logo_file,
 # =============================================================================
 
 SHEETS_DRUCK = {
-    "direkt":  "Direkt 1 - 99",
-    "mk":      "Hupa MK 882",
-    "nms":     "Hupa 2221-4444",
-    "malchow": "Hupa 7773-7779",
+    "direkt":  "Direkt",
+    "mk":      "MK",
+    "nms":     "HuPa_NMS",
+    "malchow": "HuPa_Malchow",
 }
 
 
@@ -451,17 +455,30 @@ def generate_druck_html(up, logo_up) -> str:
     logo_uri = logo_file_to_data_uri(logo_up) or load_logo_data_uri()
     all_data: dict = {}
 
+    _SHEETS_ALT = {
+        "direkt":  "Direkt 1 - 99",
+        "mk":      "Hupa MK 882",
+        "nms":     "Hupa 2221-4444",
+        "malchow": "Hupa 7773-7779",
+    }
     for area_key, sheet_name in SHEETS_DRUCK.items():
         with st.spinner(f"Verarbeite: {sheet_name} ..."):
-            try:
-                up.seek(0)
-                df = pd.read_excel(up, sheet_name=sheet_name)
-            except Exception as e:
-                st.warning(f"Blatt '{sheet_name}' uebersprungen: {e}")
+            df = None
+            for sn in [sheet_name, _SHEETS_ALT.get(area_key, "")]:
+                if not sn:
+                    continue
+                try:
+                    up.seek(0)
+                    df = pd.read_excel(up, sheet_name=sn)
+                    break
+                except Exception:
+                    continue
+            if df is None:
                 continue
 
         cols    = df.columns.tolist()
         trip    = detect_triplets(cols)
+        neue    = detect_neue_triplets(cols)   # neues Format: Montag_Zeit / Montag_Sort / Montag_Tag
         bmap    = detect_bspalten(cols)
         ds_trip = detect_ds_triplets(cols)
         data: dict = {}
@@ -483,6 +500,19 @@ def generate_druck_html(up, logo_up) -> str:
                                 "bestelltag": tag, "bestellschluss": t,
                                 "prio": SORT_PRIO.get(canon_group_id(s), 50),
                             })
+                # Neues Format: Montag_Zeit / Montag_Sort / Montag_Tag
+                for nt in neue:
+                    if nt["liefertag"] != d_de:
+                        continue
+                    s   = norm_val(r.get(nt["sort_col"]))   if nt.get("sort_col") else ""
+                    t   = safe_time(r.get(nt["zeit_col"]))  if nt.get("zeit_col") else ""
+                    tag = norm_val(r.get(nt["tag_col"]))    if nt.get("tag_col")  else ""
+                    if s or t or tag:
+                        day_items.append({
+                            "liefertag": d_de, "sortiment": s,
+                            "bestelltag": tag, "bestellschluss": t,
+                            "prio": SORT_PRIO.get(canon_group_id(s), 50),
+                        })
                 for bk in [k for k in bmap if k[0] == d_de]:
                     bf    = bmap[bk]
                     s     = norm_val(r.get(bf.get("sort", "")))
