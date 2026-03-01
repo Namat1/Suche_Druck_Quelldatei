@@ -975,65 +975,83 @@ def parse_fahrer_excel(dateien: list) -> str:
 
 
 def parse_modul_excel(datei) -> str:
-    """Liest Blatt 'Modulschulungen BKrFQ', gibt JSON-String zurück."""
+    """
+    Liest Blatt 'Modulschulungen BKrFQ'.
+    Spaltenlayout (0-basiert):
+      0=Name, 1=Geburtstag, 2=Geburtsort,
+      3=Gültigkeit BKrFQ abg., 4=Gültigkeit BKrFQ bis,
+      5=M1 abg, 6=M1 bis, 7=M2 abg, 8=M2 bis,
+      9=M3 abg, 10=M3 bis, 11=M4 abg, 12=M4 bis,
+      13 (N)=95 Ablaufdatum, 14 (O)=CE Ablaufdatum
+    """
     import json as _json
     from io import BytesIO
     import datetime as _dt
+    import re as _re
 
-    LEER_DATUM = "31.12.1904"
-    LEER_DATES = {"31.12.1904", "31-12-1904", "1904-12-31"}
+    LEER_YEAR = "1904"
 
     def _fmt(v) -> str:
-        if v is None or (isinstance(v, float) and __import__("math").isnan(v)):
+        if v is None:
             return ""
+        if isinstance(v, float):
+            import math
+            if math.isnan(v): return ""
         if isinstance(v, (_dt.datetime, _dt.date)):
-            return v.strftime("%d.%m.%Y")
+            d = v.date() if isinstance(v, _dt.datetime) else v
+            if d.year == 1904: return ""
+            return d.strftime("%d.%m.%Y")
         s = str(v).strip()
-        if s in LEER_DATES or s == LEER_DATUM:
+        if not s or s.lower() in ("nan", "none", "nat"):
             return ""
+        # ISO datetime string from pandas: "1990-12-03 00:00:00"
+        m = _re.match(r"^(\d{4})-(\d{2})-(\d{2})(?:\s.*)?$", s)
+        if m:
+            if m.group(1) == LEER_YEAR: return ""
+            return f"{m.group(3)}.{m.group(2)}.{m.group(1)}"
+        # Already DD.MM.YYYY
+        m2 = _re.match(r"^(\d{2})\.(\d{2})\.(\d{4})$", s)
+        if m2:
+            if m2.group(3) == LEER_YEAR: return ""
+            return s
         return s
 
     datei.seek(0)
     try:
-        df = pd.read_excel(BytesIO(datei.read()), sheet_name="Modulschulungen BKrFQ",
-                           header=None, dtype=str)
+        df = pd.read_excel(BytesIO(datei.read()),
+                           sheet_name="Modulschulungen BKrFQ",
+                           header=None)
     except Exception as e:
         return _json.dumps({"error": str(e)}, ensure_ascii=False)
 
-    # Headerzeilen überspringen – erste Zeile mit echtem Namen suchen
-    # Spalten (0-basiert): 0=Name, 1=Geburtstag, 2=Geburtsort, 3=Gültigkeit BKrFQ
-    # dann paarweise: abg, gültig_bis × 5 Module = Spalten 4-13
-    # dann 95=Spalte 14, CE=Spalte 15
     result = []
+    SKIP = {"name", "nan", "", "modulschulungen bkrfq", "bkrfq modulschulungen fahrpersonal",
+            "abg.", "gültig bis", "95", "ce", "modul 1", "modul 2", "modul 3", "modul 4", "modul 5"}
+
     for _, row in df.iterrows():
         name_raw = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
-        if not name_raw or name_raw.lower() in ("name", "nan", "", "modulschulungen bkrfq", "bkrfq modulschulungen fahrpersonal"):
+        if not name_raw or name_raw.lower() in SKIP:
             continue
-        # Prüfen ob Zeile wirklich ein Fahrer ist (Name enthält Komma oder Text)
-        if name_raw.startswith("Modul") or name_raw in ("abg.", "gültig bis", "95", "CE"):
+        if name_raw.startswith("Modul") or name_raw.startswith("BKrFQ"):
             continue
 
         def col(i):
             return _fmt(row.iloc[i]) if len(row) > i else ""
 
-        module = []
-        for m in range(5):
-            base = 4 + m * 2
-            abg  = col(base)
-            bis  = col(base + 1)
-            if abg or bis:
-                module.append({"abg": abg, "bis": bis})
-            else:
-                module.append({"abg": "", "bis": ""})
+        # 4 Module (Spalten 5-12), nur gültig bis
+        module_bis = []
+        for m in range(4):
+            base = 5 + m * 2
+            module_bis.append(col(base + 1))   # nur gültig bis
 
         result.append({
-            "name":       name_raw,
-            "geburtstag": col(1),
-            "geburtsort": col(2),
-            "gueltigkeit":col(3),
-            "module":     module,           # Liste mit 5 Einträgen {abg, bis}
-            "col_95":     col(14),
-            "col_ce":     col(15),
+            "name":          name_raw,
+            "geburtstag":    col(1),
+            "geburtsort":    col(2),
+            "gueltigkeit":   col(4),   # Gültigkeit BKrFQ bis
+            "module":        module_bis,   # Liste mit 4 Strings (gültig bis)
+            "col_95":        col(13),      # Spalte N
+            "col_ce":        col(14),      # Spalte O
         })
 
     return _json.dumps(result, ensure_ascii=False)
@@ -1402,25 +1420,30 @@ iframe.active{{display:block}}
         <input id="mod-search" type="text" placeholder="Fahrer suchen..." oninput="modRender()"
           style="padding:6px 12px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:14px;width:220px;outline:none;">
         <select id="mod-filter" onchange="modRender()"
-          style="padding:6px 10px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:13px;outline:none;">
+          style="padding:6px 10px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:13px;outline:none;background:#fff;">
           <option value="all">Alle anzeigen</option>
-          <option value="ok">Alles gültig</option>
-          <option value="warn">Läuft bald ab (&lt;6 Mon.)</option>
-          <option value="exp">Abgelaufen / fehlt</option>
+          <option value="ok">🟢 Alles gültig</option>
+          <option value="warn">🟡 Läuft bald ab (&lt;6 Mon.)</option>
+          <option value="exp">🔴 Abgelaufen / fehlt</option>
         </select>
+        <select id="mod-year-filter" onchange="modRender()"
+          style="padding:6px 10px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:13px;outline:none;background:#fff;">
+          <option value="">Alle Jahre</option>
+        </select>
+        <span id="mod-count" style="font-size:13px;color:#64748b;margin-left:4px;"></span>
       </div>
       <div id="mod-table-wrap" style="overflow-x:auto;background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);">
         <table id="mod-table" style="width:100%;border-collapse:collapse;font-size:13px;">
           <thead>
             <tr style="background:#1b66b3;color:#fff;position:sticky;top:0;z-index:2;">
               <th style="padding:8px 12px;text-align:left;white-space:nowrap;">Name</th>
-              <th style="padding:8px 12px;text-align:left;white-space:nowrap;">Geburtstag</th>
+              <th style="padding:8px 12px;text-align:left;white-space:nowrap;">Geburtstag / Ort</th>
               <th style="padding:8px 12px;text-align:left;white-space:nowrap;">Gültigkeit<br>BKrFQ</th>
-              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 1<br><small>abg. / bis</small></th>
-              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 2<br><small>abg. / bis</small></th>
-              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 3<br><small>abg. / bis</small></th>
-              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 4<br><small>abg. / bis</small></th>
-              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 5<br><small>abg. / bis</small></th>
+              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 1<br><small>gültig bis</small></th>
+              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 2<br><small>gültig bis</small></th>
+              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 3<br><small>gültig bis</small></th>
+              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 4<br><small>gültig bis</small></th>
+
               <th style="padding:8px 12px;text-align:center;white-space:nowrap;">95</th>
               <th style="padding:8px 12px;text-align:center;white-space:nowrap;">CE</th>
             </tr>
@@ -1734,86 +1757,116 @@ function modParseDe(s) {{
   if(p.length===3) return new Date(+p[2], +p[1]-1, +p[0]);
   return null;
 }}
-function modCellHtml(abg, bis) {{
-  if(!abg && !bis) return '<td style="text-align:center;color:#cbd5e1;">–</td>';
+
+function modDaysDiff(s) {{
+  var d = modParseDe(s);
+  if(!d) return null;
   var today = new Date(); today.setHours(0,0,0,0);
-  var bisD  = modParseDe(bis);
-  var bg    = "";
-  var title = "";
-  if(bisD) {{
-    var diff = (bisD - today) / 86400000;
-    if(diff < 0)       {{ bg = "background:#fee2e2;"; title = "Abgelaufen"; }}
-    else if(diff < 183) {{ bg = "background:#fef9c3;"; title = "Läuft bald ab"; }}
-    else                {{ bg = "background:#dcfce7;"; }}
-  }}
-  return '<td style="text-align:center;padding:6px 8px;font-size:12px;' + bg + '" title="' + title + '">'
-    + (abg ? '<div style="color:#475569;">' + abg + '</div>' : '')
-    + (bis ? '<div style="font-weight:600;">' + bis + '</div>' : '')
-    + '</td>';
+  return Math.round((d - today) / 86400000);
 }}
-function modBadge(v) {{
-  if(!v) return '<td style="text-align:center;color:#cbd5e1;">–</td>';
-  var today = new Date(); today.setHours(0,0,0,0);
-  var d = modParseDe(v);
-  var bg = "";
-  if(d) {{
-    var diff = (d - today) / 86400000;
-    if(diff < 0)        bg = "background:#fee2e2;";
-    else if(diff < 183) bg = "background:#fef9c3;";
-    else                bg = "background:#dcfce7;";
-  }}
-  return '<td style="text-align:center;padding:6px 8px;font-size:12px;font-weight:600;' + bg + '">' + v + '</td>';
+
+function modPill(bis) {{
+  if(!bis) return '<span style="color:#cbd5e1;font-size:11px;">–</span>';
+  var diff = modDaysDiff(bis);
+  var bg, color, border;
+  if(diff === null)      {{ bg="#f1f5f9"; color="#64748b"; border="#cbd5e1"; }}
+  else if(diff < 0)      {{ bg="#fee2e2"; color="#b91c1c"; border="#fca5a5"; }}
+  else if(diff < 183)    {{ bg="#fef9c3"; color="#92400e"; border="#fde68a"; }}
+  else                   {{ bg="#dcfce7"; color="#15803d"; border="#86efac"; }}
+  var tip = diff !== null ? (diff < 0 ? "Abgelaufen" : "noch " + diff + " Tage") : "";
+  return '<span title="' + tip + '" style="display:inline-block;padding:3px 8px;border-radius:20px;'
+    + 'background:' + bg + ';color:' + color + ';border:1px solid ' + border + ';'
+    + 'font-size:12px;font-weight:600;white-space:nowrap;">' + bis + '</span>';
 }}
+
 function modRowStatus(d) {{
-  var today = new Date(); today.setHours(0,0,0,0);
-  var hasExp  = false, hasWarn = false;
+  var worst = "ok";
   var check = function(bis) {{
-    if(!bis) return;
-    var t = modParseDe(bis);
-    if(!t) return;
-    var diff = (t - today) / 86400000;
-    if(diff < 0)        hasExp  = true;
-    else if(diff < 183) hasWarn = true;
+    var diff = modDaysDiff(bis);
+    if(diff === null) return;
+    if(diff < 0 && worst !== "exp")          worst = "exp";
+    else if(diff < 183 && worst === "ok")    worst = "warn";
   }};
-  (d.module||[]).forEach(function(m){{ check(m.bis); }});
+  (d.module||[]).forEach(check);
   check(d.col_95); check(d.col_ce); check(d.gueltigkeit);
-  return hasExp ? "exp" : hasWarn ? "warn" : "ok";
+  return worst;
 }}
+
+function modBuildFilters() {{
+  // Monat-Filter aufbauen
+  var data   = Array.isArray(MODULE_DATA) ? MODULE_DATA : [];
+  var years  = {{}};
+  data.forEach(function(d) {{
+    [d.gueltigkeit, d.col_95, d.col_ce].concat(d.module||[]).forEach(function(bis) {{
+      if(!bis) return;
+      var p = bis.split("."); if(p.length===3) years[p[2]] = 1;
+    }});
+  }});
+  var ySel = document.getElementById("mod-year-filter");
+  if(ySel) {{
+    var cur = ySel.value;
+    ySel.innerHTML = '<option value="">Alle Jahre</option>'
+      + Object.keys(years).sort().map(function(y) {{
+          return '<option value="' + y + '"' + (y===cur?" selected":"") + '>' + y + '</option>';
+        }}).join("");
+  }}
+}}
+
 function modRender() {{
   var data   = Array.isArray(MODULE_DATA) ? MODULE_DATA : [];
-  var q      = (document.getElementById("mod-search")||{{}}).value || "";
-  q = q.toLowerCase().trim();
+  var q      = ((document.getElementById("mod-search")||{{}}).value||"").toLowerCase().trim();
   var filter = (document.getElementById("mod-filter")||{{}}).value || "all";
+  var year   = (document.getElementById("mod-year-filter")||{{}}).value || "";
   var tbody  = document.getElementById("mod-tbody");
   var empty  = document.getElementById("mod-empty");
   if(!tbody) return;
+
   var rows = data.filter(function(d) {{
     if(q && d.name.toLowerCase().indexOf(q) < 0) return false;
     if(filter !== "all" && modRowStatus(d) !== filter) return false;
+    if(year) {{
+      var found = false;
+      [d.gueltigkeit, d.col_95, d.col_ce].concat(d.module||[]).forEach(function(bis) {{
+        if(bis && bis.endsWith("."+year)) found = true;
+      }});
+      if(!found) return false;
+    }}
     return true;
   }});
+
+  var count = document.getElementById("mod-count");
+  if(count) count.textContent = rows.length + " Fahrer";
+
   if(rows.length === 0) {{
     tbody.innerHTML = "";
     if(empty) empty.style.display = "block";
     return;
   }}
   if(empty) empty.style.display = "none";
+
   tbody.innerHTML = rows.map(function(d, i) {{
-    var bg = i%2===0 ? "#fff" : "#f8fafc";
+    var bg     = i%2===0 ? "#fff" : "#f8fafc";
     var status = modRowStatus(d);
     var rowBg  = status==="exp" ? "#fff5f5" : status==="warn" ? "#fffbeb" : bg;
-    var cells  = (d.module||[]).map(function(m){{ return modCellHtml(m.abg, m.bis); }}).join("");
+    var mods   = (d.module||[]).map(function(bis) {{
+      return '<td style="padding:6px 10px;text-align:center;">' + modPill(bis) + '</td>';
+    }}).join("");
     return '<tr style="background:' + rowBg + ';border-bottom:1px solid #e2e8f0;">'
-      + '<td style="padding:6px 12px;font-weight:500;white-space:nowrap;">' + d.name + '</td>'
-      + '<td style="padding:6px 12px;white-space:nowrap;color:#64748b;">' + (d.geburtstag||"–") + '</td>'
-      + modBadge(d.gueltigkeit)
-      + cells
-      + modBadge(d.col_95)
-      + modBadge(d.col_ce)
+      + '<td style="padding:8px 12px;font-weight:600;white-space:nowrap;">' + d.name + '</td>'
+      + '<td style="padding:8px 12px;white-space:nowrap;">'
+      +   '<span style="font-size:12px;color:#64748b;">' + (d.geburtstag||"–") + '</span>'
+      +   (d.geburtsort ? '<span style="font-size:11px;color:#94a3b8;display:block;">' + d.geburtsort + '</span>' : '')
+      + '</td>'
+      + '<td style="padding:8px 10px;text-align:center;">' + modPill(d.gueltigkeit) + '</td>'
+      + mods
+      + '<td style="padding:8px 10px;text-align:center;">' + modPill(d.col_95) + '</td>'
+      + '<td style="padding:8px 10px;text-align:center;">' + modPill(d.col_ce) + '</td>'
       + '</tr>';
   }}).join("");
 }}
+
 document.addEventListener("DOMContentLoaded", function() {{
+  modBuildFilters();
   modRender();
 }});
 
