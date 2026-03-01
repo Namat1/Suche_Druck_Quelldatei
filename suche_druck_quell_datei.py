@@ -974,7 +974,72 @@ def parse_fahrer_excel(dateien: list) -> str:
     return _json.dumps(result, ensure_ascii=False)
 
 
-def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", kfz_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", last_updated: str = "") -> str:
+def parse_modul_excel(datei) -> str:
+    """Liest Blatt 'Modulschulungen BKrFQ', gibt JSON-String zurück."""
+    import json as _json
+    from io import BytesIO
+    import datetime as _dt
+
+    LEER_DATUM = "31.12.1904"
+    LEER_DATES = {"31.12.1904", "31-12-1904", "1904-12-31"}
+
+    def _fmt(v) -> str:
+        if v is None or (isinstance(v, float) and __import__("math").isnan(v)):
+            return ""
+        if isinstance(v, (_dt.datetime, _dt.date)):
+            return v.strftime("%d.%m.%Y")
+        s = str(v).strip()
+        if s in LEER_DATES or s == LEER_DATUM:
+            return ""
+        return s
+
+    datei.seek(0)
+    try:
+        df = pd.read_excel(BytesIO(datei.read()), sheet_name="Modulschulungen BKrFQ",
+                           header=None, dtype=str)
+    except Exception as e:
+        return _json.dumps({"error": str(e)}, ensure_ascii=False)
+
+    # Headerzeilen überspringen – erste Zeile mit echtem Namen suchen
+    # Spalten (0-basiert): 0=Name, 1=Geburtstag, 2=Geburtsort, 3=Gültigkeit BKrFQ
+    # dann paarweise: abg, gültig_bis × 5 Module = Spalten 4-13
+    # dann 95=Spalte 14, CE=Spalte 15
+    result = []
+    for _, row in df.iterrows():
+        name_raw = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+        if not name_raw or name_raw.lower() in ("name", "nan", "", "modulschulungen bkrfq", "bkrfq modulschulungen fahrpersonal"):
+            continue
+        # Prüfen ob Zeile wirklich ein Fahrer ist (Name enthält Komma oder Text)
+        if name_raw.startswith("Modul") or name_raw in ("abg.", "gültig bis", "95", "CE"):
+            continue
+
+        def col(i):
+            return _fmt(row.iloc[i]) if len(row) > i else ""
+
+        module = []
+        for m in range(5):
+            base = 4 + m * 2
+            abg  = col(base)
+            bis  = col(base + 1)
+            if abg or bis:
+                module.append({"abg": abg, "bis": bis})
+            else:
+                module.append({"abg": "", "bis": ""})
+
+        result.append({
+            "name":       name_raw,
+            "geburtstag": col(1),
+            "geburtsort": col(2),
+            "gueltigkeit":col(3),
+            "module":     module,           # Liste mit 5 Einträgen {abg, bis}
+            "col_95":     col(14),
+            "col_ce":     col(15),
+        })
+
+    return _json.dumps(result, ensure_ascii=False)
+
+
+def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", kfz_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", modul_json: str = "[]", last_updated: str = "") -> str:
     """
     Bettet beliebig viele Suche+Druck-Paare (Instanzen) in eine HTML ein.
     Instanz-Wechsler im Topnav.
@@ -1189,6 +1254,7 @@ iframe.active{{display:block}}
   <button class="nav-btn" id="btn-sam" onclick="showArea('sam')">&#128664; Sa + So Einstätze</button>
   <button class="nav-btn" id="btn-fa" onclick="showArea('fa')">&#128101; Fahrerauswertung</button>
   <button class="nav-btn" id="btn-zulage" onclick="showArea('zulage')">&#128176; Zulagen</button>
+  <button class="nav-btn" id="btn-module" onclick="showArea('module')">&#127891; Module</button>
   <div class="nav-dd" id="dd-kfz">
     <button class="nav-dd-btn" id="btn-kfz" onclick="ddToggle('kfz',event)">
       &#128663; Kennzahlen Fuhrpark <span id="inst-label-kfz"></span><span class="dd-arrow">&#9660;</span>
@@ -1329,6 +1395,44 @@ iframe.active{{display:block}}
     <div id="zulage-content" style="flex:1;overflow-y:auto;padding:20px;"></div>
   </div>
 
+  <div id="panel-module" style="display:none;flex:1;overflow-y:auto;background:#f4f6fa;font-family:'Segoe UI',Arial,sans-serif;padding:20px;">
+    <div style="max-width:1400px;margin:0 auto;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+        <h2 style="margin:0;font-size:18px;color:#1b66b3;font-weight:700;">&#127891; Modulschulungen BKrFQ</h2>
+        <input id="mod-search" type="text" placeholder="Fahrer suchen..." oninput="modRender()"
+          style="padding:6px 12px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:14px;width:220px;outline:none;">
+        <select id="mod-filter" onchange="modRender()"
+          style="padding:6px 10px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:13px;outline:none;">
+          <option value="all">Alle anzeigen</option>
+          <option value="ok">Alles gültig</option>
+          <option value="warn">Läuft bald ab (&lt;6 Mon.)</option>
+          <option value="exp">Abgelaufen / fehlt</option>
+        </select>
+      </div>
+      <div id="mod-table-wrap" style="overflow-x:auto;background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);">
+        <table id="mod-table" style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:#1b66b3;color:#fff;position:sticky;top:0;z-index:2;">
+              <th style="padding:8px 12px;text-align:left;white-space:nowrap;">Name</th>
+              <th style="padding:8px 12px;text-align:left;white-space:nowrap;">Geburtstag</th>
+              <th style="padding:8px 12px;text-align:left;white-space:nowrap;">Gültigkeit<br>BKrFQ</th>
+              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 1<br><small>abg. / bis</small></th>
+              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 2<br><small>abg. / bis</small></th>
+              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 3<br><small>abg. / bis</small></th>
+              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 4<br><small>abg. / bis</small></th>
+              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 5<br><small>abg. / bis</small></th>
+              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">95</th>
+              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">CE</th>
+            </tr>
+          </thead>
+          <tbody id="mod-tbody"></tbody>
+        </table>
+        <div id="mod-empty" style="display:none;padding:40px;text-align:center;color:#94a3b8;">Keine Fahrer gefunden.</div>
+      </div>
+    </div>
+  </div>
+
+
 </div>
 </div>
 
@@ -1463,6 +1567,10 @@ function showArea(s) {{
   if(zulagePanel) zulagePanel.style.display = (s==="zulage") ? "flex" : "none";
   var zuBtn = document.getElementById("btn-zulage");
   if(zuBtn) zuBtn.className = "nav-btn" + (s==="zulage" ? " active" : "");
+  var modBtn = document.getElementById("btn-module");
+  if(modBtn) modBtn.className = "nav-btn" + (s==="module" ? " active" : "");
+  var modPanel = document.getElementById("panel-module");
+  if(modPanel) modPanel.style.display = (s==="module") ? "block" : "none";
   if(kfzPanel)      kfzPanel.style.display      = (s==="kfz")       ? "block" : "none";
   if(kfzGraphPanel) kfzGraphPanel.style.display = (s==="kfz-graph") ? "block" : "none";
   if(s==="tel" && !telPanel.dataset.loaded) {{ telRender(""); telPanel.dataset.loaded="1"; }}
@@ -1616,6 +1724,99 @@ var ZULAGE_XLSX_SONDER   = "{zulage_xlsx_sonder}";
 var ZULAGE_XLSX_FUENGERS    = "{zulage_xlsx_fuengers}";
 var DRITTKUNDEN_DATA        = {drittkunden_json};
 var ZULAGE_XLSX_DRITTKUNDEN = "{zulage_xlsx_drittkunden}";
+var MODULE_DATA             = {modul_json};
+
+
+// ── Modulschulungen ───────────────────────────────────────────────────────────
+function modParseDe(s) {{
+  if(!s) return null;
+  var p = s.split(".");
+  if(p.length===3) return new Date(+p[2], +p[1]-1, +p[0]);
+  return null;
+}}
+function modCellHtml(abg, bis) {{
+  if(!abg && !bis) return '<td style="text-align:center;color:#cbd5e1;">–</td>';
+  var today = new Date(); today.setHours(0,0,0,0);
+  var bisD  = modParseDe(bis);
+  var bg    = "";
+  var title = "";
+  if(bisD) {{
+    var diff = (bisD - today) / 86400000;
+    if(diff < 0)       {{ bg = "background:#fee2e2;"; title = "Abgelaufen"; }}
+    else if(diff < 183) {{ bg = "background:#fef9c3;"; title = "Läuft bald ab"; }}
+    else                {{ bg = "background:#dcfce7;"; }}
+  }}
+  return '<td style="text-align:center;padding:6px 8px;font-size:12px;' + bg + '" title="' + title + '">'
+    + (abg ? '<div style="color:#475569;">' + abg + '</div>' : '')
+    + (bis ? '<div style="font-weight:600;">' + bis + '</div>' : '')
+    + '</td>';
+}}
+function modBadge(v) {{
+  if(!v) return '<td style="text-align:center;color:#cbd5e1;">–</td>';
+  var today = new Date(); today.setHours(0,0,0,0);
+  var d = modParseDe(v);
+  var bg = "";
+  if(d) {{
+    var diff = (d - today) / 86400000;
+    if(diff < 0)        bg = "background:#fee2e2;";
+    else if(diff < 183) bg = "background:#fef9c3;";
+    else                bg = "background:#dcfce7;";
+  }}
+  return '<td style="text-align:center;padding:6px 8px;font-size:12px;font-weight:600;' + bg + '">' + v + '</td>';
+}}
+function modRowStatus(d) {{
+  var today = new Date(); today.setHours(0,0,0,0);
+  var hasExp  = false, hasWarn = false;
+  var check = function(bis) {{
+    if(!bis) return;
+    var t = modParseDe(bis);
+    if(!t) return;
+    var diff = (t - today) / 86400000;
+    if(diff < 0)        hasExp  = true;
+    else if(diff < 183) hasWarn = true;
+  }};
+  (d.module||[]).forEach(function(m){{ check(m.bis); }});
+  check(d.col_95); check(d.col_ce); check(d.gueltigkeit);
+  return hasExp ? "exp" : hasWarn ? "warn" : "ok";
+}}
+function modRender() {{
+  var data   = Array.isArray(MODULE_DATA) ? MODULE_DATA : [];
+  var q      = (document.getElementById("mod-search")||{{}}).value || "";
+  q = q.toLowerCase().trim();
+  var filter = (document.getElementById("mod-filter")||{{}}).value || "all";
+  var tbody  = document.getElementById("mod-tbody");
+  var empty  = document.getElementById("mod-empty");
+  if(!tbody) return;
+  var rows = data.filter(function(d) {{
+    if(q && d.name.toLowerCase().indexOf(q) < 0) return false;
+    if(filter !== "all" && modRowStatus(d) !== filter) return false;
+    return true;
+  }});
+  if(rows.length === 0) {{
+    tbody.innerHTML = "";
+    if(empty) empty.style.display = "block";
+    return;
+  }}
+  if(empty) empty.style.display = "none";
+  tbody.innerHTML = rows.map(function(d, i) {{
+    var bg = i%2===0 ? "#fff" : "#f8fafc";
+    var status = modRowStatus(d);
+    var rowBg  = status==="exp" ? "#fff5f5" : status==="warn" ? "#fffbeb" : bg;
+    var cells  = (d.module||[]).map(function(m){{ return modCellHtml(m.abg, m.bis); }}).join("");
+    return '<tr style="background:' + rowBg + ';border-bottom:1px solid #e2e8f0;">'
+      + '<td style="padding:6px 12px;font-weight:500;white-space:nowrap;">' + d.name + '</td>'
+      + '<td style="padding:6px 12px;white-space:nowrap;color:#64748b;">' + (d.geburtstag||"–") + '</td>'
+      + modBadge(d.gueltigkeit)
+      + cells
+      + modBadge(d.col_95)
+      + modBadge(d.col_ce)
+      + '</tr>';
+  }}).join("");
+}}
+document.addEventListener("DOMContentLoaded", function() {{
+  modRender();
+}});
+
 
 function telPDF() {{
   var w = window.open("","_blank","width=900,height=700");
@@ -2685,6 +2886,16 @@ elif any(st.session_state.get(k) for k in ("sam_json","zulage_json","drittkunden
 
 
 
+modul_up = st.file_uploader("🎓 Modulschulungen BKrFQ (Excel)", type=["xlsx"], key="modul_upload")
+if modul_up:
+    with st.spinner("Lese Modulschulungen …"):
+        st.session_state.modul_json = parse_modul_excel(modul_up)
+    n = len(__import__("json").loads(st.session_state.modul_json))
+    st.caption(f"✅ Modulschulungen: {n} Fahrer geladen")
+elif st.session_state.get("modul_json"):
+    n = len(__import__("json").loads(st.session_state.modul_json))
+    st.caption(f"✅ Modulschulungen bereits geladen: {n} Fahrer")
+
 kfz_up = st.file_uploader("🚛 Kennzahlen Fuhrpark (Excel, erstes Blatt wird gelesen)", type=["xlsx"], key="kfz_upload")
 if kfz_up:
     with st.spinner("Lese Fuhrpark-Kennzahlen …"):
@@ -2717,6 +2928,7 @@ if ready:
             zulage_xlsx_drittkunden=(__import__("base64").b64encode(
                 generate_drittkunden_excel(st.session_state.get("drittkunden_json","[]")) or b""
             ).decode() if st.session_state.get("drittkunden_json","[]") not in ("[]","") else ""),
+            modul_json=st.session_state.get("modul_json", "[]"),
             last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
         )
     st.download_button(
