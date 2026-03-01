@@ -101,6 +101,44 @@ def canon_group_id(label: str) -> str:
     return "?"
 
 
+def detect_neue_bspalten(columns: list) -> dict:
+    """
+    Erkennt neues B-Spalten-Format: '{Tag} {Gruppe} B_{Feld}'
+    Feld = Zeit | Sortiment | Sort | Tag
+    Bestelltag steht als Datenwert in der B_Tag-Spalte (nicht im Spaltennamen).
+    Gibt dict zurück: {(liefertag, gruppe): {"zeit": col, "sort": col, "tag_col": col}}
+    """
+    import re as _re
+    DAY_SHORT = {
+        "Mo":"Montag","Di":"Dienstag","Die":"Dienstag",
+        "Mi":"Mittwoch","Mit":"Mittwoch","Mitt":"Mittwoch",
+        "Do":"Donnerstag","Don":"Donnerstag","Donn":"Donnerstag",
+        "Fr":"Freitag","Sa":"Samstag","Sam":"Samstag",
+    }
+    rx = _re.compile(
+        r"^(Mo|Die|Di|Mitt|Mit|Mi|Don|Donn|Do|Fr|Sam|Sa)\s+(\d+)\s+B_(Zeit|Sortiment|Sort|Tag)$",
+        _re.IGNORECASE,
+    )
+    groups: dict = {}
+    order:  list = []
+    for col in columns:
+        m = rx.match(str(col).strip())
+        if not m:
+            continue
+        day = DAY_SHORT.get(m.group(1))
+        grp = m.group(2)
+        feld = m.group(3).lower()
+        if not day:
+            continue
+        key = (day, grp)
+        if key not in groups:
+            groups[key] = {}
+            order.append(key)
+        fk = "sort" if feld in ("sortiment", "sort") else feld
+        groups[key][fk] = col
+    return groups
+
+
 def detect_bspalten(columns: List[str]) -> dict:
     rx_b = re.compile(
         r"^(Mo|Die|Di|Mitt|Mit|Mi|Don|Donn|Do|Fr|Sam|Sa)\s+"
@@ -521,6 +559,7 @@ def generate_druck_html(up, logo_up) -> str:
         trip    = detect_triplets(cols)
         neue    = detect_neue_triplets(cols)   # neues Format: Montag_Zeit / Montag_Sort / Montag_Tag
         bmap    = detect_bspalten(cols)
+        nbmap   = detect_neue_bspalten(cols)   # neues B-Format: "Die 1001 B_Zeit" etc.
         ds_trip = detect_ds_triplets(cols)
         data: dict = {}
 
@@ -561,6 +600,18 @@ def generate_druck_html(up, logo_up) -> str:
                     l_col = bf.get("l")
                     tag   = norm_val(r.get(l_col, "")) if l_col else bk[2]
                     if not tag: tag = bk[2]
+                    if s or z:
+                        day_items.append({
+                            "liefertag": d_de, "sortiment": s,
+                            "bestelltag": tag, "bestellschluss": z,
+                            "prio": SORT_PRIO.get(canon_group_id(s), 50),
+                        })
+                # Neues B-Format: "Die 1001 B_Zeit" / "Die 1001 B_Sortiment" / "Die 1001 B_Tag"
+                for nbk in [k for k in nbmap if k[0] == d_de]:
+                    nbf = nbmap[nbk]
+                    s   = norm_val(r.get(nbf.get("sort", "")))
+                    z   = safe_time(r.get(nbf.get("zeit", "")))
+                    tag = norm_val(r.get(nbf.get("tag", "")))
                     if s or z:
                         day_items.append({
                             "liefertag": d_de, "sortiment": s,
