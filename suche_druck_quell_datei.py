@@ -2407,7 +2407,7 @@ _ZULAGE_PERSNR = {
     "Fechner":{"Danny":"00043696","Klaus":"00038278"},
     "Findeklee":{"Bernd":"00020804"},"Flint":{"Henryk":"00042414"},
     "Fuhlbruegge":{"Justin":"00046289"},"Gehrmann":{"Rayk":"00046702"},
-    "Gheonea":{"Daniel-Costel":"00054489"},"Glanz":{"Bjoern":"00041914"},
+    "Gheonea":{"Costel-Daniel":"00054489"},"Glanz":{"Bjoern":"00041914"},
     "Gnech":{"Torsten":"00018613"},"Greve":{"Nicole":"00040760"},
     "Guthmann":{"Fred":"00018328"},"Hagen":{"Andy":"00020271"},
     "Hartig":{"Sebastian":"00044120"},"Haus":{"David":"00046101"},
@@ -2845,7 +2845,12 @@ if "instances" not in st.session_state:
 st.markdown("**Wochen** – pro Woche eine Wochen-Excel hochladen")
 
 for i, inst in enumerate(st.session_state.instances):
-    with st.expander(f"📅 Woche {i+1}: {inst['name']}", expanded=(i == 0)):
+    _is_normal = (i == 0)
+    _expander_label = f"📋 Normalwoche (Referenz Massendruck-Sortierung): {inst['name']}" if _is_normal else f"📅 Woche {i+1}: {inst['name']}"
+    with st.expander(_expander_label, expanded=(i == 0)):
+
+        if _is_normal:
+            st.info("⭐ Diese Woche ist die **Normalwoche** – nach ihr wird der Massendruck sortiert und die Ladefolge ausgerichtet.")
 
         col_name, col_del = st.columns([5, 1])
         with col_name:
@@ -2858,7 +2863,8 @@ for i, inst in enumerate(st.session_state.instances):
                     st.session_state.instances.pop(i)
                     st.rerun()
 
-        excel = st.file_uploader("📊 Wochen-Excel *", type=["xlsx"], key=f"excel_{i}")
+        _excel_label = "📊 Normalwochen-Excel (Referenzdatei) *" if _is_normal else "📊 Wochen-Excel *"
+        excel = st.file_uploader(_excel_label, type=["xlsx"], key=f"excel_{i}")
 
         _logo = st.session_state.get("g_logo")
         _key  = st.session_state.get("g_key")
