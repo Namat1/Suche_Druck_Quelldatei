@@ -2212,8 +2212,6 @@ function samToggle(el) {{
 {fa_js_code}
 {kfz_js_code}
 {kfz_graph_js_code}
-{kfz_graph_pdf_js_code}
-{kfz_dd_js_code}
 {kfz_pdf_js_code}
 {zulage_js_code}
 </script>
