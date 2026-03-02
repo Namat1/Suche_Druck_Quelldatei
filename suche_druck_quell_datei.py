@@ -1945,7 +1945,9 @@ function telRender(q) {{
             + " data-tel='" + safetel + "' title='Klicken zum Kopieren'"
             + " style='cursor:pointer;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;transition:background .12s'>";
       html += "<div style='font-weight:800;font-size:13px;color:#0b1220'>" + p.name + "</div>";
-      html += "<div style='font-size:13px;color:#1b66b3;font-weight:700;margin-top:2px'>&#128222; " + p.tel + "</div>";
+      var telClean = p.tel.replace(/[^\d+]/g,'');
+      html += "<a href='tel:" + telClean + "' onclick='event.stopPropagation()'" + " title='ProCall: " + safetel + "'"
+            + " style='display:block;font-size:13px;color:#1b66b3;font-weight:700;margin-top:2px;text-decoration:none;'>&#128222; " + p.tel + "</a>";
       if(p.mail) {{
         var isRole = (p.mail==="Disponent"||p.mail==="Chef");
         html += isRole
