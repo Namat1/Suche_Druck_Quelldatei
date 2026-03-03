@@ -1075,7 +1075,993 @@ def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", kf
     Bettet beliebig viele Suche+Druck-Paare (Instanzen) in eine HTML ein.
     Instanz-Wechsler im Topnav.
     """
-    fa_js_code = '\n// ── Fahrerauswertung ──────────────────────────────────────────────────────────\nvar faCurrentSort  = \"name\";\nvar faYearFilter   = String(new Date().getFullYear());\nvar faSelectedName = null;\nvar faSearchQuery  = \"\";\n\nfunction faSort(mode) {\n  faCurrentSort = mode;\n  [\"name\",\"arbeit\"].forEach(function(m) {\n    var btn = document.getElementById(\"fa-sort-\"+m);\n    if(!btn) return;\n    btn.style.background = mode===m ? \"#1b66b3\" : \"#fff\";\n    btn.style.color      = mode===m ? \"#fff\"    : \"#1b66b3\";\n  });\n  faBuildSidebarHighlight(faSelectedName);\n}\n\nfunction faFilter(q) { faSearchQuery = q; faBuildSidebarHighlight(faSelectedName); }\nfunction faYearChange(yr) {\n  faYearFilter = yr;\n  faBuildSidebarHighlight(faSelectedName);\n  if(faSelectedName) faShowDetail(faSelectedName);\n}\n\nfunction faGetStats(driver, yr) {\n  if(!driver.years) return {krank:0,urlaub:0,ausgleich:0,arbeit:0,arbeit_samstag:0,touren:{},lkw:{},eintraege:[]};\n  var years = yr===\"all\" ? Object.keys(driver.years) : [yr];\n  var out = {krank:0,urlaub:0,ausgleich:0,arbeit:0,arbeit_samstag:0,touren:{},lkw:{},eintraege:[]};\n  years.forEach(function(y) {\n    var d = driver.years[y];\n    if(!d) return;\n    out.krank          += d.krank          || 0;\n    out.urlaub         += d.urlaub         || 0;\n    out.ausgleich      += d.ausgleich      || 0;\n    out.arbeit         += d.arbeit         || 0;\n    out.arbeit_samstag += d.arbeit_samstag || 0;\n    Object.keys(d.touren||{}).forEach(function(t){\n      out.touren[t] = (out.touren[t]||0) + d.touren[t];\n    });\n    // Use pre-computed lkw if available, otherwise compute from eintraege\n    var lkwSource = d.lkw && Object.keys(d.lkw).length > 0 ? d.lkw : (function(){\n      var cnt = {};\n      (d.eintraege||[]).forEach(function(e){\n        var lv = (e.lkw||\"\").trim();\n        var tl = (e.tour||\"\").toLowerCase();\n        if(lv && lv!==\"0\" && !/krank|urlaub|ausgleich/i.test(tl)){\n          cnt[lv] = (cnt[lv]||0) + 1;\n        }\n      });\n      return cnt;\n    })();\n    Object.keys(lkwSource).forEach(function(l){\n      out.lkw[l] = (out.lkw[l]||0) + lkwSource[l];\n    });\n    out.eintraege = out.eintraege.concat(d.eintraege||[]);\n  });\n  return out;\n}\n\nfunction faGetFiltered() {\n  var q = faSearchQuery.toLowerCase().trim();\n  var list = FA_DATA.filter(function(d) {\n    if(q && !d.name.toLowerCase().includes(q)) return false;\n    if(faYearFilter !== \"all\" && !d.years[faYearFilter]) return false;\n    return true;\n  });\n  if(faCurrentSort === \"arbeit\") {\n    list.sort(function(a,b){ return faGetStats(b,faYearFilter).arbeit - faGetStats(a,faYearFilter).arbeit; });\n  } else {\n    list.sort(function(a,b){ return a.name.localeCompare(b.name,\"de\"); });\n  }\n  return list;\n}\n\nfunction faRender(q) {\n  faSearchQuery = q || \"\";\n  if(!FA_DATA || !FA_DATA.length) {\n    var c = document.getElementById(\"fa-detail-panel\");\n    if(c) c.innerHTML = \"<div style=\'color:#94a3b8;padding:40px;text-align:center;font-size:14px;\'>Keine Daten vorhanden.<br>Bitte Fahrerauswertungs-Dateien in Streamlit hochladen.</div>\";\n    return;\n  }\n  faPopulateYears();\n  faBuildSidebarHighlight(null);\n}\n\nfunction faPopulateYears() {\n  var allYears = [];\n  FA_DATA.forEach(function(d) {\n    Object.keys(d.years||{}).forEach(function(y){\n      if(y !== \"2024\" && allYears.indexOf(y) === -1) allYears.push(y);\n    });\n  });\n  allYears.sort().reverse();\n  var yrSel = document.getElementById(\"fa-year-sel\");\n  if(!yrSel) return;\n  var current = yrSel.value;\n  var curYr = String(new Date().getFullYear());\n  yrSel.innerHTML = allYears.map(function(y){ return \"<option value=\'\"+y+\"\'>\"+y+\"</option>\"; }).join(\"\");\n  // Default to current year\n  if(current && allYears.indexOf(current) !== -1) yrSel.value = current;\n  else if(allYears.indexOf(curYr) !== -1) yrSel.value = curYr;\n  else if(allYears.length) yrSel.value = allYears[0];\n  faYearFilter = yrSel.value;\n}\n\nfunction faBuildSidebarHighlight(activeName) {\n  var sidebar = document.getElementById(\"fa-sidebar-list\");\n  if(!sidebar) return;\n  var filtered = faGetFiltered();\n\n  var statsEl = document.getElementById(\"fa-stats\");\n  if(statsEl) {\n    var total   = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).arbeit;    },0);\n    var totalK  = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).krank;     },0);\n    var totalU  = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).urlaub;    },0);\n    statsEl.innerHTML =\n      \"<b>\"+filtered.length+\"</b> Fahrer &nbsp;&middot;&nbsp; Σ <b>\"+total+\"</b> Arbeitstage\" +\n      (totalK ? \" &nbsp;&middot;&nbsp; <span style=\'color:#dc2626;\'>Krank Σ <b>\"+totalK+\"</b></span>\" : \"\") +\n      (totalU ? \" &nbsp;&middot;&nbsp; <span style=\'color:#0891b2;\'>Urlaub Σ <b>\"+totalU+\"</b></span>\" : \"\");\n  }\n\n  var html = \"\";\n  filtered.forEach(function(d) {\n    var s = faGetStats(d, faYearFilter);\n    var active = d.name === activeName;\n    var bg = active ? \"#1b66b3\" : \"#fff\";\n    var fg = active ? \"#fff\" : \"#0b1220\";\n    html += \"<div onclick=\'faShowDetail(\\\"\"+d.name.replace(/\"/g,\"&quot;\")+\"\\\")\'\"+\n      \" style=\'padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;background:\"+bg+\";\'>\" +\n      \"<div style=\'font-weight:700;font-size:13px;color:\"+fg+\";\'>\"+d.name+\"</div>\" +\n      \"<div style=\'display:flex;gap:3px;flex-wrap:wrap;margin-top:3px;\'>\" +\n        \"<span style=\'font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:\"+(active?\"rgba(255,255,255,.2)\":\"#dbeafe\")+\";color:\"+(active?\"#fff\":\"#1b66b3\")+\"\'>\"+s.arbeit+\" T</span>\" +\n        (s.arbeit_samstag ? \"<span style=\'font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:\"+(active?\"rgba(255,255,255,.15)\":\"#fef9c3\")+\";color:\"+(active?\"#fff\":\"#b45309\")+\"\'>Sa \"+s.arbeit_samstag+\"</span>\" : \"\") +\n        (s.krank ? \"<span style=\'font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:\"+(active?\"rgba(255,255,255,.15)\":\"#fee2e2\")+\";color:\"+(active?\"#fff\":\"#dc2626\")+\"\'>K \"+s.krank+\"</span>\" : \"\") +\n      \"</div></div>\";\n  });\n  sidebar.innerHTML = html || \"<div style=\'padding:20px;color:#94a3b8;font-size:12px;text-align:center;\'>Kein Fahrer gefunden</div>\";\n\n  if(!activeName && filtered.length) { faSelectedName = filtered[0].name; faShowDetail(filtered[0].name); }\n  else if(activeName) faSelectedName = activeName;\n}\n\nfunction faShowDetail(name) {\n  faSelectedName = name;\n  faBuildSidebarHighlight(name);\n  var driver = FA_DATA.find(function(d){ return d.name === name; });\n  var panel = document.getElementById(\"fa-detail-panel\");\n  if(!panel || !driver) return;\n\n  var yr = faYearFilter;\n  var s  = faGetStats(driver, yr);\n  var years = (yr === \"all\" ? Object.keys(driver.years||{}).sort().reverse() : [yr]).filter(function(y){return y!==\"2024\";});\n\n  var lkwEntries = Object.entries(s.lkw||{}).sort(function(a,b){return b[1]-a[1];});\n  var lkwHtml = lkwEntries.length\n    ? lkwEntries.map(function(e){\n        return \"<span style=\'display:inline-block;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:3px 12px;margin:2px;font-size:12px;font-weight:700;color:#166534;\'>\"+e[0]+\" <span style=\'color:#64748b;font-weight:500;\'>\"+e[1]+\"x</span></span>\";\n      }).join(\"\")\n    : \"<span style=\'color:#94a3b8;font-size:12px;\'>Keine LKW-Daten</span>\";\n\n  var html = \"\";\n\n  // Header\n  html += \"<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px 20px;margin-bottom:14px;\'>\";\n  html += \"<div style=\'font-size:20px;font-weight:900;color:#0b1220;margin-bottom:10px;\'>\"+driver.name+\"</div>\";\n  html += \"<div style=\'display:flex;flex-wrap:wrap;gap:7px;\'>\";\n  html += \"<span style=\'background:#dbeafe;border-radius:8px;padding:4px 14px;font-size:13px;font-weight:800;color:#1b66b3;\'>&#9733; \"+s.arbeit+\" Arbeitstage</span>\";\n  if(s.arbeit_samstag) html += \"<span style=\'background:#fef9c3;border-radius:8px;padding:4px 14px;font-size:13px;font-weight:800;color:#b45309;\'>Samstag \"+s.arbeit_samstag+\"</span>\";\n  if(s.krank)          html += \"<span style=\'background:#fee2e2;border-radius:8px;padding:4px 14px;font-size:13px;font-weight:800;color:#dc2626;\'>Krank \"+s.krank+\"</span>\";\n  if(s.urlaub)         html += \"<span style=\'background:#e0f2fe;border-radius:8px;padding:4px 14px;font-size:13px;font-weight:800;color:#0891b2;\'>Urlaub \"+s.urlaub+\"</span>\";\n  if(s.ausgleich)      html += \"<span style=\'background:#f0fdf4;border-radius:8px;padding:4px 14px;font-size:13px;font-weight:800;color:#16a34a;\'>Ausgl. \"+s.ausgleich+\"</span>\";\n  html += \"</div></div>\";\n\n  // LKW Section\n  html += \"<div style=\'background:#fff;border:1.5px solid #bbf7d0;border-radius:10px;padding:12px 16px;margin-bottom:14px;\'>\";\n  html += \"<div style=\'font-size:11px;font-weight:900;text-transform:uppercase;color:#166534;letter-spacing:.4px;margin-bottom:8px;\'>LKW-Einsätze</div>\";\n  html += \"<div>\"+lkwHtml+\"</div>\";\n  html += \"</div>\";\n\n  // Year chips\n  if(yr === \"all\" && years.length > 1) {\n    html += \"<div style=\'display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;\'>\";\n    years.forEach(function(y) {\n      var ys = driver.years[y]; if(!ys) return;\n      html += \"<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:8px 14px;min-width:110px;\'>\";\n      html += \"<div style=\'font-size:12px;font-weight:900;color:#1b66b3;margin-bottom:4px;\'>\"+y+\"</div>\";\n      html += \"<div style=\'font-size:13px;font-weight:800;\'>&#9733; \"+ys.arbeit+\"</div>\";\n      if(ys.arbeit_samstag) html += \"<div style=\'font-size:11px;color:#b45309;\'>Sa: \"+ys.arbeit_samstag+\"</div>\";\n      if(ys.krank)  html += \"<div style=\'font-size:11px;color:#dc2626;\'>Krank: \"+ys.krank+\"</div>\";\n      if(ys.urlaub) html += \"<div style=\'font-size:11px;color:#0891b2;\'>Urlaub: \"+ys.urlaub+\"</div>\";\n      html += \"</div>\";\n    });\n    html += \"</div>\";\n  }\n\n  // KW table\n  years.forEach(function(y) {\n    var yd = driver.years[y]; if(!yd) return;\n    var kwMap = {};\n    var dispYr = parseInt(y);\n    (yd.eintraege||[]).forEach(function(e){\n      // Skip entries whose date doesn\'t belong to the displayed year\n      var m = (e.datum||\"\").match(/(\\d{4})$/);\n      if(m && parseInt(m[1]) !== dispYr) return;\n      var k=\"KW \"+e.kw; if(!kwMap[k]) kwMap[k]=[]; kwMap[k].push(e);\n    });\n    var kwKeys = Object.keys(kwMap).sort(function(a,b){return parseInt(a.split(\" \")[1])-parseInt(b.split(\" \")[1]);});\n\n    if(years.length > 1)\n      html += \"<div style=\'font-size:13px;font-weight:900;color:#1b66b3;margin:12px 0 6px;border-left:3px solid #1b66b3;padding-left:8px;\'>\"+y+\"</div>\";\n\n    html += \"<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:12px;\'>\";\n    html += \"<table style=\'width:100%;border-collapse:collapse;font-size:12px;\'>\";\n    html += \"<thead><tr style=\'background:#1e3a5f;color:#fff;\'><th style=\'padding:6px 10px;text-align:left;\'>KW</th><th style=\'padding:6px 10px;text-align:left;\'>Datum</th><th style=\'padding:6px 10px;text-align:left;\'>Tour</th><th style=\'padding:6px 10px;text-align:left;\'>Zeit</th><th style=\'padding:6px 10px;text-align:left;\'>LKW</th></tr></thead><tbody>\";\n    kwKeys.forEach(function(kw) {\n      html += \"<tr style=\'background:#dbeafe;\'><td colspan=\'5\' style=\'padding:3px 10px;font-weight:800;color:#1b66b3;font-size:11px;\'>\"+kw+\"</td></tr>\";\n      kwMap[kw].forEach(function(e,i) {\n        var bg = e.samstag ? \"#fff7ed\" : (i%2===0?\"#f8fafc\":\"#fff\");\n        var tc = /krank/i.test(e.tour)?\"color:#dc2626;font-weight:700;\":/urlaub/i.test(e.tour)?\"color:#0891b2;font-weight:700;\":/ausgleich/i.test(e.tour)?\"color:#16a34a;font-weight:700;\":\"font-weight:600;\";\n        html += \"<tr style=\'background:\"+bg+\";border-bottom:1px solid #f1f5f9;\'>\";\n        html += \"<td style=\'padding:3px 10px;\'></td>\";\n        html += \"<td style=\'padding:3px 10px;\"+(e.samstag?\"font-weight:700;color:#b45309;\":\"color:#334155;\")+\"\'>\"+e.datum+\"</td>\";\n        html += \"<td style=\'padding:3px 10px;\"+tc+\"\'>\"+e.tour+\"</td>\";\n        html += \"<td style=\'padding:3px 10px;color:#475569;\'>\"+e.zeit+\"</td>\";\n        html += \"<td style=\'padding:3px 10px;font-weight:700;color:#166534;\'>\"+(e.lkw && e.lkw!==\"0\" ? e.lkw : \"\")+\"</td>\";\n        html += \"</tr>\";\n      });\n    });\n    html += \"</tbody></table></div>\";\n  });\n\n  panel.innerHTML = html;\n  panel.scrollTop = 0;\n}\n\nfunction faPDF() {\n  if(!FA_DATA || !FA_DATA.length) { alert(\"Keine Daten vorhanden.\"); return; }\n  // If a driver is selected in sidebar, export only that driver\n  var filtered;\n  if(faSelectedName) {\n    filtered = FA_DATA.filter(function(d){ return d.name === faSelectedName; });\n  } else {\n    filtered = faGetFiltered();\n  }\n  var yr = faYearFilter;\n  var today = new Date().toLocaleDateString(\"de-DE\",{day:\"2-digit\",month:\"long\",year:\"numeric\"});\n  var yrLabel = yr === \"all\" ? \"Alle Jahre\" : yr;\n  var css = \"@page{size:A4 portrait;margin:10mm 9mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:\'Segoe UI\',Arial,sans-serif;color:#1e293b;font-size:7pt}.cover{text-align:center;padding:16mm 0 8mm;border-bottom:3px solid #1b66b3;margin-bottom:8mm}.cover h1{font-size:18pt;color:#1b66b3;font-weight:900;margin-bottom:2mm}.sub{font-size:9pt;color:#64748b}.db{page-break-inside:avoid;margin-bottom:7mm}.dh{background:#1b66b3;color:#fff;padding:2mm 4mm;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:6px}.dn{font-size:10pt;font-weight:900;flex:1}.ds{display:flex;gap:4px;flex-wrap:wrap;font-size:6.5pt}.badge{display:inline-block;border-radius:4px;padding:1px 5px;font-weight:800}.lsec{padding:2mm 4mm;background:#f0fdf4;border:1px solid #bbf7d0}.ys{margin-bottom:3mm}.yl{font-size:8pt;font-weight:900;color:#1b66b3;margin:2mm 0 1mm;border-left:2px solid #1b66b3;padding-left:3px}table{width:100%;border-collapse:collapse}thead tr{background:#1e3a5f;color:#fff}thead th{padding:2px 5px;font-weight:800;font-size:6pt;text-align:left}tbody tr.kr{background:#dbeafe}tbody tr.kr td{padding:2px 5px;font-weight:800;color:#1b66b3;font-size:5.5pt}tbody tr.dr td{padding:2px 5px;border-bottom:1px solid #f1f5f9}tbody tr.sa{background:#fff7ed!important}.ft{text-align:right;color:#94a3b8;font-size:5.5pt;margin-top:1mm;border-top:1px solid #f1f5f9}\";\n  var body = \"<div class=\'cover\'><div style=\'font-size:24pt;margin-bottom:2mm;\'>&#128101;</div><h1>Fahrerauswertung</h1><div class=\'sub\'>Fuhrpark NFC &middot; \"+yrLabel+\" &middot; \"+today+\"</div><div class=\'sub\'>\"+filtered.length+\" Fahrer</div></div>\";\n  filtered.forEach(function(driver) {\n    var years = (yr===\"all\"?Object.keys(driver.years||{}).sort().reverse():[yr]).filter(function(y){return y!==\"2024\";});\n    var ts = faGetStats(driver,yr);\n    var lkwList = Object.entries(ts.lkw||{}).sort(function(a,b){return b[1]-a[1];});\n    body += \"<div class=\'db\'><div class=\'dh\'><span class=\'dn\'>\"+driver.name+\"</span><div class=\'ds\'>\";\n    body += \"<span class=\'badge\' style=\'background:#dbeafe;color:#1b66b3;\'>&#9733; \"+ts.arbeit+\"</span>\";\n    if(ts.arbeit_samstag) body += \"<span class=\'badge\' style=\'background:#fef9c3;color:#b45309;\'>Sa \"+ts.arbeit_samstag+\"</span>\";\n    if(ts.krank)  body += \"<span style=\'background:#fee2e2;color:#dc2626;\'>K \"+ts.krank+\"</span>\";\n    if(ts.urlaub) body += \"<span class=\'badge\' style=\'background:#e0f2fe;color:#0891b2;\'>U \"+ts.urlaub+\"</span>\";\n    if(ts.ausgleich) body += \"<span class=\'badge\' style=\'background:#f0fdf4;color:#16a34a;\'>Az \"+ts.ausgleich+\"</span>\";\n    body += \"</div></div>\";\n    if(lkwList.length){body+=\"<div class=\'lsec\'><b style=\'color:#166534;font-size:6pt;\'>LKW: </b>\";lkwList.forEach(function(e){body+=\"<span style=\'display:inline-block;background:#fff;border:1px solid #bbf7d0;border-radius:2px;padding:0 4px;margin:1px;font-size:6pt;color:#166534;font-weight:700;\'>\"+e[0]+\" \"+e[1]+\"x</span>\";});body+=\"</div>\";}\n    years.forEach(function(y){var yd=driver.years[y];if(!yd)return;var kwMap={};(yd.eintraege||[]).forEach(function(e){var k=\"KW \"+e.kw;if(!kwMap[k])kwMap[k]=[];kwMap[k].push(e);});var kwKeys=Object.keys(kwMap).sort(function(a,b){return parseInt(a.split(\" \")[1])-parseInt(b.split(\" \")[1]);});body+=\"<div class=\'ys\'>\";if(years.length>1)body+=\"<div class=\'yl\'>\"+y+\"</div>\";body+=\"<table><thead><tr><th>KW</th><th>Datum</th><th>Tour</th><th>Zeit</th><th>LKW</th></tr></thead><tbody>\";kwKeys.forEach(function(kw){body+=\"<tr class=\'kr\'><td colspan=\'5\'>\"+kw+\"</td></tr>\";kwMap[kw].forEach(function(e,i){var tc=/krank/i.test(e.tour)?\"color:#dc2626;\":/urlaub/i.test(e.tour)?\"color:#0891b2;\":\"\";body+=\"<tr class=\'dr\"+(e.samstag?\" sa\":\"\")+\"\'><td></td><td style=\'\"+(e.samstag?\"color:#b45309;font-weight:700;\":\"\")+\"\'>\"+e.datum+\"</td><td style=\'font-weight:700;\"+tc+\"\'>\"+e.tour+\"</td><td>\"+e.zeit+\"</td><td style=\'color:#166534;font-weight:700;\'>\"+e.lkw+\"</td></tr>\";});});body+=\"</tbody></table></div>\";});\n    body+=\"<div class=\'ft\'>NordFrischeCenter &middot; Fahrerauswertung &middot; \"+driver.name+\"</div></div>\";\n  });\n  var w=window.open(\"\",\"_blank\",\"width=900,height=800\");\n  w.document.write(\"<!DOCTYPE html><html><head><meta charset=\'utf-8\'><title>Fahrerauswertung</title><style>\"+css+\"</style></head><body>\"+body+\"</body></html>\");\n  w.document.close();w.focus();setTimeout(function(){w.print();},600);\n}\n'
+    fa_js_code = '''
+// ── Fahrerauswertung ──────────────────────────────────────────────────────────
+var faCurrentSort  = "name";
+var faYearFilter   = String(new Date().getFullYear());
+var faSelectedName = null;
+var faSearchQuery  = "";
+
+function faSort(mode) {
+  faCurrentSort = mode;
+  ["name","arbeit"].forEach(function(m) {
+    var btn = document.getElementById("fa-sort-"+m);
+    if(!btn) return;
+    btn.style.background = mode===m ? "#1b66b3" : "#fff";
+    btn.style.color      = mode===m ? "#fff"    : "#1b66b3";
+  });
+  faBuildSidebarHighlight(faSelectedName);
+}
+
+function faFilter(q) { faSearchQuery = q; faBuildSidebarHighlight(faSelectedName); }
+function faYearChange(yr) {
+  faYearFilter = yr;
+  faBuildSidebarHighlight(faSelectedName);
+  if(faSelectedName) faShowDetail(faSelectedName);
+}
+
+function faGetStats(driver, yr) {
+  if(!driver.years) return {krank:0,urlaub:0,ausgleich:0,arbeit:0,arbeit_samstag:0,touren:{},lkw:{},eintraege:[]};
+  var years = yr==="all" ? Object.keys(driver.years) : [yr];
+  var out = {krank:0,urlaub:0,ausgleich:0,arbeit:0,arbeit_samstag:0,touren:{},lkw:{},eintraege:[]};
+  years.forEach(function(y) {
+    var d = driver.years[y];
+    if(!d) return;
+    out.krank          += d.krank          || 0;
+    out.urlaub         += d.urlaub         || 0;
+    out.ausgleich      += d.ausgleich      || 0;
+    out.arbeit         += d.arbeit         || 0;
+    out.arbeit_samstag += d.arbeit_samstag || 0;
+    Object.keys(d.touren||{}).forEach(function(t){
+      out.touren[t] = (out.touren[t]||0) + d.touren[t];
+    });
+    // Use pre-computed lkw if available, otherwise compute from eintraege
+    var lkwSource = d.lkw && Object.keys(d.lkw).length > 0 ? d.lkw : (function(){
+      var cnt = {};
+      (d.eintraege||[]).forEach(function(e){
+        var lv = (e.lkw||"").trim();
+        var tl = (e.tour||"").toLowerCase();
+        if(lv && lv!=="0" && !/krank|urlaub|ausgleich/i.test(tl)){
+          cnt[lv] = (cnt[lv]||0) + 1;
+        }
+      });
+      return cnt;
+    })();
+    Object.keys(lkwSource).forEach(function(l){
+      out.lkw[l] = (out.lkw[l]||0) + lkwSource[l];
+    });
+    out.eintraege = out.eintraege.concat(d.eintraege||[]);
+  });
+  return out;
+}
+
+function faGetFiltered() {
+  var q = faSearchQuery.toLowerCase().trim();
+  var list = FA_DATA.filter(function(d) {
+    if(q && !d.name.toLowerCase().includes(q)) return false;
+    if(faYearFilter !== "all" && !d.years[faYearFilter]) return false;
+    return true;
+  });
+  if(faCurrentSort === "arbeit") {
+    list.sort(function(a,b){ return faGetStats(b,faYearFilter).arbeit - faGetStats(a,faYearFilter).arbeit; });
+  } else {
+    list.sort(function(a,b){ return a.name.localeCompare(b.name,"de"); });
+  }
+  return list;
+}
+
+function faRender(q) {
+  faSearchQuery = q || "";
+  if(!FA_DATA || !FA_DATA.length) {
+    var c = document.getElementById("fa-detail-panel");
+    if(c) c.innerHTML = "<div style='color:#94a3b8;padding:40px;text-align:center;font-size:14px;'>Keine Daten vorhanden.<br>Bitte Fahrerauswertungs-Dateien in Streamlit hochladen.</div>";
+    return;
+  }
+  faPopulateYears();
+  faBuildSidebarHighlight(null);
+}
+
+function faPopulateYears() {
+  var allYears = [];
+  FA_DATA.forEach(function(d) {
+    Object.keys(d.years||{}).forEach(function(y){
+      if(y !== "2024" && allYears.indexOf(y) === -1) allYears.push(y);
+    });
+  });
+  allYears.sort().reverse();
+  var yrSel = document.getElementById("fa-year-sel");
+  if(!yrSel) return;
+  var current = yrSel.value;
+  var curYr = String(new Date().getFullYear());
+  yrSel.innerHTML = allYears.map(function(y){ return "<option value='"+y+"'>"+y+"</option>"; }).join("");
+  // Default to current year
+  if(current && allYears.indexOf(current) !== -1) yrSel.value = current;
+  else if(allYears.indexOf(curYr) !== -1) yrSel.value = curYr;
+  else if(allYears.length) yrSel.value = allYears[0];
+  faYearFilter = yrSel.value;
+}
+
+function faBuildSidebarHighlight(activeName) {
+  var sidebar = document.getElementById("fa-sidebar-list");
+  if(!sidebar) return;
+  var filtered = faGetFiltered();
+
+  var statsEl = document.getElementById("fa-stats");
+  if(statsEl) {
+    var total   = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).arbeit;    },0);
+    var totalK  = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).krank;     },0);
+    var totalU  = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).urlaub;    },0);
+    statsEl.innerHTML =
+      "<b>"+filtered.length+"</b> Fahrer &nbsp;&middot;&nbsp; Σ <b>"+total+"</b> Arbeitstage" +
+      (totalK ? " &nbsp;&middot;&nbsp; <span style='color:#dc2626;'>Krank Σ <b>"+totalK+"</b></span>" : "") +
+      (totalU ? " &nbsp;&middot;&nbsp; <span style='color:#0891b2;'>Urlaub Σ <b>"+totalU+"</b></span>" : "");
+  }
+
+  var html = "";
+  filtered.forEach(function(d) {
+    var s = faGetStats(d, faYearFilter);
+    var active = d.name === activeName;
+    var bg = active ? "#1b66b3" : "#fff";
+    var fg = active ? "#fff" : "#0b1220";
+    html += "<div onclick='faShowDetail(\""+d.name.replace(/"/g,"&quot;")+"\")'" +
+      " style='padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;background:"+bg+";'>" +
+      "<div style='font-weight:700;font-size:13px;color:"+fg+";'>"+d.name+"</div>" +
+      "<div style='display:flex;gap:3px;flex-wrap:wrap;margin-top:3px;'>" +
+        "<span style='font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:"+(active?"rgba(255,255,255,.2)":"#dbeafe")+";color:"+(active?"#fff":"#1b66b3")+"'>"+s.arbeit+" T</span>" +
+        (s.arbeit_samstag ? "<span style='font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:"+(active?"rgba(255,255,255,.15)":"#fef9c3")+";color:"+(active?"#fff":"#b45309")+"'>Sa "+s.arbeit_samstag+"</span>" : "") +
+        (s.krank ? "<span style='font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:"+(active?"rgba(255,255,255,.15)":"#fee2e2")+";color:"+(active?"#fff":"#dc2626")+"'>K "+s.krank+"</span>" : "") +
+      "</div></div>";
+  });
+  sidebar.innerHTML = html || "<div style='padding:20px;color:#94a3b8;font-size:12px;text-align:center;'>Kein Fahrer gefunden</div>";
+
+  if(!activeName && filtered.length) { faSelectedName = filtered[0].name; faShowDetail(filtered[0].name); }
+  else if(activeName) faSelectedName = activeName;
+}
+
+function faShowDetail(name) {
+  faSelectedName = name;
+  faBuildSidebarHighlight(name);
+  var driver = FA_DATA.find(function(d){ return d.name === name; });
+  var panel = document.getElementById("fa-detail-panel");
+  if(!panel || !driver) return;
+
+  var yr = faYearFilter;
+  var s  = faGetStats(driver, yr);
+  var years = (yr === "all" ? Object.keys(driver.years||{}).sort().reverse() : [yr]).filter(function(y){return y!=="2024";});
+
+  var lkwEntries = Object.entries(s.lkw||{}).sort(function(a,b){return b[1]-a[1];});
+  var lkwHtml = lkwEntries.length
+    ? lkwEntries.map(function(e){
+        return "<span style='display:inline-block;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:3px 12px;margin:2px;font-size:12px;font-weight:700;color:#166534;'>"+e[0]+" <span style='color:#64748b;font-weight:500;'>"+e[1]+"x</span></span>";
+      }).join("")
+    : "<span style='color:#94a3b8;font-size:12px;'>Keine LKW-Daten</span>";
+
+  var html = "";
+
+  // Header
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px 20px;margin-bottom:14px;'>";
+  html += "<div style='font-size:20px;font-weight:900;color:#0b1220;margin-bottom:10px;'>"+driver.name+"</div>";
+  html += "<div style='display:flex;flex-wrap:wrap;gap:7px;'>";
+  html += "<span style='background:#dbeafe;border-radius:8px;padding:4px 14px;font-size:13px;font-weight:800;color:#1b66b3;'>&#9733; "+s.arbeit+" Arbeitstage</span>";
+  if(s.arbeit_samstag) html += "<span style='background:#fef9c3;border-radius:8px;padding:4px 14px;font-size:13px;font-weight:800;color:#b45309;'>Samstag "+s.arbeit_samstag+"</span>";
+  if(s.krank)          html += "<span style='background:#fee2e2;border-radius:8px;padding:4px 14px;font-size:13px;font-weight:800;color:#dc2626;'>Krank "+s.krank+"</span>";
+  if(s.urlaub)         html += "<span style='background:#e0f2fe;border-radius:8px;padding:4px 14px;font-size:13px;font-weight:800;color:#0891b2;'>Urlaub "+s.urlaub+"</span>";
+  if(s.ausgleich)      html += "<span style='background:#f0fdf4;border-radius:8px;padding:4px 14px;font-size:13px;font-weight:800;color:#16a34a;'>Ausgl. "+s.ausgleich+"</span>";
+  html += "</div></div>";
+
+  // LKW Section
+  html += "<div style='background:#fff;border:1.5px solid #bbf7d0;border-radius:10px;padding:12px 16px;margin-bottom:14px;'>";
+  html += "<div style='font-size:11px;font-weight:900;text-transform:uppercase;color:#166534;letter-spacing:.4px;margin-bottom:8px;'>LKW-Einsätze</div>";
+  html += "<div>"+lkwHtml+"</div>";
+  html += "</div>";
+
+  // Year chips
+  if(yr === "all" && years.length > 1) {
+    html += "<div style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;'>";
+    years.forEach(function(y) {
+      var ys = driver.years[y]; if(!ys) return;
+      html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:8px 14px;min-width:110px;'>";
+      html += "<div style='font-size:12px;font-weight:900;color:#1b66b3;margin-bottom:4px;'>"+y+"</div>";
+      html += "<div style='font-size:13px;font-weight:800;'>&#9733; "+ys.arbeit+"</div>";
+      if(ys.arbeit_samstag) html += "<div style='font-size:11px;color:#b45309;'>Sa: "+ys.arbeit_samstag+"</div>";
+      if(ys.krank)  html += "<div style='font-size:11px;color:#dc2626;'>Krank: "+ys.krank+"</div>";
+      if(ys.urlaub) html += "<div style='font-size:11px;color:#0891b2;'>Urlaub: "+ys.urlaub+"</div>";
+      html += "</div>";
+    });
+    html += "</div>";
+  }
+
+  // KW table
+  years.forEach(function(y) {
+    var yd = driver.years[y]; if(!yd) return;
+    var kwMap = {};
+    var dispYr = parseInt(y);
+    (yd.eintraege||[]).forEach(function(e){
+      // Skip entries whose date doesn't belong to the displayed year
+      var m = (e.datum||"").match(/(\d{4})$/);
+      if(m && parseInt(m[1]) !== dispYr) return;
+      var k="KW "+e.kw; if(!kwMap[k]) kwMap[k]=[]; kwMap[k].push(e);
+    });
+    var kwKeys = Object.keys(kwMap).sort(function(a,b){return parseInt(a.split(" ")[1])-parseInt(b.split(" ")[1]);});
+
+    if(years.length > 1)
+      html += "<div style='font-size:13px;font-weight:900;color:#1b66b3;margin:12px 0 6px;border-left:3px solid #1b66b3;padding-left:8px;'>"+y+"</div>";
+
+    html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:12px;'>";
+    html += "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
+    html += "<thead><tr style='background:#1e3a5f;color:#fff;'><th style='padding:6px 10px;text-align:left;'>KW</th><th style='padding:6px 10px;text-align:left;'>Datum</th><th style='padding:6px 10px;text-align:left;'>Tour</th><th style='padding:6px 10px;text-align:left;'>Zeit</th><th style='padding:6px 10px;text-align:left;'>LKW</th></tr></thead><tbody>";
+    kwKeys.forEach(function(kw) {
+      html += "<tr style='background:#dbeafe;'><td colspan='5' style='padding:3px 10px;font-weight:800;color:#1b66b3;font-size:11px;'>"+kw+"</td></tr>";
+      kwMap[kw].forEach(function(e,i) {
+        var bg = e.samstag ? "#fff7ed" : (i%2===0?"#f8fafc":"#fff");
+        var tc = /krank/i.test(e.tour)?"color:#dc2626;font-weight:700;":/urlaub/i.test(e.tour)?"color:#0891b2;font-weight:700;":/ausgleich/i.test(e.tour)?"color:#16a34a;font-weight:700;":"font-weight:600;";
+        html += "<tr style='background:"+bg+";border-bottom:1px solid #f1f5f9;'>";
+        html += "<td style='padding:3px 10px;'></td>";
+        html += "<td style='padding:3px 10px;"+(e.samstag?"font-weight:700;color:#b45309;":"color:#334155;")+"'>"+e.datum+"</td>";
+        html += "<td style='padding:3px 10px;"+tc+"'>"+e.tour+"</td>";
+        html += "<td style='padding:3px 10px;color:#475569;'>"+e.zeit+"</td>";
+        html += "<td style='padding:3px 10px;font-weight:700;color:#166534;'>"+(e.lkw && e.lkw!=="0" ? e.lkw : "")+"</td>";
+        html += "</tr>";
+      });
+    });
+    html += "</tbody></table></div>";
+  });
+
+  panel.innerHTML = html;
+  panel.scrollTop = 0;
+}
+
+function faPDF() {
+  if(!FA_DATA || !FA_DATA.length) { alert("Keine Daten vorhanden."); return; }
+  var filtered;
+  if(faSelectedName) {
+    filtered = FA_DATA.filter(function(d){ return d.name === faSelectedName; });
+  } else {
+    filtered = faGetFiltered();
+  }
+  var yr = faYearFilter;
+  var today = new Date().toLocaleDateString("de-DE",{day:"2-digit",month:"long",year:"numeric"});
+  var yrLabel = yr === "all" ? "Alle Jahre" : yr;
+  var css = "@page{size:A4 portrait;margin:10mm 9mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;font-size:7pt}.cover{text-align:center;padding:16mm 0 8mm;border-bottom:3px solid #1b66b3;margin-bottom:8mm}.cover h1{font-size:18pt;color:#1b66b3;font-weight:900;margin-bottom:2mm}.sub{font-size:9pt;color:#64748b}.db{page-break-inside:avoid;margin-bottom:7mm}.dh{background:#1b66b3;color:#fff;padding:2mm 4mm;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:6px}.dn{font-size:10pt;font-weight:900;flex:1}.ds{display:flex;gap:4px;flex-wrap:wrap;font-size:6.5pt}.badge{display:inline-block;border-radius:4px;padding:1px 5px;font-weight:800}.lsec{padding:2mm 4mm;background:#f0fdf4;border:1px solid #bbf7d0}.ys{margin-bottom:3mm}.yl{font-size:8pt;font-weight:900;color:#1b66b3;margin:2mm 0 1mm;border-left:2px solid #1b66b3;padding-left:3px}table{width:100%;border-collapse:collapse}thead tr{background:#1e3a5f;color:#fff}thead th{padding:2px 5px;font-weight:800;font-size:6pt;text-align:left}tbody tr.kr{background:#dbeafe}tbody tr.kr td{padding:2px 5px;font-weight:800;color:#1b66b3;font-size:5.5pt}tbody tr.dr td{padding:2px 5px;border-bottom:1px solid #f1f5f9}tbody tr.sa{background:#fff7ed!important}.ft{text-align:right;color:#94a3b8;font-size:5.5pt;margin-top:1mm;border-top:1px solid #f1f5f9}";
+  var body = "<div class='cover'><div style='font-size:24pt;margin-bottom:2mm;'>&#128101;</div><h1>Fahrerauswertung</h1><div class='sub'>Fuhrpark NFC &middot; "+yrLabel+" &middot; "+today+"</div><div class='sub'>"+filtered.length+" Fahrer</div></div>";
+  filtered.forEach(function(driver) {
+    var years = (yr==="all"?Object.keys(driver.years||{}).sort().reverse():[yr]).filter(function(y){return y!=="2024";});
+    var ts = faGetStats(driver,yr);
+    var lkwList = Object.entries(ts.lkw||{}).sort(function(a,b){return b[1]-a[1];});
+    body += "<div class='db'><div class='dh'><span class='dn'>"+driver.name+"</span><div class='ds'>";
+    body += "<span class='badge' style='background:#dbeafe;color:#1b66b3;'>&#9733; "+ts.arbeit+"</span>";
+    if(ts.arbeit_samstag) body += "<span class='badge' style='background:#fef9c3;color:#b45309;'>Sa "+ts.arbeit_samstag+"</span>";
+    if(ts.krank)  body += "<span class='badge' style='background:#fee2e2;color:#dc2626;'>K "+ts.krank+"</span>";
+    if(ts.urlaub) body += "<span class='badge' style='background:#e0f2fe;color:#0891b2;'>U "+ts.urlaub+"</span>";
+    if(ts.ausgleich) body += "<span class='badge' style='background:#f0fdf4;color:#16a34a;'>Az "+ts.ausgleich+"</span>";
+    body += "</div></div>";
+    if(lkwList.length){body+="<div class='lsec'><b style='color:#166534;font-size:6pt;'>LKW: </b>";lkwList.forEach(function(e){body+="<span style='display:inline-block;background:#fff;border:1px solid #bbf7d0;border-radius:2px;padding:0 4px;margin:1px;font-size:6pt;color:#166534;font-weight:700;'>"+e[0]+" "+e[1]+"x</span>";});body+="</div>";}
+    years.forEach(function(y){var yd=driver.years[y];if(!yd)return;var kwMap={};(yd.eintraege||[]).forEach(function(e){var k="KW "+e.kw;if(!kwMap[k])kwMap[k]=[];kwMap[k].push(e);});var kwKeys=Object.keys(kwMap).sort(function(a,b){return parseInt(a.split(" ")[1])-parseInt(b.split(" ")[1]);});body+="<div class='ys'>";if(years.length>1)body+="<div class='yl'>"+y+"</div>";body+="<table><thead><tr><th>KW</th><th>Datum</th><th>Tour</th><th>Zeit</th><th>LKW</th></tr></thead><tbody>";kwKeys.forEach(function(kw){body+="<tr class='kr'><td colspan='5'>"+kw+"</td></tr>";kwMap[kw].forEach(function(e,i){var tc=/krank/i.test(e.tour)?"color:#dc2626;":/urlaub/i.test(e.tour)?"color:#0891b2;":"";body+="<tr class='dr"+(e.samstag?" sa":"")+"'><td></td><td style='"+(e.samstag?"color:#b45309;font-weight:700;":"")+"'>"+e.datum+"</td><td style='font-weight:700;"+tc+"'>"+e.tour+"</td><td>"+e.zeit+"</td><td style='color:#166534;font-weight:700;'>"+e.lkw+"</td></tr>";});});body+="</tbody></table></div>";});
+    body+="<div class='ft'>NordFrischeCenter &middot; Fahrerauswertung &middot; "+driver.name+"</div></div>";
+  });
+  var w=window.open("","_blank","width=900,height=800");
+  w.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Fahrerauswertung</title><style>"+css+"</style></head><body>"+body+"</body></html>");
+  w.document.close();w.focus();setTimeout(function(){w.print();},600);
+}
+'''
+
+    kfz_js_code = '''
+// ── Kennzahlen Fuhrpark Dashboard ─────────────────────────────────────────
+function kfzFilter(q) { kfzRenderAll(q); }
+var kfzOpenWeeks = {};
+var kfzChartInstances = {};
+var kfzActiveMetrics = ["touren"];
+
+var KFZ_LABELS = {
+  touren:"Touren Gesamt",verschiebung:"Anz. Kundenverschiebung / Tour",
+  gk_touren_mg:"GK Touren pro Tag",gk_fp_edeka:"GK Touren FP EDEKA",gk_touren:"GK Touren Fremdspedition",
+  direkt_fremd:"Direkttouren EH Fremdspedition",
+  gk_tonnage:"GK in t Popp + Füngers",shuttle_touren:"Shuttle Touren Edeka",shuttle_sonder:"Shuttle Touren Spedition",hupa_touren:"HuPa Touren komplett",
+  km:"Kilometer pro Tag FP EDEKA",diesel:"Diesel Gesamtverbrauch",verbrauch:"⌀ Verbrauch",
+  ausfall:"Anzahl Ausfall LKW",pda:"Touren mit PDA",ma_anwesend:"MA anwesend",ma_abwesend:"MA abwesend Urlaub/ZA",
+  ma_krank:"MA Krank",azubis:"Verfügbare Azubis",
+  zbv_edeka:"ZBV EDEKA",zbv_fremd:"ZBV Fremdspedition",fremd_abgesagt:"Fremdspedition abgesagt"
+};
+var KFZ_ALL_KEYS = ["touren","verschiebung","gk_touren_mg","gk_fp_edeka","gk_touren","direkt_fremd","gk_tonnage","shuttle_touren","shuttle_sonder","hupa_touren","km","diesel","verbrauch","ausfall","pda","ma_anwesend","ma_abwesend","ma_krank","azubis","zbv_edeka","zbv_fremd","fremd_abgesagt"];
+
+var KFZ_METRIC_CONFIG = {
+  touren:{label:"Touren Gesamt",color:"#1b66b3",unit:"",icon:"🚚"},
+  verschiebung:{label:"Kundenverschiebung",color:"#6366f1",unit:"",icon:"🔄"},
+  gk_touren_mg:{label:"GK Touren/Tag",color:"#10b981",unit:"",icon:"📦"},
+  gk_fp_edeka:{label:"GK FP EDEKA",color:"#059669",unit:"",icon:"🏬"},
+  gk_touren:{label:"GK Fremdspedition",color:"#047857",unit:"",icon:"🚛"},
+  direkt_fremd:{label:"Direkt EH Fremd",color:"#8b5cf6",unit:"",icon:"📋"},
+  gk_tonnage:{label:"GK Tonnage",color:"#065f46",unit:" t",icon:"⚖"},
+  shuttle_touren:{label:"Shuttle Edeka",color:"#22d3ee",unit:"",icon:"🚐"},
+  shuttle_sonder:{label:"Shuttle Spedition",color:"#06b6d4",unit:"",icon:"🚍"},
+  hupa_touren:{label:"HuPa komplett",color:"#0891b2",unit:"",icon:"📦"},
+  km:{label:"km FP EDEKA",color:"#0f4c8a",unit:" km",icon:"🛣"},
+  diesel:{label:"Diesel Gesamt",color:"#7c3aed",unit:" L",icon:"⛽"},
+  verbrauch:{label:"⌀ Verbrauch",color:"#0284c7",unit:" L/100",icon:"📉"},
+  ausfall:{label:"Ausfall LKW",color:"#dc2626",unit:"",icon:"⚠"},
+  pda:{label:"Touren mit PDA",color:"#6d28d9",unit:"",icon:"📱"},
+  ma_anwesend:{label:"MA anwesend",color:"#16a34a",unit:"",icon:"👤"},
+  ma_abwesend:{label:"MA abwesend",color:"#fb923c",unit:"",icon:"🏖"},
+  ma_krank:{label:"MA Krank",color:"#f59e0b",unit:"",icon:"🤒"},
+  azubis:{label:"Azubis",color:"#a855f7",unit:"",icon:"🎓"},
+  zbv_edeka:{label:"ZBV EDEKA",color:"#0d9488",unit:"",icon:"📋"},
+  zbv_fremd:{label:"ZBV Fremd",color:"#0f766e",unit:"",icon:"📋"},
+  fremd_abgesagt:{label:"Fremd abgesagt",color:"#f43f5e",unit:"",icon:"❌"}
+};
+
+var KFZ_KPI_KEYS=["touren","km","diesel","verbrauch","ausfall","ma_anwesend","ma_krank","gk_tonnage"];
+
+function kfzVal(w,k){
+  var v=w.summary?w.summary[k]:undefined;
+  if(v!==null&&v!==undefined&&typeof v==="number") return Math.round(v*100)/100;
+  var days=(w.days||[]).filter(function(d){return !d.datum||!(d.datum.startsWith("Sa")||d.datum.startsWith("So"));});
+  var vals=days.map(function(d){return d[k];}).filter(function(v){return v!==null&&v!==undefined&&typeof v==="number";});
+  if(!vals.length)return null;
+  return Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length*100)/100;
+}
+function kfzFmtVal(v,unit){
+  if(v===null||v===undefined)return "—";
+  if(unit===" km"||unit===" L")return Math.round(v).toLocaleString("de-DE");
+  if(unit===" L/100"||unit===" t")return v.toFixed(1);
+  return String(Math.round(v*10)/10);
+}
+
+function kfzRenderAll(q){
+  q=(q||"").toLowerCase().trim();
+  if(!KFZ_DATA||!KFZ_DATA.length){
+    var ep=document.getElementById("kfz-kpi-row"); if(ep) ep.innerHTML="";
+    var ec=document.getElementById("kfz-chart-wrap"); if(ec) ec.innerHTML="<div style=\\"color:#94a3b8;padding:40px;text-align:center;font-size:14px;\\">Keine Daten.<br>Fuhrpark-Excel in Streamlit hochladen.</div>";
+    var et=document.getElementById("kfz-table-content"); if(et) et.innerHTML="";
+    return;
+  }
+  kfzRenderKPIs();
+  kfzRenderChart();
+  kfzRenderTable(q);
+}
+
+function kfzRenderKPIs(){
+  var el=document.getElementById("kfz-kpi-row"); if(!el) return;
+  var kwData=KFZ_DATA.filter(function(w){return w.kw&&w.kw.startsWith("KW")&&w.summary;});
+  if(!kwData.length){el.innerHTML="";return;}
+  var last=kwData[kwData.length-1]; var prev=kwData.length>=2?kwData[kwData.length-2]:null;
+  var html="";
+  KFZ_KPI_KEYS.forEach(function(k){
+    var cfg=KFZ_METRIC_CONFIG[k]; var val=kfzVal(last,k); var pVal=prev?kfzVal(prev,k):null;
+    var delta=(val!==null&&pVal!==null)?val-pVal:null; var deltaStr="";
+    if(delta!==null&&delta!==0){
+      var up=delta>0; var isNeg=k==="ausfall"||k==="ma_krank"||k==="fremd_abgesagt";
+      var good=isNeg?!up:up; var dColor=good?"#16a34a":"#dc2626"; var arrow=up?"▲":"▼";
+      deltaStr="<div style=\\"font-size:11px;font-weight:700;color:"+dColor+";margin-top:2px;\\">"+arrow+" "+(up?"+":"")+kfzFmtVal(delta,cfg.unit)+"</div>";
+    }
+    html+="<div style=\\"background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px 18px;min-width:140px;flex:1;position:relative;overflow:hidden;\\\">";
+    html+="<div style=\\"position:absolute;top:10px;right:14px;font-size:22px;opacity:.15;\\\">"+cfg.icon+"</div>";
+    html+="<div style=\\"font-size:10px;font-weight:800;text-transform:uppercase;color:#64748b;letter-spacing:.4px;margin-bottom:6px;\\\">"+cfg.label+"</div>";
+    html+="<div style=\\"font-size:26px;font-weight:900;color:"+cfg.color+";line-height:1;\\\">"+kfzFmtVal(val,cfg.unit)+"<span style=\\"font-size:11px;font-weight:600;color:#94a3b8;margin-left:3px;\\\">"+((cfg.unit||"")===""?"":cfg.unit)+"</span></div>";
+    html+=deltaStr;
+    html+="<div style=\\"font-size:9px;color:#94a3b8;margin-top:4px;\\\">"+last.kw+"</div>";
+    html+="</div>";
+  });
+  el.innerHTML=html;
+}
+
+function kfzRenderChart(){
+  var container=document.getElementById("kfz-chart-wrap"); if(!container) return;
+  Object.values(kfzChartInstances).forEach(function(c){try{c.destroy();}catch(e){}});
+  kfzChartInstances={};
+  var kwData=KFZ_DATA.filter(function(w){return w.kw&&w.kw.startsWith("KW")&&w.summary;});
+  if(!kwData.length){container.innerHTML="<div style=\\"color:#94a3b8;padding:20px;text-align:center;\\">Keine KW-Daten.</div>";return;}
+  var toggleHtml="<div style=\\"display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;align-items:center;\\\">";
+  toggleHtml+="<span style=\\"font-size:10px;font-weight:800;color:#64748b;margin-right:2px;\\\">METRIKEN:</span>";
+  Object.keys(KFZ_METRIC_CONFIG).forEach(function(k){
+    var cfg=KFZ_METRIC_CONFIG[k]; var active=kfzActiveMetrics.indexOf(k)!==-1;
+    toggleHtml+="<button id=\\"kfz-toggle-"+k+"\\" onclick=\\"kfzToggleMetric('" +k+ "')\\" style=\\"padding:2px 8px;border-radius:12px;border:1.5px solid "+cfg.color+";font-size:10px;font-weight:700;cursor:pointer;background:"+(active?cfg.color:"#fff")+";color:"+(active?"#fff":cfg.color)+";transition:all .15s;\\\">"+cfg.label+"</button>";
+  });
+  toggleHtml+="</div>";
+  container.innerHTML=toggleHtml+"<div id=\\"kfz-chart-area\\"></div>";
+  kfzBuildCharts();
+}
+
+function kfzToggleMetric(k){
+  var idx=kfzActiveMetrics.indexOf(k);
+  if(idx===-1)kfzActiveMetrics.push(k); else kfzActiveMetrics.splice(idx,1);
+  var cfg=KFZ_METRIC_CONFIG[k]; var btn=document.getElementById("kfz-toggle-"+k);
+  var active=kfzActiveMetrics.indexOf(k)!==-1;
+  if(btn){btn.style.background=active?cfg.color:"#fff";btn.style.color=active?"#fff":cfg.color;}
+  kfzBuildCharts();
+}
+
+function kfzBuildCharts(){
+  var area=document.getElementById("kfz-chart-area"); if(!area) return;
+  Object.values(kfzChartInstances).forEach(function(c){try{c.destroy();}catch(e){}});
+  kfzChartInstances={}; area.innerHTML="";
+  if(!kfzActiveMetrics.length){area.innerHTML="<div style=\\"color:#94a3b8;padding:20px;text-align:center;\\">Keine Kennzahl ausgewählt.</div>";return;}
+  var kwData=KFZ_DATA.filter(function(w){return w.kw&&w.kw.startsWith("KW")&&w.summary;});
+  var labels=kwData.map(function(w){return w.kw;});
+  var wrap=document.createElement("div");
+  wrap.style.cssText="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:18px 22px;margin-bottom:16px;";
+  var header=document.createElement("div");
+  header.style.cssText="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:14px;";
+  var titleEl=document.createElement("span");
+  titleEl.style.cssText="font-size:13px;font-weight:900;color:#1b66b3;margin-right:4px;";
+  titleEl.textContent="Kennzahlen Verlauf";
+  header.appendChild(titleEl);
+  kfzActiveMetrics.forEach(function(k){
+    var cfg=KFZ_METRIC_CONFIG[k]; var pill=document.createElement("span");
+    pill.style.cssText="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;background:"+cfg.color+"1a;color:"+cfg.color+";border:1px solid "+cfg.color+"55;cursor:pointer;";
+    pill.title="Klicken zum Entfernen";
+    pill.onclick=(function(key){return function(){kfzToggleMetric(key);};})(k);
+    var dot=document.createElement("span");
+    dot.style.cssText="width:7px;height:7px;border-radius:50%;background:"+cfg.color+";display:inline-block;";
+    pill.appendChild(dot); pill.appendChild(document.createTextNode(" "+cfg.label));
+    header.appendChild(pill);
+  });
+  wrap.appendChild(header);
+  var combWrap=document.createElement("div");
+  combWrap.style.cssText="position:relative;height:300px;width:100%;";
+  var combCanvas=document.createElement("canvas"); combCanvas.id="kfz-chart-combined";
+  combWrap.appendChild(combCanvas); wrap.appendChild(combWrap); area.appendChild(wrap);
+  var datasets=[]; var scales={x:{grid:{color:"#f1f5f9"},ticks:{font:{size:10},maxRotation:45,minRotation:30}}};
+  var usedAxes=[];
+  kfzActiveMetrics.forEach(function(k){
+    var cfg=KFZ_METRIC_CONFIG[k];
+    var allVals=kwData.map(function(w){return kfzVal(w,k);}).filter(function(v){return v!==null;});
+    var maxV=allVals.length?Math.max.apply(null,allVals):0; var axisId=null;
+    for(var ai=0;ai<usedAxes.length;ai++){var axMax=usedAxes[ai].max;if(axMax===0||(maxV/axMax<=6&&axMax/Math.max(maxV,0.01)<=6)){axisId=usedAxes[ai].id;usedAxes[ai].max=Math.max(axMax,maxV);break;}}
+    if(!axisId){axisId="y"+usedAxes.length;var pos=usedAxes.length%2===0?"left":"right";usedAxes.push({id:axisId,max:maxV});scales[axisId]={type:"linear",position:pos,display:true,grid:{drawOnChartArea:usedAxes.length===1,color:"#f1f5f9"},ticks:{font:{size:9},color:cfg.color,callback:function(v){return v.toLocaleString("de-DE");}}}}
+    datasets.push({label:cfg.label,data:kwData.map(function(w){return kfzVal(w,k);}),yAxisID:axisId,borderColor:cfg.color,backgroundColor:cfg.color+"14",borderWidth:2,pointRadius:3,pointHoverRadius:7,pointBackgroundColor:cfg.color,tension:0.3,fill:false,spanGaps:true});
+  });
+  kfzChartInstances["combined"]=new Chart(combCanvas,{type:"line",data:{labels:labels,datasets:datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{display:true,position:"bottom",labels:{font:{size:11},padding:14,usePointStyle:true,pointStyleWidth:10}},tooltip:{backgroundColor:"rgba(11,18,32,.93)",titleFont:{size:11,weight:"bold"},bodyFont:{size:10},padding:12,callbacks:{label:function(ctx){var unit="";Object.keys(KFZ_METRIC_CONFIG).forEach(function(k){if(KFZ_METRIC_CONFIG[k].label===ctx.dataset.label)unit=KFZ_METRIC_CONFIG[k].unit||"";});return" "+ctx.dataset.label+": "+(ctx.raw!==null?ctx.raw.toLocaleString("de-DE"):"—")+unit;}}}},scales:scales}});
+  if(kfzActiveMetrics.length>1){
+    var grid=document.createElement("div");
+    grid.style.cssText="display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:12px;margin-top:4px;";
+    area.appendChild(grid);
+    kfzActiveMetrics.forEach(function(k,idx){
+      var cfg=KFZ_METRIC_CONFIG[k];var data=kwData.map(function(w){return kfzVal(w,k);});
+      var vals=data.filter(function(v){return v!==null;});
+      var minV=vals.length?Math.min.apply(null,vals):0;var maxV=vals.length?Math.max.apply(null,vals):1;
+      var pad=Math.max((maxV-minV)*0.2,maxV*0.07,1);
+      var dWrap=document.createElement("div");dWrap.style.cssText="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px 16px;";
+      var dTitle=document.createElement("div");dTitle.style.cssText="font-size:10px;font-weight:900;color:"+cfg.color+";margin-bottom:8px;border-left:3px solid "+cfg.color+";padding-left:7px;";
+      dTitle.textContent=cfg.label+(cfg.unit?" ("+cfg.unit.trim()+")":"");
+      var dCW=document.createElement("div");dCW.style.cssText="position:relative;height:160px;width:100%;";
+      var dC=document.createElement("canvas");dC.id="kfz-detail-"+idx;
+      dCW.appendChild(dC);dWrap.appendChild(dTitle);dWrap.appendChild(dCW);grid.appendChild(dWrap);
+      kfzChartInstances[k]=new Chart(dC,{type:"line",data:{labels:labels,datasets:[{label:cfg.label,data:data,borderColor:cfg.color,backgroundColor:cfg.color+"1e",borderWidth:2,pointRadius:2,pointHoverRadius:6,pointBackgroundColor:cfg.color,tension:0.3,fill:true,spanGaps:true}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return" "+(ctx.raw!==null?ctx.raw.toLocaleString("de-DE"):"—")+(cfg.unit||"");}}}},scales:{x:{grid:{color:"#f8fafc"},ticks:{font:{size:8},maxRotation:45,minRotation:30}},y:{min:Math.max(0,Math.floor(minV-pad)),max:Math.ceil(maxV+pad),grid:{color:"#f1f5f9"},ticks:{font:{size:8},callback:function(v){return v.toLocaleString("de-DE")+(cfg.unit||"")}}}}}});
+    });
+  }
+}
+
+function kfzRenderTable(q){
+  q=(q||"").toLowerCase().trim();
+  var filtered=KFZ_DATA.filter(function(w){return !q||w.kw.toLowerCase().includes(q);});
+  document.getElementById("kfz-info").textContent=filtered.length+" von "+KFZ_DATA.length+" Kalenderwochen";
+  function badge(val,key){if(val===null||val===undefined)return"<span style=\\"color:#cbd5e1\\">—</span>";var color="#334155";if(key==="ausfall"&&val>0)color="#dc2626";if(key==="ma_krank"&&val>3)color="#f59e0b";if(key==="fremd_abgesagt"&&val>0)color="#f59e0b";return"<span style=\\"font-weight:700;color:"+color+";\\">"+val+"</span>";}
+  function pill(label,val,color){if(val===null||val===undefined)return"";return"<span style=\\"display:inline-flex;align-items:center;gap:3px;background:#f1f5f9;border-radius:12px;padding:2px 8px;margin:1px;font-size:11px;\\"><span style=\\"color:#64748b;\\">"+label+"</span><span style=\\"font-weight:800;color:"+color+";\\">"+val+"</span></span>";}
+  var html="";
+  filtered.forEach(function(w){
+    var open=!!kfzOpenWeeks[w.kw]; var s=w.summary||{};
+    html+="<div style=\\"background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;margin-bottom:8px;overflow:hidden;\\\">";
+    html+="<div onclick=\\"kfzToggle(this,'"+w.kw+"')\\" style=\\"display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;background:#f8fafc;border-bottom:1.5px solid #e2e8f0;flex-wrap:wrap;\\\">";
+    html+="<span style=\\"font-size:14px;font-weight:900;color:#1b66b3;min-width:52px;\\\">"+w.kw+"</span>";
+    html+="<span style=\\"font-size:10px;color:#94a3b8;\\\">("+w.days.length+" Tage)</span>";
+    html+="<div style=\\"display:flex;flex-wrap:wrap;flex:1;\\\">";
+    html+=pill("Touren",s.touren,"#1b66b3");
+    html+=pill("km",s.km?Math.round(s.km).toLocaleString("de-DE"):null,"#0f4c8a");
+    html+=pill("Diesel",s.diesel?Math.round(s.diesel).toLocaleString("de-DE")+"L":null,"#7c3aed");
+    html+=pill("Ausfall",s.ausfall,s.ausfall>0?"#dc2626":"#64748b");
+    html+=pill("MA",s.ma_anwesend?Math.round(s.ma_anwesend):null,"#16a34a");
+    html+=pill("Krank",s.ma_krank?Math.round(s.ma_krank):null,s.ma_krank>3?"#f59e0b":"#64748b");
+    html+="</div>";
+    html+="<span class=\\"kfz-arrow\\" style=\\"color:#94a3b8;font-size:12px;display:inline-block;transition:.2s;transform:rotate("+(open?"180":"0")+"deg);\\\">▼</span>";
+    html+="</div>";
+    html+="<div class=\\"kfz-days\\" style=\\"display:"+(open?"block":"none")+";overflow-x:auto;\\\">";
+    html+="<table style=\\"width:100%;border-collapse:collapse;font-size:11px;\\\"><thead><tr style=\\"background:#f1f5fb;\\"><th style=\\"padding:5px 10px;text-align:left;font-weight:800;color:#1b66b3;border-bottom:2px solid #e2e8f0;white-space:nowrap;\\\">Datum</th>";
+    KFZ_ALL_KEYS.forEach(function(k){html+="<th style=\\"padding:5px 6px;text-align:center;font-weight:800;color:#64748b;border-bottom:2px solid #e2e8f0;font-size:9px;white-space:nowrap;\\\">"+KFZ_LABELS[k]+"</th>";});
+    html+="<th style=\\"padding:5px 6px;font-size:9px;font-weight:800;color:#64748b;border-bottom:2px solid #e2e8f0;\\\">Fremdspedition</th></tr></thead><tbody>";
+    w.days.forEach(function(d,i){
+      var weekend=d.datum&&(d.datum.startsWith("Sa")||d.datum.startsWith("So"));
+      var bg=weekend?"#fafafa":(i%2===0?"#fff":"#f8fafc"); var op=weekend?"opacity:.5;":"";
+      html+="<tr style=\\"background:"+bg+";"+op+"\\"><td style=\\"padding:4px 10px;font-weight:700;white-space:nowrap;color:#0b1220;border-bottom:1px solid #f1f5f9;\\\">"+d.datum+"</td>";
+      KFZ_ALL_KEYS.forEach(function(k){html+="<td style=\\"padding:4px 6px;text-align:center;border-bottom:1px solid #f1f5f9;\\\">"+badge(d[k],k)+"</td>";});
+      var f=[d.fremd1,d.fremd2,d.fremd3].filter(Boolean).join(", ");
+      html+="<td style=\\"padding:4px 6px;color:#f59e0b;font-weight:700;font-size:10px;border-bottom:1px solid #f1f5f9;\\\">"+f+"</td></tr>";
+    });
+    html+="</tbody></table></div></div>";
+  });
+  document.getElementById("kfz-table-content").innerHTML=html||"<div style=\\"color:#94a3b8;padding:20px;\\\">Keine KW gefunden.</div>";
+}
+
+function kfzToggle(el,kw){
+  kfzOpenWeeks[kw]=!kfzOpenWeeks[kw];
+  var days=el.parentElement.querySelector(".kfz-days");
+  var arrow=el.querySelector(".kfz-arrow");
+  if(days)days.style.display=kfzOpenWeeks[kw]?"block":"none";
+  if(arrow)arrow.style.transform="rotate("+(kfzOpenWeeks[kw]?"180":"0")+"deg)";
+}
+'''
+
+    kfz_graph_js_code = ''
+
+    kfz_graph_pdf_js_code = '''
+// ── Kennzahlen Fuhrpark – Graphen PDF Export ─────────────────────────────────
+function kfzGraphPDF() {
+  if(!kfzActiveMetrics || !kfzActiveMetrics.length) {
+    alert('Keine aktiven Graphen zum Exportieren.'); return;
+  }
+  var images = [];
+  kfzActiveMetrics.forEach(function(k, i) {
+    var chart = kfzChartInstances[k] || kfzChartInstances['combined'];
+    if(i > 0) return; // only export combined chart
+    var canvas = kfzChartInstances['combined'] ? kfzChartInstances['combined'].canvas : null;
+    if(!canvas) return;
+    var cfg = { label:'Kennzahlen Fuhrpark', color:'#1b66b3', unit:'' };
+    images.push({ label:cfg.label, color:cfg.color, dataUrl:canvas.toDataURL('image/png',1.0) });
+  });
+  // also add individual charts
+  kfzActiveMetrics.forEach(function(k) {
+    var chart = kfzChartInstances[k];
+    if(!chart || !chart.canvas) return;
+    var cfg = KFZ_METRIC_CONFIG[k];
+    images.push({ label:cfg.label, color:cfg.color, dataUrl:chart.canvas.toDataURL('image/png',1.0) });
+  });
+  if(!images.length) { alert('Keine Charts gefunden.'); return; }
+  var today = new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'long',year:'numeric'});
+  var css = '@page{size:A4 portrait;margin:12mm 10mm}*{box-sizing:border-box;margin:0;padding:0}'
+    + 'body{font-family:Segoe UI,Arial,sans-serif;color:#1e293b;background:#fff}'
+    + '.block{margin-bottom:10mm;page-break-inside:avoid}'
+    + '.title{font-size:11pt;font-weight:900;margin-bottom:3mm;padding-left:3px;border-left:4px solid var(--c);color:var(--c)}'
+    + '.img{width:100%;border:1px solid #e2e8f0;border-radius:6px;display:block}'
+    + '.footer{text-align:right;color:#94a3b8;font-size:7pt;margin-top:2mm;border-top:1px solid #f1f5f9;padding-top:2mm}';
+  var body = '<h1 style="font-size:16pt;color:#1b66b3;margin-bottom:6mm;border-bottom:2px solid #1b66b3;padding-bottom:2mm">'
+    + '&#128200; Kennzahlen Fuhrpark – Graphen</h1>'
+    + '<div style="font-size:9pt;color:#64748b;margin-bottom:8mm;">NordFrischeCenter &nbsp;&middot;&nbsp; ' + today + '</div>';
+  images.forEach(function(img) {
+    body += '<div class="block"><div class="title" style="--c:' + img.color + ';">' + img.label + '</div>'
+      + '<img class="img" src="' + img.dataUrl + '" alt="' + img.label + '"></div>';
+  });
+  body += '<div class="footer">NordFrischeCenter &nbsp;&middot;&nbsp; Kennzahlen Fuhrpark &nbsp;&middot;&nbsp; ' + today + '</div>';
+  var w = window.open('','_blank','width=900,height=700');
+  w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'+body+'</body></html>');
+  w.document.close(); w.focus();
+  setTimeout(function(){ w.print(); }, 500);
+}
+'''
+
+    kfz_dd_js_code = ''
+
+    zulage_js_code = '''
+var _zTab = 'sonder';
+
+function zulagenInit() { zulagenBuildMonthSel(); zulagenRender(); }
+
+function zulagenTab(tab) {
+  _zTab = tab;
+  ['sonder','fuengers','drittkunden'].forEach(function(t) {
+    var btn = document.getElementById('ztab-'+t);
+    if(btn){ btn.style.background=tab===t?'#1b66b3':'#fff'; btn.style.color=tab===t?'#fff':'#1b66b3'; }
+  });
+  zulagenBuildMonthSel(); zulagenRender();
+}
+
+
+// ── ZULAGEN ──────────────────────────────────────────────────────────────
+function zulagenBuildMonthSel() {
+  var sel = document.getElementById("zulage-month-sel");
+  if(!sel) return;
+  var arr = _zTab==="drittkunden"
+    ? (Array.isArray(DRITTKUNDEN_DATA) ? DRITTKUNDEN_DATA : [])
+    : (_zTab==="sonder" ? (ZULAGE_DATA.sonder||[]) : (ZULAGE_DATA.fuengers||[]));
+  var cur = sel ? sel.value : "all";
+  sel.innerHTML = "<option value='all'>Alle Monate</option>" +
+    arr.map(function(m){ return "<option value='"+m.monat+"'"+(m.monat===cur?" selected":"")+">" + m.monat + "</option>"; }).join("");
+}
+
+function zulagenRender() {
+  var el = document.getElementById("zulage-content");
+  var stats = document.getElementById("zulage-stats");
+  if(!el) return;
+  if(_zTab==="drittkunden") {
+    if(!DRITTKUNDEN_DATA || !Array.isArray(DRITTKUNDEN_DATA) || !DRITTKUNDEN_DATA.length) {
+      el.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Drittkunden-Daten — bitte Touren-Excel hochladen.</div>";
+      if(stats) stats.innerHTML = ""; return;
+    }
+  } else if(!ZULAGE_DATA || typeof ZULAGE_DATA !== "object" || (!ZULAGE_DATA.sonder && !ZULAGE_DATA.fuengers)) {
+    el.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Zulage-Daten — bitte Touren-Excel hochladen.</div>";
+    if(stats) stats.innerHTML = ""; return;
+  }
+  var arr = _zTab==="drittkunden" ? (Array.isArray(DRITTKUNDEN_DATA) ? DRITTKUNDEN_DATA : []) : (_zTab==="sonder" ? (ZULAGE_DATA.sonder||[]) : (ZULAGE_DATA.fuengers||[]));
+  if(!arr.length) {
+    el.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;'>Keine Daten für diesen Tab.</div>";
+    if(stats) stats.innerHTML = ""; return;
+  }
+  var sel = document.getElementById("zulage-month-sel");
+  var filterM = sel ? sel.value : "all";
+  var data = filterM!=="all" ? arr.filter(function(m){return m.monat===filterM;}) : arr;
+  var totalAll = 0, html = "";
+  var isSonder = _zTab === "sonder";
+
+  data.forEach(function(monat) {
+    var mSum = monat.fahrer.reduce(function(s,f){return s+f.gesamt;},0);
+    totalAll += mSum;
+
+    // Month section header
+    html += "<div style='display:flex;align-items:center;gap:10px;margin-bottom:10px;'>";
+    html += "<h3 style='margin:0;font-size:12px;font-weight:700;color:#1b66b3;white-space:nowrap;'>" + monat.monat + "</h3>";
+    html += "<span style='flex:1;height:1px;background:#e2e8f0;display:block;'></span>";
+    html += "<span style='font-size:11px;font-weight:700;color:#1b66b3;'>Σ " + mSum.toFixed(2) + " €</span>";
+    html += "</div>";
+
+    // 3-col card grid
+    html += "<div style='display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:stretch;margin-bottom:28px;'>";
+
+    monat.fahrer.forEach(function(f) {
+
+      // Entry chips
+      var chipsHtml = f.tage.map(function(t) {
+        var isDK = (_zTab==="drittkunden");
+        var verdienst = isDK ? (t.zulage||0) : (t.verdienst||0);
+        var datumStr = isDK
+          ? t.datum + " <span style='color:#94a3b8;font-size:10px;'>(" + (t.kw||"") + ")</span>"
+          : t.datum;
+        var rightHtml = "";
+        if(isDK) {
+          var dkLabel = (t.lkw||"") + (t.info ? " · " + t.info : "");
+          rightHtml = "<span style='color:#475569;font-weight:600;'>" + dkLabel + "</span>";
+        } else if(isSonder) {
+          var tour = t.tour && t.tour!=="zbv" && t.tour!=="" ? t.tour : "z.b.v.";
+          var ac = t.art==="Gigaliner" ? "background:#fef3c7;color:#92400e;"
+                 : t.art==="Tandem"    ? "background:#dbeafe;color:#1e40af;"
+                 :                       "background:#dcfce7;color:#166534;";
+          rightHtml = "<span style='color:#475569;font-weight:600;'>" + tour + " · " + t.lkw + "</span>"
+                    + "<span style='" + ac + "padding:1px 7px;border-radius:20px;font-size:10px;font-weight:700;'>" + t.art + "</span>";
+        } else {
+          rightHtml = "<span style='color:#475569;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + (t.kommentar||"") + "</span>";
+        }
+        return "<div style='display:flex;align-items:center;justify-content:space-between;"
+               +"background:#f8fafc;border-radius:6px;padding:5px 8px;margin-bottom:4px;font-size:11px;'>"
+               +"<span style='color:#64748b;'>" + datumStr + "</span>"
+               +"<span style='display:flex;align-items:center;gap:5px;'>"
+               + rightHtml
+               +"<span style='font-weight:700;color:#15803d;margin-left:4px;'>" + verdienst.toFixed(2) + " €</span>"
+               +"</span>"
+               +"</div>";
+      }).join("");
+
+      // Card
+      html += "<div style='background:#fff;border:2px solid #1b66b3;border-radius:10px;"
+             +"padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.06);'>";
+
+      // Header row
+      html += "<div style='display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px;'>";
+      html += "<div style='flex:1;min-width:0;'>";
+      html += "<div style='font-weight:900;font-size:14px;color:#0b1220;white-space:nowrap;"
+             +"overflow:hidden;text-overflow:ellipsis;'>" + f.name + "</div>";
+      html += "<div style='margin-top:3px;font-size:10px;color:#94a3b8;'>" + (f.persnr||"") + "</div>";
+      html += "</div>";
+      // Big total number
+      html += "<div style='text-align:right;flex-shrink:0;'>";
+      html += "<div style='font-size:24px;font-weight:900;color:#1b66b3;line-height:1;'>" + f.gesamt.toFixed(2) + "</div>";
+      html += "<div style='font-size:9px;color:#94a3b8;font-weight:600;'>" + (_zTab==="drittkunden" ? "€ Zulage" : "€ Verdienst") + "</div>";
+      html += "</div>";
+      html += "</div>";
+
+      // Chips
+      html += "<div style='flex:1;'>"+chipsHtml+"</div>";
+
+      // Footer: count badge
+      html += "<div style='margin-top:8px;border-top:1px solid #e2e8f0;padding-top:8px;"
+             +"display:flex;align-items:center;gap:6px;'>";
+      html += "<span style='background:#eff6ff;color:#1b66b3;border-radius:8px;padding:2px 8px;"
+             +"font-size:10px;font-weight:700;'>" + f.tage.length + " Einträge</span>";
+      html += "</div>";
+
+      html += "</div>"; // end card
+    });
+
+    html += "</div>"; // end grid
+  });
+
+  el.innerHTML = html || "<div style='color:#94a3b8;padding:40px;text-align:center;'>Keine Daten.</div>";
+  if(stats) stats.innerHTML = totalAll>0 ? "Σ <b>"+totalAll.toFixed(2)+" €</b>" : "";
+}
+
+
+
+function zulagenExportExcel() {
+  var b64 = _zTab==="sonder" ? ZULAGE_XLSX_SONDER : _zTab==="fuengers" ? ZULAGE_XLSX_FUENGERS : ZULAGE_XLSX_DRITTKUNDEN;
+  if(!b64) { alert("Keine Excel-Daten.\\nBitte Touren-Dateien in Streamlit hochladen und App neu generieren."); return; }
+  var bc = atob(b64), bytes = new Uint8Array(bc.length);
+  for(var i=0;i<bc.length;i++) bytes[i]=bc.charCodeAt(i);
+  var blob = new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a"); a.href=url;
+  a.download = "Zulagen_"+(_zTab==="sonder"?"Sonderfahrzeuge":_zTab==="fuengers"?"Fuengers":"Drittkunden")+".xlsx";
+  a.click(); URL.revokeObjectURL(url);
+}
+'''
+
+    kfz_pdf_js_code = '''
+// ── Kennzahlen Fuhrpark – PDF Export mit Jahres-/Monatsauswahl ───────────────
+function kfzPDF() {
+  if(!KFZ_DATA || !KFZ_DATA.length) { alert("Keine Daten vorhanden."); return; }
+
+  // ── Hilfsfunktionen ─────────────────────────────────────────────────────────
+  var MONTH_NAMES = ["Januar","Februar","März","April","Mai","Juni",
+                     "Juli","August","September","Oktober","November","Dezember"];
+
+  function parseDate(datum) {
+    // "Mo 24.11.2025" or "So  23.11.2025"
+    var clean = datum.replace(/^(Mo|Di|Mi|Do|Fr|Sa|So)\\s+/,"").trim();
+    var p = clean.split(".");
+    if(p.length < 3) return null;
+    return { d: parseInt(p[0]), m: parseInt(p[1]), y: parseInt(p[2]), raw: clean };
+  }
+
+  // Build year→month→[days] index from all day rows
+  var index = {}; // { "2025": { "11": [dayObj,...], "12": [...] } }
+  // Also track which KW a day belongs to
+  KFZ_DATA.forEach(function(w) {
+    (w.days||[]).forEach(function(d) {
+      var pd = parseDate(d.datum||"");
+      if(!pd || !pd.y) return;
+      var yr = ""+pd.y, mo = pd.m<10?"0"+pd.m:""+pd.m;
+      if(!index[yr]) index[yr] = {};
+      if(!index[yr][mo]) index[yr][mo] = [];
+      index[yr][mo].push(Object.assign({}, d, {_kw: w.kw, _pd: pd}));
+    });
+  });
+
+  var years  = Object.keys(index).sort();
+  var months = ["01","02","03","04","05","06","07","08","09","10","11","12"];
+
+  // ── Dialog bauen ────────────────────────────────────────────────────────────
+  var overlay = document.createElement("div");
+  overlay.id = "kfz-pdf-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center;";
+
+  var dialog = document.createElement("div");
+  dialog.style.cssText = "background:#fff;border-radius:14px;padding:28px 32px;width:420px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,.25);font-family:'Segoe UI',Arial,sans-serif;";
+
+  var yearOpts = years.map(function(y){ return "<option value='"+y+"'>"+y+"</option>"; }).join("");
+  var monthOpts = MONTH_NAMES.map(function(n,i){
+    var v = i<9?"0"+(i+1):""+(i+1);
+    return "<option value='"+v+"'>"+n+"</option>";
+  }).join("");
+  monthOpts = "<option value='all'>Alle Monate</option>" + monthOpts;
+
+  dialog.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+      <span style="font-size:20px;">📄</span>
+      <h3 style="margin:0;font-size:15px;font-weight:900;color:#1b66b3;">Kennzahlen Fuhrpark – PDF Export</h3>
+    </div>
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:800;color:#64748b;display:block;margin-bottom:5px;">JAHR</label>
+      <select id="kfz-pdf-year" style="width:100%;padding:8px 12px;border:2px solid #1b66b3;border-radius:8px;font-size:13px;font-weight:700;color:#1b66b3;outline:none;cursor:pointer;">
+        <option value="all">Alle Jahre</option>${yearOpts}
+      </select>
+    </div>
+    <div style="margin-bottom:20px;">
+      <label style="font-size:12px;font-weight:800;color:#64748b;display:block;margin-bottom:5px;">MONAT</label>
+      <select id="kfz-pdf-month" style="width:100%;padding:8px 12px;border:2px solid #1b66b3;border-radius:8px;font-size:13px;font-weight:700;color:#1b66b3;outline:none;cursor:pointer;">
+        ${monthOpts}
+      </select>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button onclick="kfzPDFGenerate()" style="flex:1;padding:10px;background:#1b66b3;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;">
+        📄 PDF erstellen
+      </button>
+      <button onclick="document.getElementById('kfz-pdf-overlay').remove()" style="padding:10px 18px;background:#f1f5f9;color:#64748b;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">
+        Abbrechen
+      </button>
+    </div>
+  `;
+
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", function(e){ if(e.target===overlay) overlay.remove(); });
+}
+
+function kfzPDFGenerate() {
+  var selYear  = document.getElementById("kfz-pdf-year").value;
+  var selMonth = document.getElementById("kfz-pdf-month").value;
+  document.getElementById("kfz-pdf-overlay").remove();
+
+  var MONTH_NAMES = ["Januar","Februar","März","April","Mai","Juni",
+                     "Juli","August","September","Oktober","November","Dezember"];
+  var COLS = [
+    {key:"touren",         label:"Touren"},
+    {key:"km",             label:"km EDEKA"},
+    {key:"diesel",         label:"Diesel (L)"},
+    {key:"verbrauch",      label:"⌀L/100"},
+    {key:"ausfall",        label:"Ausfall LKW"},
+    {key:"ma_anwesend",    label:"MA anwesend"},
+    {key:"ma_krank",       label:"Krank"},
+    {key:"ma_abwesend",    label:"MA abwesend"},
+    {key:"zbv_edeka",      label:"ZBV EDEKA"},
+    {key:"zbv_fremd",      label:"ZBV Fremd"},
+    {key:"fremd_abgesagt", label:"Fremd abges."},
+    {key:"_fremdnames",    label:"Fremdspedition"}
+  ];
+
+  function parseDate(datum) {
+    var clean = datum.replace(/^(Mo|Di|Mi|Do|Fr|Sa|So)\\s+/,"").trim();
+    var p = clean.split(".");
+    if(p.length < 3) return null;
+    return { d:+p[0], m:+p[1], y:+p[2] };
+  }
+
+  function fmt(val, key) {
+    if(val===null||val===undefined||val==="") return "<span style='color:#bbb'>—</span>";
+    if(key==="km"||key==="diesel") return "<span style='text-align:right;display:block'>"+Math.round(val).toLocaleString("de-DE")+"</span>";
+    if(key==="verbrauch") return "<span style='text-align:right;display:block'>"+(+val).toFixed(2)+"</span>";
+    if(key==="ma_anwesend"||key==="ma_abwesend"||key==="ma_krank") return "<span style='text-align:right;display:block'>"+(Math.round(+val*10)/10)+"</span>";
+    if(typeof val==="number") return "<span style='text-align:right;display:block'>"+val+"</span>";
+    return val;
+  }
+
+  function warn(val, key) {
+    if(!val && val!==0) return "";
+    if(key==="ausfall"   && val>0) return "color:#dc2626;font-weight:800;";
+    if(key==="ma_krank"  && val>3) return "color:#d97706;font-weight:800;";
+    if(key==="fremd_abgesagt"&&val>0) return "color:#d97706;font-weight:800;";
+    return "";
+  }
+
+  // Collect all days matching filter
+  var allDays = [];
+  KFZ_DATA.forEach(function(w){
+    (w.days||[]).forEach(function(d){
+      var pd = parseDate(d.datum||"");
+      if(!pd) return;
+      if(selYear  !== "all" && ""+pd.y !== selYear)  return;
+      if(selMonth !== "all" && pd.m !== +selMonth)   return;
+      var fremd = [d.fremd1,d.fremd2,d.fremd3].filter(Boolean).join(", ");
+      allDays.push(Object.assign({},d,{_kw:w.kw, _pd:pd, _fremdnames:fremd, _summary:w.summary}));
+    });
+  });
+
+  if(!allDays.length){ alert("Keine Daten für die Auswahl."); return; }
+
+  // Group: year → month → [days]
+  var structure = {};
+  allDays.forEach(function(d){
+    var yr = ""+d._pd.y;
+    var mo = d._pd.m<10?"0"+d._pd.m:""+d._pd.m;
+    if(!structure[yr]) structure[yr]={};
+    if(!structure[yr][mo]) structure[yr][mo]=[];
+    structure[yr][mo].push(d);
+  });
+
+  var css = `
+    @page { size: A4 landscape; margin: 10mm 8mm 10mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 7pt; color: #1e293b; }
+    .cover { height: 100vh; display: flex; flex-direction: column; align-items: center;
+             justify-content: center; page-break-after: always; }
+    .cover-inner { text-align: center; border: 3px solid #1b66b3; border-radius: 12px;
+                   padding: 24mm 30mm; background: #f0f7ff; }
+    .cover h1 { font-size: 24pt; color: #1b66b3; font-weight: 900; margin-bottom: 4mm; }
+    .cover .sub { font-size: 11pt; color: #475569; margin-bottom: 6mm; }
+    .cover .meta { font-size: 9pt; color: #64748b; }
+    .month-block { page-break-before: always; }
+    .month-block:first-of-type { page-break-before: avoid; }
+    .month-header { background: linear-gradient(135deg, #1b66b3, #0f4c8a);
+                    color: #fff; padding: 4mm 6mm; border-radius: 6px 6px 0 0;
+                    display: flex; align-items: baseline; gap: 8px; margin-bottom: 0; }
+    .month-header .mname { font-size: 14pt; font-weight: 900; }
+    .month-header .myr   { font-size: 9pt; opacity: .8; }
+    .month-header .mstats{ margin-left: auto; font-size: 8pt; opacity: .9; }
+    table { width: 100%; border-collapse: collapse; font-size: 6.2pt; }
+    thead tr { background: #1e3a5f; color: #fff; }
+    thead th { padding: 3px 4px; border: 1px solid #2d4f7c; font-weight: 800;
+               text-align: center; white-space: nowrap; }
+    thead th:first-child { text-align: left; width: 100px; }
+    tbody tr.kw-row { background: #dbeafe; }
+    tbody tr.kw-row td { padding: 3px 4px; border: 1px solid #93c5fd;
+                         color: #1e3a5f; font-weight: 800; font-size: 6.5pt; }
+    tbody tr.kw-row td:first-child { color: #1b66b3; }
+    tbody tr.day-row td { padding: 2.5px 4px; border-bottom: 1px solid #f1f5f9;
+                          border-right: 1px solid #f5f5f5; }
+    tbody tr.day-row:nth-child(even) { background: #f8fafc; }
+    tbody tr.weekend { opacity: .4; }
+    td.num { text-align: right; }
+    .kw-badge { display: inline-block; background: #1b66b3; color: #fff;
+                border-radius: 4px; padding: 0 4px; font-size: 5.5pt; margin-left: 4px; font-weight: 700; }
+    .footer { text-align: right; color: #94a3b8; font-size: 6pt; margin-top: 2mm; }
+  `;
+
+  var selYearLabel  = selYear==="all"  ? "Alle Jahre"  : selYear;
+  var selMonthLabel = selMonth==="all" ? "Alle Monate" : MONTH_NAMES[+selMonth-1];
+
+  var body = `
+    <div class="cover">
+      <div class="cover-inner">
+        <div style="font-size:36pt;margin-bottom:6mm;">🚛</div>
+        <h1>Kennzahlen Fuhrpark</h1>
+        <div class="sub">NordFrischeCenter</div>
+        <div class="meta">
+          <strong>${selMonthLabel} ${selYearLabel}</strong><br>
+          <span style="color:#94a3b8;">Erstellt am ${new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'long',year:'numeric'})}</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  var sortedYears = Object.keys(structure).sort();
+  var firstBlock = true;
+
+  sortedYears.forEach(function(yr) {
+    var sortedMonths = Object.keys(structure[yr]).sort();
+    sortedMonths.forEach(function(mo) {
+      var days = structure[yr][mo];
+      var moName = MONTH_NAMES[+mo-1];
+      var workDays = days.filter(function(d){ return !/^(Sa|So)/.test(d.datum); });
+      var totalTouren = workDays.reduce(function(s,d){ return s+(+d.touren||0); },0);
+      var avgKrank = workDays.length ? (workDays.reduce(function(s,d){ return s+(+d.ma_krank||0); },0)/workDays.length).toFixed(1) : "—";
+
+      body += "<div class='month-block"+(firstBlock?" first-block":"")+"'>";
+      firstBlock = false;
+      body += "<div class='month-header'>";
+      body += "<span class='mname'>"+moName+"</span><span class='myr'>"+yr+"</span>";
+      body += "<span class='mstats'>"+workDays.length+" Arbeitstage &nbsp;·&nbsp; "+totalTouren+" Touren &nbsp;·&nbsp; Ø "+avgKrank+" Krank</span>";
+      body += "</div>";
+
+      body += "<table><thead><tr><th>Datum</th>";
+      COLS.forEach(function(c){ body += "<th>"+c.label+"</th>"; });
+      body += "</tr></thead><tbody>";
+
+      // Group days by KW
+      var kwGroups = {};
+      var kwOrder = [];
+      days.forEach(function(d){
+        var kw = d._kw || "—";
+        if(!kwGroups[kw]){ kwGroups[kw]=[]; kwOrder.push(kw); }
+        kwGroups[kw].push(d);
+      });
+      // deduplicate kwOrder
+      kwOrder = kwOrder.filter(function(v,i,a){ return a.indexOf(v)===i; });
+
+      kwOrder.forEach(function(kw) {
+        var kwDays = kwGroups[kw];
+        // KW summary row
+        var s = (kwDays[0]._summary)||{};
+        body += "<tr class='kw-row'><td>"+kw+"</td>";
+        COLS.forEach(function(c){
+          if(c.key==="_fremdnames"){ body += "<td></td>"; return; }
+          var v = s[c.key];
+          var ws = warn(v,c.key);
+          body += "<td class='num' style='"+ws+"'>"+fmt(v,c.key)+"</td>";
+        });
+        body += "</tr>";
+
+        // Day rows
+        kwDays.forEach(function(d){
+          var weekend = /^(Sa|So)/.test(d.datum);
+          body += "<tr class='day-row"+(weekend?" weekend":"")+"'><td style='font-weight:700;'>"+d.datum+"</td>";
+          COLS.forEach(function(c){
+            var v = d[c.key];
+            var ws = warn(v,c.key);
+            body += "<td class='num' style='"+ws+"'>"+fmt(v,c.key)+"</td>";
+          });
+          body += "</tr>";
+        });
+      });
+
+      body += "</tbody></table>";
+      body += "<div class='footer'>NordFrischeCenter &nbsp;·&nbsp; Kennzahlen Fuhrpark &nbsp;·&nbsp; "+moName+" "+yr+"</div>";
+      body += "</div>";
+    });
+  });
+
+  var w2 = window.open("","_blank","width=1200,height=820");
+  w2.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'>");
+  w2.document.write("<title>Kennzahlen Fuhrpark – "+selMonthLabel+" "+selYearLabel+"</title>");
+  w2.document.write("<style>"+css+"</style></head><body>"+body+"</body></html>");
+  w2.document.close();
+  w2.focus();
+  setTimeout(function(){ w2.print(); }, 600);
+}
+'''
     kfz_js_code = '// ── Kennzahlen Fuhrpark Dashboard ─────────────────────────────────────────\nfunction kfzFilter(q) { kfzRenderAll(q); }\nvar kfzOpenWeeks = {};\nvar kfzChartInstances = {};\nvar kfzActiveMetrics = [\"touren\"];\n\nvar KFZ_LABELS = {\n  touren:\"Touren Gesamt\",verschiebung:\"Anz. Kundenverschiebung / Tour\",\n  gk_touren_mg:\"GK Touren pro Tag\",gk_fp_edeka:\"GK Touren FP EDEKA\",gk_touren:\"GK Touren Fremdspedition\",\n  direkt_fremd:\"Direkttouren EH Fremdspedition\",\n  gk_tonnage:\"GK in t Popp + F\u00fcngers\",shuttle_touren:\"Shuttle Touren Edeka\",shuttle_sonder:\"Shuttle Touren Spedition\",hupa_touren:\"HuPa Touren komplett\",\n  km:\"Kilometer pro Tag FP EDEKA\",diesel:\"Diesel Gesamtverbrauch\",verbrauch:\"\u2205 Verbrauch\",\n  ausfall:\"Anzahl Ausfall LKW\",pda:\"Touren mit PDA\",ma_anwesend:\"MA anwesend\",ma_abwesend:\"MA abwesend Urlaub/ZA\",\n  ma_krank:\"MA Krank\",azubis:\"Verf\u00fcgbare Azubis\",\n  zbv_edeka:\"ZBV EDEKA\",zbv_fremd:\"ZBV Fremdspedition\",fremd_abgesagt:\"Fremdspedition abgesagt\"\n};\nvar KFZ_ALL_KEYS = [\"touren\",\"verschiebung\",\"gk_touren_mg\",\"gk_fp_edeka\",\"gk_touren\",\"direkt_fremd\",\"gk_tonnage\",\"shuttle_touren\",\"shuttle_sonder\",\"hupa_touren\",\"km\",\"diesel\",\"verbrauch\",\"ausfall\",\"pda\",\"ma_anwesend\",\"ma_abwesend\",\"ma_krank\",\"azubis\",\"zbv_edeka\",\"zbv_fremd\",\"fremd_abgesagt\"];\n\nvar KFZ_METRIC_CONFIG = {\n  touren:{label:\"Touren Gesamt\",color:\"#1b66b3\",unit:\"\",icon:\"\ud83d\ude9a\"},\n  verschiebung:{label:\"Kundenverschiebung\",color:\"#6366f1\",unit:\"\",icon:\"\ud83d\udd04\"},\n  gk_touren_mg:{label:\"GK Touren/Tag\",color:\"#10b981\",unit:\"\",icon:\"\ud83d\udce6\"},\n  gk_fp_edeka:{label:\"GK FP EDEKA\",color:\"#059669\",unit:\"\",icon:\"\ud83c\udfea\"},\n  gk_touren:{label:\"GK Fremdspedition\",color:\"#047857\",unit:\"\",icon:\"\ud83d\ude9b\"},\n  direkt_fremd:{label:\"Direkt EH Fremd\",color:\"#8b5cf6\",unit:\"\",icon:\"\ud83d\udccb\"},\n  gk_tonnage:{label:\"GK Tonnage\",color:\"#065f46\",unit:\" t\",icon:\"\u2696\"},\n  shuttle_touren:{label:\"Shuttle Edeka\",color:\"#22d3ee\",unit:\"\",icon:\"\ud83d\ude90\"},\n  shuttle_sonder:{label:\"Shuttle Spedition\",color:\"#06b6d4\",unit:\"\",icon:\"\ud83d\ude98\"},\n  hupa_touren:{label:\"HuPa komplett\",color:\"#0891b2\",unit:\"\",icon:\"\ud83d\udce6\"},\n  km:{label:\"km FP EDEKA\",color:\"#0f4c8a\",unit:\" km\",icon:\"\ud83d\udee3\"},\n  diesel:{label:\"Diesel Gesamt\",color:\"#7c3aed\",unit:\" L\",icon:\"\u26fd\"},\n  verbrauch:{label:\"\u2205 Verbrauch\",color:\"#0284c7\",unit:\" L/100\",icon:\"\ud83d\udcc9\"},\n  ausfall:{label:\"Ausfall LKW\",color:\"#dc2626\",unit:\"\",icon:\"\u26a0\"},\n  pda:{label:\"Touren mit PDA\",color:\"#6d28d9\",unit:\"\",icon:\"\ud83d\udcf1\"},\n  ma_anwesend:{label:\"MA anwesend\",color:\"#16a34a\",unit:\"\",icon:\"\ud83d\udc64\"},\n  ma_abwesend:{label:\"MA abwesend\",color:\"#fb923c\",unit:\"\",icon:\"\ud83c\udfd6\"},\n  ma_krank:{label:\"MA Krank\",color:\"#f59e0b\",unit:\"\",icon:\"\ud83e\udd12\"},\n  azubis:{label:\"Azubis\",color:\"#a855f7\",unit:\"\",icon:\"\ud83c\udf93\"},\n  zbv_edeka:{label:\"ZBV EDEKA\",color:\"#0d9488\",unit:\"\",icon:\"\ud83d\udccb\"},\n  zbv_fremd:{label:\"ZBV Fremd\",color:\"#0f766e\",unit:\"\",icon:\"\ud83d\udccb\"},\n  fremd_abgesagt:{label:\"Fremd abgesagt\",color:\"#f43f5e\",unit:\"\",icon:\"\u274c\"}\n};\n\nvar KFZ_KPI_KEYS=[\"touren\",\"km\",\"diesel\",\"verbrauch\",\"ausfall\",\"ma_anwesend\",\"ma_krank\",\"gk_tonnage\"];\n\nfunction kfzVal(w,k){\n  var v=w.summary?w.summary[k]:undefined;\n  if(v!==null&&v!==undefined&&typeof v===\"number\") return Math.round(v*100)/100;\n  var days=(w.days||[]).filter(function(d){return !d.datum||!(d.datum.startsWith(\"Sa\")||d.datum.startsWith(\"So\"));});\n  var vals=days.map(function(d){return d[k];}).filter(function(v){return v!==null&&v!==undefined&&typeof v===\"number\";});\n  if(!vals.length)return null;\n  return Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length*100)/100;\n}\nfunction kfzFmtVal(v,unit){\n  if(v===null||v===undefined)return \"\\u2014\";\n  if(unit===\" km\"||unit===\" L\")return Math.round(v).toLocaleString(\"de-DE\");\n  if(unit===\" L/100\"||unit===\" t\")return v.toFixed(1);\n  return String(Math.round(v*10)/10);\n}\n\nfunction kfzRenderAll(q){\n  q=(q||\"\").toLowerCase().trim();\n  if(!KFZ_DATA||!KFZ_DATA.length){\n    var ep=document.getElementById(\"kfz-kpi-row\"); if(ep) ep.innerHTML=\"\";\n    var ec=document.getElementById(\"kfz-chart-wrap\"); if(ec) ec.innerHTML=\"<div style=\\\"color:#94a3b8;padding:40px;text-align:center;font-size:14px;\\\">Keine Daten.<br>Fuhrpark-Excel in Streamlit hochladen.</div>\";\n    var et=document.getElementById(\"kfz-table-content\"); if(et) et.innerHTML=\"\";\n    return;\n  }\n  kfzRenderKPIs();\n  kfzRenderChart();\n  kfzRenderTable(q);\n}\n\nfunction kfzRenderKPIs(){\n  var el=document.getElementById(\"kfz-kpi-row\"); if(!el) return;\n  var kwData=KFZ_DATA.filter(function(w){return w.kw&&w.kw.startsWith(\"KW\")&&w.summary;});\n  if(!kwData.length){el.innerHTML=\"\";return;}\n  var last=kwData[kwData.length-1]; var prev=kwData.length>=2?kwData[kwData.length-2]:null;\n  var html=\"\";\n  KFZ_KPI_KEYS.forEach(function(k){\n    var cfg=KFZ_METRIC_CONFIG[k]; var val=kfzVal(last,k); var pVal=prev?kfzVal(prev,k):null;\n    var delta=(val!==null&&pVal!==null)?val-pVal:null; var deltaStr=\"\";\n    if(delta!==null&&delta!==0){\n      var up=delta>0; var isNeg=k===\"ausfall\"||k===\"ma_krank\"||k===\"fremd_abgesagt\";\n      var good=isNeg?!up:up; var dColor=good?\"#16a34a\":\"#dc2626\"; var arrow=up?\"\\u25b2\":\"\\u25bc\";\n      deltaStr=\"<div style=\\\"font-size:11px;font-weight:700;color:\"+dColor+\";margin-top:2px;\\\">\"+arrow+\" \"+(up?\"+\":\"\")+kfzFmtVal(delta,cfg.unit)+\"</div>\";\n    }\n    html+=\"<div style=\\\"background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px 18px;min-width:140px;flex:1;position:relative;overflow:hidden;\\\">\";\n    html+=\"<div style=\\\"position:absolute;top:10px;right:14px;font-size:22px;opacity:.15;\\\">\"+cfg.icon+\"</div>\";\n    html+=\"<div style=\\\"font-size:10px;font-weight:800;text-transform:uppercase;color:#64748b;letter-spacing:.4px;margin-bottom:6px;\\\">\"+cfg.label+\"</div>\";\n    html+=\"<div style=\\\"font-size:26px;font-weight:900;color:\"+cfg.color+\";line-height:1;\\\">\"+kfzFmtVal(val,cfg.unit)+\"<span style=\\\"font-size:11px;font-weight:600;color:#94a3b8;margin-left:3px;\\\">\"+((cfg.unit||\"\")===\"\"?\"\":cfg.unit)+\"</span></div>\";\n    html+=deltaStr;\n    html+=\"<div style=\\\"font-size:9px;color:#94a3b8;margin-top:4px;\\\">\"+last.kw+\"</div>\";\n    html+=\"</div>\";\n  });\n  el.innerHTML=html;\n}\n\nfunction kfzRenderChart(){\n  var container=document.getElementById(\"kfz-chart-wrap\"); if(!container) return;\n  Object.values(kfzChartInstances).forEach(function(c){try{c.destroy();}catch(e){}});\n  kfzChartInstances={};\n  var kwData=KFZ_DATA.filter(function(w){return w.kw&&w.kw.startsWith(\"KW\")&&w.summary;});\n  if(!kwData.length){container.innerHTML=\"<div style=\\\"color:#94a3b8;padding:20px;text-align:center;\\\">Keine KW-Daten.</div>\";return;}\n  var toggleHtml=\"<div style=\\\"display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;align-items:center;\\\">\";\n  toggleHtml+=\"<span style=\\\"font-size:10px;font-weight:800;color:#64748b;margin-right:2px;\\\">METRIKEN:</span>\";\n  Object.keys(KFZ_METRIC_CONFIG).forEach(function(k){\n    var cfg=KFZ_METRIC_CONFIG[k]; var active=kfzActiveMetrics.indexOf(k)!==-1;\n    toggleHtml+=\"<button id=\\\"kfz-toggle-\"+k+\"\\\" onclick=\\\"kfzToggleMetric(\\'\" +k+ \"\\')\\\" style=\\\"padding:2px 8px;border-radius:12px;border:1.5px solid \"+cfg.color+\";font-size:10px;font-weight:700;cursor:pointer;background:\"+(active?cfg.color:\"#fff\")+\";color:\"+(active?\"#fff\":cfg.color)+\";transition:all .15s;\\\">\"+cfg.label+\"</button>\";\n  });\n  toggleHtml+=\"</div>\";\n  container.innerHTML=toggleHtml+\"<div id=\\\"kfz-chart-area\\\"></div>\";\n  kfzBuildCharts();\n}\n\nfunction kfzToggleMetric(k){\n  var idx=kfzActiveMetrics.indexOf(k);\n  if(idx===-1)kfzActiveMetrics.push(k); else kfzActiveMetrics.splice(idx,1);\n  var cfg=KFZ_METRIC_CONFIG[k]; var btn=document.getElementById(\"kfz-toggle-\"+k);\n  var active=kfzActiveMetrics.indexOf(k)!==-1;\n  if(btn){btn.style.background=active?cfg.color:\"#fff\";btn.style.color=active?\"#fff\":cfg.color;}\n  kfzBuildCharts();\n}\n\nfunction kfzBuildCharts(){\n  var area=document.getElementById(\"kfz-chart-area\"); if(!area) return;\n  Object.values(kfzChartInstances).forEach(function(c){try{c.destroy();}catch(e){}});\n  kfzChartInstances={}; area.innerHTML=\"\";\n  if(!kfzActiveMetrics.length){area.innerHTML=\"<div style=\\\"color:#94a3b8;padding:20px;text-align:center;\\\">Keine Kennzahl ausgew\\u00e4hlt.</div>\";return;}\n  var kwData=KFZ_DATA.filter(function(w){return w.kw&&w.kw.startsWith(\"KW\")&&w.summary;});\n  var labels=kwData.map(function(w){return w.kw;});\n  var wrap=document.createElement(\"div\");\n  wrap.style.cssText=\"background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:18px 22px;margin-bottom:16px;\";\n  var header=document.createElement(\"div\");\n  header.style.cssText=\"display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:14px;\";\n  var titleEl=document.createElement(\"span\");\n  titleEl.style.cssText=\"font-size:13px;font-weight:900;color:#1b66b3;margin-right:4px;\";\n  titleEl.textContent=\"Kennzahlen Verlauf\";\n  header.appendChild(titleEl);\n  kfzActiveMetrics.forEach(function(k){\n    var cfg=KFZ_METRIC_CONFIG[k]; var pill=document.createElement(\"span\");\n    pill.style.cssText=\"display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;background:\"+cfg.color+\"1a;color:\"+cfg.color+\";border:1px solid \"+cfg.color+\"55;cursor:pointer;\";\n    pill.title=\"Klicken zum Entfernen\";\n    pill.onclick=(function(key){return function(){kfzToggleMetric(key);};})(k);\n    var dot=document.createElement(\"span\");\n    dot.style.cssText=\"width:7px;height:7px;border-radius:50%;background:\"+cfg.color+\";display:inline-block;\";\n    pill.appendChild(dot); pill.appendChild(document.createTextNode(\" \"+cfg.label));\n    header.appendChild(pill);\n  });\n  wrap.appendChild(header);\n  var combWrap=document.createElement(\"div\");\n  combWrap.style.cssText=\"position:relative;height:300px;width:100%;\";\n  var combCanvas=document.createElement(\"canvas\"); combCanvas.id=\"kfz-chart-combined\";\n  combWrap.appendChild(combCanvas); wrap.appendChild(combWrap); area.appendChild(wrap);\n  var datasets=[]; var scales={x:{grid:{color:\"#f1f5f9\"},ticks:{font:{size:10},maxRotation:45,minRotation:30}}};\n  var usedAxes=[];\n  kfzActiveMetrics.forEach(function(k){\n    var cfg=KFZ_METRIC_CONFIG[k];\n    var allVals=kwData.map(function(w){return kfzVal(w,k);}).filter(function(v){return v!==null;});\n    var maxV=allVals.length?Math.max.apply(null,allVals):0; var axisId=null;\n    for(var ai=0;ai<usedAxes.length;ai++){var axMax=usedAxes[ai].max;if(axMax===0||(maxV/axMax<=6&&axMax/Math.max(maxV,0.01)<=6)){axisId=usedAxes[ai].id;usedAxes[ai].max=Math.max(axMax,maxV);break;}}\n    if(!axisId){axisId=\"y\"+usedAxes.length;var pos=usedAxes.length%2===0?\"left\":\"right\";usedAxes.push({id:axisId,max:maxV});scales[axisId]={type:\"linear\",position:pos,display:true,grid:{drawOnChartArea:usedAxes.length===1,color:\"#f1f5f9\"},ticks:{font:{size:9},color:cfg.color,callback:function(v){return v.toLocaleString(\"de-DE\");}}}}\n    datasets.push({label:cfg.label,data:kwData.map(function(w){return kfzVal(w,k);}),yAxisID:axisId,borderColor:cfg.color,backgroundColor:cfg.color+\"14\",borderWidth:2,pointRadius:3,pointHoverRadius:7,pointBackgroundColor:cfg.color,tension:0.3,fill:false,spanGaps:true});\n  });\n  kfzChartInstances[\"combined\"]=new Chart(combCanvas,{type:\"line\",data:{labels:labels,datasets:datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:\"index\",intersect:false},plugins:{legend:{display:true,position:\"bottom\",labels:{font:{size:11},padding:14,usePointStyle:true,pointStyleWidth:10}},tooltip:{backgroundColor:\"rgba(11,18,32,.93)\",titleFont:{size:11,weight:\"bold\"},bodyFont:{size:10},padding:12,callbacks:{label:function(ctx){var unit=\"\";Object.keys(KFZ_METRIC_CONFIG).forEach(function(k){if(KFZ_METRIC_CONFIG[k].label===ctx.dataset.label)unit=KFZ_METRIC_CONFIG[k].unit||\"\";});return\" \"+ctx.dataset.label+\": \"+(ctx.raw!==null?ctx.raw.toLocaleString(\"de-DE\"):\"\\u2014\")+unit;}}}},scales:scales}});\n  if(kfzActiveMetrics.length>1){\n    var grid=document.createElement(\"div\");\n    grid.style.cssText=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:12px;margin-top:4px;\";\n    area.appendChild(grid);\n    kfzActiveMetrics.forEach(function(k,idx){\n      var cfg=KFZ_METRIC_CONFIG[k];var data=kwData.map(function(w){return kfzVal(w,k);});\n      var vals=data.filter(function(v){return v!==null;});\n      var minV=vals.length?Math.min.apply(null,vals):0;var maxV=vals.length?Math.max.apply(null,vals):1;\n      var pad=Math.max((maxV-minV)*0.2,maxV*0.07,1);\n      var dWrap=document.createElement(\"div\");dWrap.style.cssText=\"background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px 16px;\";\n      var dTitle=document.createElement(\"div\");dTitle.style.cssText=\"font-size:10px;font-weight:900;color:\"+cfg.color+\";margin-bottom:8px;border-left:3px solid \"+cfg.color+\";padding-left:7px;\";\n      dTitle.textContent=cfg.label+(cfg.unit?\" (\"+cfg.unit.trim()+\")\":\"\");\n      var dCW=document.createElement(\"div\");dCW.style.cssText=\"position:relative;height:160px;width:100%;\";\n      var dC=document.createElement(\"canvas\");dC.id=\"kfz-detail-\"+idx;\n      dCW.appendChild(dC);dWrap.appendChild(dTitle);dWrap.appendChild(dCW);grid.appendChild(dWrap);\n      kfzChartInstances[k]=new Chart(dC,{type:\"line\",data:{labels:labels,datasets:[{label:cfg.label,data:data,borderColor:cfg.color,backgroundColor:cfg.color+\"1e\",borderWidth:2,pointRadius:2,pointHoverRadius:6,pointBackgroundColor:cfg.color,tension:0.3,fill:true,spanGaps:true}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:\"index\",intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return\" \"+(ctx.raw!==null?ctx.raw.toLocaleString(\"de-DE\"):\"\\u2014\")+(cfg.unit||\"\");}}}},scales:{x:{grid:{color:\"#f8fafc\"},ticks:{font:{size:8},maxRotation:45,minRotation:30}},y:{min:Math.max(0,Math.floor(minV-pad)),max:Math.ceil(maxV+pad),grid:{color:\"#f1f5f9\"},ticks:{font:{size:8},callback:function(v){return v.toLocaleString(\"de-DE\")+(cfg.unit||\"\")}}}}}});\n    });\n  }\n}\n\nfunction kfzRenderTable(q){\n  q=(q||\"\").toLowerCase().trim();\n  var filtered=KFZ_DATA.filter(function(w){return !q||w.kw.toLowerCase().includes(q);});\n  document.getElementById(\"kfz-info\").textContent=filtered.length+\" von \"+KFZ_DATA.length+\" Kalenderwochen\";\n  function badge(val,key){if(val===null||val===undefined)return\"<span style=\\\"color:#cbd5e1\\\">\\u2014</span>\";var color=\"#334155\";if(key===\"ausfall\"&&val>0)color=\"#dc2626\";if(key===\"ma_krank\"&&val>3)color=\"#f59e0b\";if(key===\"fremd_abgesagt\"&&val>0)color=\"#f59e0b\";return\"<span style=\\\"font-weight:700;color:\"+color+\";\\\">\"+val+\"</span>\";}\n  function pill(label,val,color){if(val===null||val===undefined)return\"\";return\"<span style=\\\"display:inline-flex;align-items:center;gap:3px;background:#f1f5f9;border-radius:12px;padding:2px 8px;margin:1px;font-size:11px;\\\"><span style=\\\"color:#64748b;\\\">\"+label+\"</span><span style=\\\"font-weight:800;color:\"+color+\";\\\">\"+val+\"</span></span>\";}\n  var html=\"\";\n  filtered.forEach(function(w){\n    var open=!!kfzOpenWeeks[w.kw]; var s=w.summary||{};\n    html+=\"<div style=\\\"background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;margin-bottom:8px;overflow:hidden;\\\">\";\n    html+=\"<div onclick=\\\"kfzToggle(this,\\x27\"+w.kw+\"\\x27)\\\" style=\\\"display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;background:#f8fafc;border-bottom:1.5px solid #e2e8f0;flex-wrap:wrap;\\\">\";\n    html+=\"<span style=\\\"font-size:14px;font-weight:900;color:#1b66b3;min-width:52px;\\\">\"+w.kw+\"</span>\";\n    html+=\"<span style=\\\"font-size:10px;color:#94a3b8;\\\">(\"+w.days.length+\" Tage)</span>\";\n    html+=\"<div style=\\\"display:flex;flex-wrap:wrap;flex:1;\\\">\";\n    html+=pill(\"Touren\",s.touren,\"#1b66b3\");\n    html+=pill(\"km\",s.km?Math.round(s.km).toLocaleString(\"de-DE\"):null,\"#0f4c8a\");\n    html+=pill(\"Diesel\",s.diesel?Math.round(s.diesel).toLocaleString(\"de-DE\")+\"L\":null,\"#7c3aed\");\n    html+=pill(\"Ausfall\",s.ausfall,s.ausfall>0?\"#dc2626\":\"#64748b\");\n    html+=pill(\"MA\",s.ma_anwesend?Math.round(s.ma_anwesend):null,\"#16a34a\");\n    html+=pill(\"Krank\",s.ma_krank?Math.round(s.ma_krank):null,s.ma_krank>3?\"#f59e0b\":\"#64748b\");\n    html+=\"</div>\";\n    html+=\"<span class=\\\"kfz-arrow\\\" style=\\\"color:#94a3b8;font-size:12px;display:inline-block;transition:.2s;transform:rotate(\"+(open?\"180\":\"0\")+\"deg);\\\">&#9660;</span>\";\n    html+=\"</div>\";\n    html+=\"<div class=\\\"kfz-days\\\" style=\\\"display:\"+(open?\"block\":\"none\")+\";overflow-x:auto;\\\">\";\n    html+=\"<table style=\\\"width:100%;border-collapse:collapse;font-size:11px;\\\"><thead><tr style=\\\"background:#f1f5fb;\\\"><th style=\\\"padding:5px 10px;text-align:left;font-weight:800;color:#1b66b3;border-bottom:2px solid #e2e8f0;white-space:nowrap;\\\">Datum</th>\";\n    KFZ_ALL_KEYS.forEach(function(k){html+=\"<th style=\\\"padding:5px 6px;text-align:center;font-weight:800;color:#64748b;border-bottom:2px solid #e2e8f0;font-size:9px;white-space:nowrap;\\\">\"+KFZ_LABELS[k]+\"</th>\";});\n    html+=\"<th style=\\\"padding:5px 6px;font-size:9px;font-weight:800;color:#64748b;border-bottom:2px solid #e2e8f0;\\\">Fremdspedition</th></tr></thead><tbody>\";\n    w.days.forEach(function(d,i){\n      var weekend=d.datum&&(d.datum.startsWith(\"Sa\")||d.datum.startsWith(\"So\"));\n      var bg=weekend?\"#fafafa\":(i%2===0?\"#fff\":\"#f8fafc\"); var op=weekend?\"opacity:.5;\":\"\";\n      html+=\"<tr style=\\\"background:\"+bg+\";\"+op+\"\\\"><td style=\\\"padding:4px 10px;font-weight:700;white-space:nowrap;color:#0b1220;border-bottom:1px solid #f1f5f9;\\\">\"+d.datum+\"</td>\";\n      KFZ_ALL_KEYS.forEach(function(k){html+=\"<td style=\\\"padding:4px 6px;text-align:center;border-bottom:1px solid #f1f5f9;\\\">\"+badge(d[k],k)+\"</td>\";});\n      var f=[d.fremd1,d.fremd2,d.fremd3].filter(Boolean).join(\", \");\n      html+=\"<td style=\\\"padding:4px 6px;color:#f59e0b;font-weight:700;font-size:10px;border-bottom:1px solid #f1f5f9;\\\">\"+f+\"</td></tr>\";\n    });\n    html+=\"</tbody></table></div></div>\";\n  });\n  document.getElementById(\"kfz-table-content\").innerHTML=html||\"<div style=\\\"color:#94a3b8;padding:20px;\\\">Keine KW gefunden.</div>\";\n}\n\nfunction kfzToggle(el,kw){\n  kfzOpenWeeks[kw]=!kfzOpenWeeks[kw];\n  var days=el.parentElement.querySelector(\".kfz-days\");\n  var arrow=el.querySelector(\".kfz-arrow\");\n  if(days)days.style.display=kfzOpenWeeks[kw]?\"block\":\"none\";\n  if(arrow)arrow.style.transform=\"rotate(\"+(kfzOpenWeeks[kw]?\"180\":\"0\")+\"deg)\";\n}\n'
     kfz_graph_js_code = ''
     kfz_graph_pdf_js_code = '// ── Kennzahlen Fuhrpark – Graphen PDF Export ─────────────────────────────────\nfunction kfzGraphPDF() {\n  if(!kfzActiveMetrics || !kfzActiveMetrics.length) {\n    alert(\'Keine aktiven Graphen zum Exportieren.\'); return;\n  }\n  var images = [];\n  kfzActiveMetrics.forEach(function(k, i) {\n    var chart = kfzChartInstances[k] || kfzChartInstances[\'combined\'];\n    if(i > 0) return; // only export combined chart\n    var canvas = kfzChartInstances[\'combined\'] ? kfzChartInstances[\'combined\'].canvas : null;\n    if(!canvas) return;\n    var cfg = { label:\'Kennzahlen Fuhrpark\', color:\'#1b66b3\', unit:\'\' };\n    images.push({ label:cfg.label, color:cfg.color, dataUrl:canvas.toDataURL(\'image/png\',1.0) });\n  });\n  // also add individual charts\n  kfzActiveMetrics.forEach(function(k) {\n    var chart = kfzChartInstances[k];\n    if(!chart || !chart.canvas) return;\n    var cfg = KFZ_METRIC_CONFIG[k];\n    images.push({ label:cfg.label, color:cfg.color, dataUrl:chart.canvas.toDataURL(\'image/png\',1.0) });\n  });\n  if(!images.length) { alert(\'Keine Charts gefunden.\'); return; }\n  var today = new Date().toLocaleDateString(\'de-DE\',{day:\'2-digit\',month:\'long\',year:\'numeric\'});\n  var css = \'@page{size:A4 portrait;margin:12mm 10mm}*{box-sizing:border-box;margin:0;padding:0}\'\n    + \'body{font-family:Segoe UI,Arial,sans-serif;color:#1e293b;background:#fff}\'\n    + \'.block{margin-bottom:10mm;page-break-inside:avoid}\'\n    + \'.title{font-size:11pt;font-weight:900;margin-bottom:3mm;padding-left:3px;border-left:4px solid var(--c);color:var(--c)}\'\n    + \'.img{width:100%;border:1px solid #e2e8f0;border-radius:6px;display:block}\'\n    + \'.footer{text-align:right;color:#94a3b8;font-size:7pt;margin-top:2mm;border-top:1px solid #f1f5f9;padding-top:2mm}\';\n  var body = \'<h1 style="font-size:16pt;color:#1b66b3;margin-bottom:6mm;border-bottom:2px solid #1b66b3;padding-bottom:2mm">\'\n    + \'&#128200; Kennzahlen Fuhrpark – Graphen</h1>\'\n    + \'<div style="font-size:9pt;color:#64748b;margin-bottom:8mm;">NordFrischeCenter &nbsp;&middot;&nbsp; \' + today + \'</div>\';\n  images.forEach(function(img) {\n    body += \'<div class="block"><div class="title" style="--c:\' + img.color + \';">\' + img.label + \'</div>\'\n      + \'<img class="img" src="\' + img.dataUrl + \'" alt="\' + img.label + \'"></div>\';\n  });\n  body += \'<div class="footer">NordFrischeCenter &nbsp;&middot;&nbsp; Kennzahlen Fuhrpark &nbsp;&middot;&nbsp; \' + today + \'</div>\';\n  var w = window.open(\'\',\'_blank\',\'width=900,height=700\');\n  w.document.write(\'<!DOCTYPE html><html><head><meta charset="utf-8"><style>\'+css+\'</style></head><body>\'+body+\'</body></html>\');\n  w.document.close(); w.focus();\n  setTimeout(function(){ w.print(); }, 500);\n}\n'
