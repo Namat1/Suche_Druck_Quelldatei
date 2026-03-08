@@ -995,11 +995,11 @@ def parse_modul_excel(datei) -> str:
         def col(i):
             return _fmt(row.iloc[i]) if len(row) > i else ""
 
-        # 4 Module (Spalten 5-12), nur gültig bis
+        # 4 Module (Spalten 5-12), gemacht am + gültig bis
         module_bis = []
         for m in range(4):
             base = 5 + m * 2
-            module_bis.append(col(base + 1))   # nur gültig bis
+            module_bis.append({"am": col(base), "bis": col(base + 1)})
 
         result.append({
             "name":          name_raw,
@@ -1695,7 +1695,7 @@ function modRowStatus(d) {{
     if(diff < 0 && worst !== "exp")          worst = "exp";
     else if(diff < 183 && worst === "ok")    worst = "warn";
   }};
-  (d.module||[]).forEach(check);
+  (d.module||[]).forEach(function(mod) {{ check((mod && typeof mod === "object") ? mod.bis : mod); }});
   check(d.col_95); check(d.col_ce); check(d.gueltigkeit);
   return worst;
 }}
@@ -1705,7 +1705,7 @@ function modBuildFilters() {{
   var data   = Array.isArray(MODULE_DATA) ? MODULE_DATA : [];
   var years  = {{}};
   data.forEach(function(d) {{
-    [d.gueltigkeit, d.col_95, d.col_ce].concat(d.module||[]).forEach(function(bis) {{
+    [d.gueltigkeit, d.col_95, d.col_ce].concat((d.module||[]).map(function(m){{ return (m && typeof m==="object") ? m.bis : m; }})).forEach(function(bis) {{
       if(!bis) return;
       var p = bis.split("."); if(p.length===3) years[p[2]] = 1;
     }});
@@ -1734,7 +1734,7 @@ function modRender() {{
     if(filter !== "all" && modRowStatus(d) !== filter) return false;
     if(year) {{
       var found = false;
-      [d.gueltigkeit, d.col_95, d.col_ce].concat(d.module||[]).forEach(function(bis) {{
+      [d.gueltigkeit, d.col_95, d.col_ce].concat((d.module||[]).map(function(m){{ return (m && typeof m==="object") ? m.bis : m; }})).forEach(function(bis) {{
         if(bis && bis.endsWith("."+year)) found = true;
       }});
       if(!found) return false;
@@ -1756,8 +1756,11 @@ function modRender() {{
     var bg     = i%2===0 ? "#fff" : "#f8fafc";
     var status = modRowStatus(d);
     var rowBg  = status==="exp" ? "#fff5f5" : status==="warn" ? "#fffbeb" : bg;
-    var mods   = (d.module||[]).map(function(bis) {{
-      return '<td style="padding:6px 10px;text-align:center;">' + modPill(bis) + '</td>';
+    var mods   = (d.module||[]).map(function(mod) {{
+      var bis = (mod && typeof mod === "object") ? mod.bis : mod;
+      var am  = (mod && typeof mod === "object") ? mod.am  : "";
+      var amHtml = am ? '<div style="font-size:9px;color:#94a3b8;margin-top:2px;white-space:nowrap;">' + am + '</div>' : '';
+      return '<td style="padding:6px 10px;text-align:center;">' + modPill(bis) + amHtml + '</td>';
     }}).join("");
     return '<tr style="background:' + rowBg + ';border-bottom:1px solid #e2e8f0;">'
       + '<td style="padding:8px 12px;font-weight:600;white-space:nowrap;">' + d.name + '</td>'
