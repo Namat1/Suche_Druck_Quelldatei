@@ -1,20 +1,3 @@
-Keine ausgewählt 
-
-Direkt zum Inhalt
-Gmail mit Screenreadern verwenden
-Konversationen
-(kein Betreff)
-Posteingang
-Diese E‑Mail zusammenfassen
-
-Martin Carstensen <mcarstensen79@gmail.com>
-Anhänge
-Di., 3. März, 19:54 (vor 11 Stunden)
-an mich
-
-
- 1 Anhang
-  •  Von Gmail gescannt
 # =============================================================================
 # app.py  -  Kombinierter Generator: Suche + Druck  ->  eine app.html
 # =============================================================================
@@ -1236,6 +1219,7 @@ iframe.active{{display:block}}
   <button class="nav-btn" id="btn-fa" onclick="showArea('fa')">&#128101; Fahrerauswertung</button>
   <button class="nav-btn" id="btn-zulage" onclick="showArea('zulage')">&#128176; Zulagen</button>
   <button class="nav-btn" id="btn-module" onclick="showArea('module')">&#127891; Module</button>
+  </div>
   <span class="topnav-stamp">{last_updated}</span>
 </nav>
 
@@ -2039,6 +2023,874 @@ function samRender(q) {{
   var statsHtml =
     "<div style='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;font-size:11px;'>" +
     "<span style='color:#64748b;font-weight:700;'>"+filtered.length+" Fahrer</span>" +
-    "<span style='display:inline-flex;align-items:center;gap:3px;background:#dcfce7;border-radius:8px
-suche_druck_quell_datei1.py
-suche_druck_quell_datei1.py wird angezeigt.
+    "<span style='display:inline-flex;align-items:center;gap:3px;background:#dcfce7;border-radius:8px;padding:2px 8px;font-weight:800;color:#16a34a;'>&#10003; Ziel erreicht: "+nDone+"</span>" +
+    "<span style='display:inline-flex;align-items:center;gap:3px;background:#dbeafe;border-radius:8px;padding:2px 8px;font-weight:800;color:#1b66b3;'>&#8679; Im Soll: "+nOk+"</span>" +
+    "<span style='display:inline-flex;align-items:center;gap:3px;background:#fef9c3;border-radius:8px;padding:2px 8px;font-weight:800;color:#d97706;'>&#9888; Leicht hinter: "+nWarn+"</span>" +
+    "<span style='display:inline-flex;align-items:center;gap:3px;background:#fee2e2;border-radius:8px;padding:2px 8px;font-weight:800;color:#dc2626;'>&#8679;&#8595; Rückstand: "+nCrit+"</span>" +
+    "<span style='margin-left:auto;color:#94a3b8;font-size:10px;'>Soll heute: <b style='color:#1b66b3;'>"+soll+"</b> / "+ZIEL+" &nbsp;("+satElapsed+" von "+satTotal+" Samstagen)</span>" +
+    "</div>";
+  document.getElementById("sam-stats").innerHTML = statsHtml;
+
+  // Cards
+  var html = "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;align-items:start;'>";
+
+  var statusCfg = {{
+    done: {{ border:"#16a34a", bg:"#f0fdf4", badge:"#16a34a", icon:"✓", label:"Jahresziel erreicht!" }},
+    ok:   {{ border:"#1b66b3", bg:"#eff6ff", badge:"#1b66b3", icon:"↑", label:"Im Soll" }},
+    warn: {{ border:"#d97706", bg:"#fffbeb", badge:"#d97706", icon:"⚠", label:"Leicht hinter Soll" }},
+    crit: {{ border:"#dc2626", bg:"#fff1f2", badge:"#dc2626", icon:"↓", label:"Rückstand" }}
+  }};
+
+  filtered.forEach(function(d) {{
+    var cfg = statusCfg[d._status];
+    var yr  = samYearFilter !== "all" ? samYearFilter : ""+curYear;
+    var einsaetzeThisYear = (d._byYear[yr]||[]).length;
+    var pct = Math.min(100, Math.round(einsaetzeThisYear / ZIEL * 100));
+    var sollPct = Math.min(100, Math.round(soll / ZIEL * 100));
+
+    // Progress bar
+    var progressHtml =
+      "<div style='margin-top:10px;'>" +
+      "<div style='display:flex;justify-content:space-between;font-size:10px;color:#64748b;margin-bottom:3px;'>" +
+      "<span>0</span><span style='font-weight:800;color:"+cfg.badge+";'>Ist: "+einsaetzeThisYear+"</span>" +
+      "<span style='color:#94a3b8;'>Soll heute: "+soll+"</span><span style='color:#334155;font-weight:700;'>Ziel: "+ZIEL+"</span>" +
+      "</div>" +
+      "<div style='position:relative;height:14px;background:#f1f5f9;border-radius:7px;overflow:hidden;'>" +
+      // Actual bar
+      "<div style='position:absolute;top:0;left:0;height:100%;width:"+pct+"%;background:"+cfg.badge+";border-radius:7px;transition:width .4s;'></div>" +
+      // Soll marker
+      "<div style='position:absolute;top:0;left:"+sollPct+"%;width:2px;height:100%;background:#334155;opacity:.5;'></div>" +
+      "</div>" +
+      "<div style='display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;margin-top:2px;'>" +
+      "<span style='margin-left:"+sollPct+"%;transform:translateX(-50%);color:#64748b;font-weight:700;'>↑ heute</span>" +
+      "</div>" +
+      "</div>";
+
+    // Previous years compact
+    var otherYears = Object.keys(d._byYear).filter(function(y){{ return y !== ""+curYear; }}).sort().reverse();
+    var prevHtml = "";
+    if(otherYears.length) {{
+      prevHtml = "<div style='margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;'>";
+      otherYears.forEach(function(y) {{
+        var n = d._byYear[y].length;
+        var metTarget = n >= ZIEL;
+        prevHtml += "<span style='font-size:9px;padding:1px 6px;border-radius:8px;font-weight:700;" +
+          "background:"+(metTarget?"#dcfce7":"#fee2e2")+";color:"+(metTarget?"#16a34a":"#dc2626")+";'>" +
+          y+": "+n+(metTarget?" ✓":" ✗")+"</span>";
+      }});
+      prevHtml += "</div>";
+    }}
+
+    // Sorted dates for this year
+    var sortedDaten = (d._byYear[yr]||[]).slice().sort(function(a,b){{
+      var pa=a.datum.match(/(\\d{{2}})\\.(\\d{{2}})\\.(\\d{{4}})/);
+      var pb=b.datum.match(/(\\d{{2}})\\.(\\d{{2}})\\.(\\d{{4}})/);
+      if(!pa||!pb) return 0;
+      return new Date(pa[3],pa[2]-1,pa[1]) - new Date(pb[3],pb[2]-1,pb[1]);
+    }});
+    var datesHtml = sortedDaten.map(function(e) {{
+      return "<span style='display:inline-block;background:#f1f5f9;border-radius:4px;padding:2px 7px;margin:2px;font-size:10px;color:#334155;'>" +
+        (e.tag||"Sa")+" "+e.datum + " <b style=\'color:#1b66b3;\'>\"+(e.tour && e.tour!=="zbv" ? e.tour : "z.b.v.")+\"</b>" + "</span>";
+    }}).join("");
+
+    html +=
+      "<div onclick='samToggle(this)' style='background:"+cfg.bg+";border:2px solid "+cfg.border+";border-radius:10px;padding:14px 16px;cursor:pointer;transition:box-shadow .15s;'>" +
+      // Header row
+      "<div style='display:flex;align-items:flex-start;justify-content:space-between;gap:8px;'>" +
+      "<div style='flex:1;'>" +
+      "<div style='font-weight:900;font-size:14px;color:#0b1220;'>"+d.name+"</div>" +
+      "<div style='margin-top:3px;display:inline-flex;align-items:center;gap:4px;background:"+cfg.badge+";color:#fff;border-radius:10px;padding:1px 8px;font-size:10px;font-weight:800;'>" +
+        cfg.icon+" "+cfg.label+"</div>" +
+      "</div>" +
+      // Big number
+      "<div style='text-align:right;flex-shrink:0;'>" +
+      "<div style='font-size:28px;font-weight:900;color:"+cfg.badge+";line-height:1;'>"+einsaetzeThisYear+"</div>" +
+      "<div style='font-size:9px;color:#94a3b8;font-weight:600;'>/ "+ZIEL+" Einsätze</div>" +
+      "</div>" +
+      "</div>" +
+      progressHtml +
+      prevHtml +
+      "<div class='sam-dates' style='display:none;margin-top:10px;border-top:1px solid #e2e8f0;padding-top:8px;'>"+datesHtml+"</div>" +
+      "</div>";
+  }});
+
+  html += "</div>";
+  document.getElementById("sam-content").innerHTML = html;
+}}
+
+function samToggle(el) {{
+  var dates = el.querySelector(".sam-dates");
+  if(!dates) return;
+  var open = dates.style.display !== "none";
+  dates.style.display = open ? "none" : "block";
+}}
+
+{fa_js_code}
+{zulage_js_code}
+</script>
+
+</body>
+</html>"""
+
+
+def generate_zulage_excel(zulage_json_str: str, tab: str = "sonder") -> bytes:
+    """Formatierte Excel mit openpyxl – inkl. Persnr. und Zusammenfassung."""
+    import io as _io, json as _j
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.utils import get_column_letter
+    try:
+        data = _j.loads(zulage_json_str)
+    except Exception:
+        return None
+    months = data.get(tab, [])
+    if not months:
+        return None
+    wb = Workbook(); wb.remove(wb.active)
+    def _s(st="thin",c="CCCCCC"): return Side(style=st, color=c)
+    thin = Border(left=_s(),right=_s(),top=_s(),bottom=_s())
+    med  = Border(left=_s("medium","1F4E78"),right=_s("medium","1F4E78"),top=_s("medium","1F4E78"),bottom=_s("medium","1F4E78"))
+    gmed = Border(left=_s("medium","70AD47"),right=_s("medium","70AD47"),top=_s("medium","70AD47"),bottom=_s("medium","70AD47"))
+    FT=PatternFill("solid",fgColor="1F4E78"); FH=PatternFill("solid",fgColor="D9E2F3")
+    FN=PatternFill("solid",fgColor="4472C4"); FG=PatternFill("solid",fgColor="70AD47")
+    FL=PatternFill("solid",fgColor="1F4E78"); FA=PatternFill("solid",fgColor="F8F9FA")
+    FW=PatternFill("solid",fgColor="FFFFFF"); FS=PatternFill("solid",fgColor="EEF4FF")
+
+    # Track summary: {(name, persnr): total}
+    summary = {}
+
+    for monat in months:
+        ws = wb.create_sheet(title=monat["monat"][:31])
+        is_s = (tab == "sonder")
+        # Columns: Name | Persnr. | Datum | Tour | LKW | Art | Verdienst
+        #      or: Name | Persnr. | Datum | Kommentar | Verdienst
+        hdrs   = ["Name","Persnr.","Datum","Tour","LKW","Art","Verdienst"] if is_s else ["Name","Persnr.","Datum","Kommentar","Verdienst"]
+        widths = [24,13,32,14,10,14,14]                                    if is_s else [24,13,32,40,14]
+        nc = len(hdrs)
+
+        # Title
+        ws.append([monat["monat"]]+[""]*( nc-1)); tr=ws.max_row
+        ws.merge_cells(start_row=tr,start_column=1,end_row=tr,end_column=nc)
+        c=ws.cell(tr,1); c.font=Font(name="Calibri",bold=True,size=14,color="FFFFFF")
+        c.fill=FT; c.alignment=Alignment(horizontal="center",vertical="center"); c.border=med
+        ws.row_dimensions[tr].height=28
+
+        # Header
+        ws.append(hdrs); hr=ws.max_row
+        for col in range(1,nc+1):
+            c=ws.cell(hr,col); c.font=Font(name="Calibri",bold=True,size=10,color="1F4E78")
+            c.fill=FH; c.alignment=Alignment(horizontal="center",vertical="center"); c.border=thin
+        ws.row_dimensions[hr].height=22
+
+        alt=False
+        for fahrer in monat["fahrer"]:
+            r0=ws.max_row+1
+            # Accumulate for summary
+            key=(fahrer["name"], fahrer["persnr"])
+            summary[key] = summary.get(key, 0) + fahrer["gesamt"]
+
+            for ti,tag in enumerate(fahrer["tage"]):
+                if is_s:
+                    tour=tag.get("tour","")
+                    if not tour or tour=="zbv": tour="z.b.v."
+                    row=[fahrer["name"] if ti==0 else "",
+                         fahrer["persnr"] if ti==0 else "",
+                         tag["datum"],tour,tag.get("lkw",""),tag.get("art",""),tag["verdienst"]]
+                else:
+                    row=[fahrer["name"] if ti==0 else "",
+                         fahrer["persnr"] if ti==0 else "",
+                         tag["datum"],tag.get("kommentar",""),tag["verdienst"]]
+                ws.append(row); r=ws.max_row; fill=FA if alt else FW
+                for col in range(1,nc+1):
+                    if col in (1,2) and ti==0: continue   # styled after merge
+                    c=ws.cell(r,col); iv=(col==nc)
+                    c.font=Font(name="Calibri",size=10,color="16A34A" if iv else "2C3E50",bold=iv)
+                    c.fill=fill; c.border=thin
+                    c.alignment=Alignment(horizontal="right" if iv else ("center" if col==2 else "left"),vertical="center")
+                    if iv and isinstance(c.value,(int,float)): c.number_format='#,##0.00 "€"'
+                ws.row_dimensions[r].height=20; alt=not alt
+
+            # Merge Name column over all tage
+            ws.merge_cells(start_row=r0,start_column=1,end_row=ws.max_row,end_column=1)
+            nc2=ws.cell(r0,1); nc2.font=Font(name="Calibri",bold=True,size=11,color="FFFFFF")
+            nc2.fill=FN; nc2.alignment=Alignment(horizontal="left",vertical="center"); nc2.border=med
+
+            # Merge Persnr column over all tage
+            ws.merge_cells(start_row=r0,start_column=2,end_row=ws.max_row,end_column=2)
+            pc=ws.cell(r0,2); pc.font=Font(name="Calibri",bold=False,size=10,color="FFFFFF")
+            pc.fill=FN; pc.alignment=Alignment(horizontal="center",vertical="center"); pc.border=med
+
+            # Gesamt row
+            gv=[""]*nc; gv[nc-2]="Gesamt"; gv[nc-1]=fahrer["gesamt"]
+            ws.append(gv); gr=ws.max_row
+            ws.merge_cells(start_row=gr,start_column=1,end_row=gr,end_column=nc-1)
+            for col in range(1,nc+1):
+                c=ws.cell(gr,col); c.font=Font(name="Calibri",bold=True,size=11,color="FFFFFF")
+                c.fill=FG; c.alignment=Alignment(horizontal="right",vertical="center"); c.border=gmed
+                if col==nc and isinstance(c.value,(int,float)): c.number_format='#,##0.00 "€"'
+            ws.row_dimensions[gr].height=20; alt=False
+
+            # Spacer
+            ws.append([""]*nc); ws.row_dimensions[ws.max_row].height=6
+
+        # Monatsgesamt
+        tv=[""]*nc; tv[nc-2]="Monatsgesamt"; tv[nc-1]=sum(f["gesamt"] for f in monat["fahrer"])
+        ws.append(tv); tr2=ws.max_row
+        ws.merge_cells(start_row=tr2,start_column=1,end_row=tr2,end_column=nc-1)
+        for col in range(1,nc+1):
+            c=ws.cell(tr2,col); c.font=Font(name="Calibri",bold=True,size=13,color="FFFFFF")
+            c.fill=FL; c.alignment=Alignment(horizontal="right",vertical="center"); c.border=med
+            if col==nc and isinstance(c.value,(int,float)): c.number_format='#,##0.00 "€"'
+        ws.row_dimensions[tr2].height=26
+
+        for i,w in enumerate(widths,1): ws.column_dimensions[get_column_letter(i)].width=w
+        ws.freeze_panes="B3"   # freeze Name+Persnr columns + title+header rows
+
+    # ── Zusammenfassung sheet ─────────────────────────────────────────────
+    if summary:
+        ws_sum = wb.create_sheet(title="Zusammenfassung", index=0)
+        tab_label = "Sonderfahrzeuge" if tab=="sonder" else "F\u00fcngers"
+        # Title
+        ws_sum.append([f"Zusammenfassung \u2013 {tab_label}","",""])
+        tr=ws_sum.max_row
+        ws_sum.merge_cells(start_row=tr,start_column=1,end_row=tr,end_column=3)
+        c=ws_sum.cell(tr,1); c.font=Font(name="Calibri",bold=True,size=14,color="FFFFFF")
+        c.fill=FT; c.alignment=Alignment(horizontal="center",vertical="center"); c.border=med
+        ws_sum.row_dimensions[tr].height=30
+
+        # Header
+        ws_sum.append(["Name","Personalnummer","Gesamt"]); hr=ws_sum.max_row
+        for col in range(1,4):
+            c=ws_sum.cell(hr,col); c.font=Font(name="Calibri",bold=True,size=11,color="1F4E78")
+            c.fill=FH; c.alignment=Alignment(horizontal="center",vertical="center"); c.border=thin
+        ws_sum.row_dimensions[hr].height=24
+
+        # Data rows sorted by name
+        total_all = 0
+        for ri,(( name, persnr), total) in enumerate(sorted(summary.items(), key=lambda x:x[0][0])):
+            fill = FA if ri%2==0 else FW
+            ws_sum.append([name, persnr, total]); r=ws_sum.max_row
+            total_all += total
+            for col in range(1,4):
+                c=ws_sum.cell(r,col); iv=(col==3)
+                c.font=Font(name="Calibri",size=11,color="16A34A" if iv else "2C3E50",bold=iv)
+                c.fill=fill; c.border=thin
+                c.alignment=Alignment(horizontal="right" if iv else ("center" if col==2 else "left"),vertical="center")
+                if iv: c.number_format='#,##0.00 "€"'
+            ws_sum.row_dimensions[r].height=21
+
+        # Gesamtsumme
+        ws_sum.append(["","Gesamtsumme", total_all]); gr=ws_sum.max_row
+        for col in range(1,4):
+            c=ws_sum.cell(gr,col); c.font=Font(name="Calibri",bold=True,size=13,color="FFFFFF")
+            c.fill=FL; c.border=med
+            c.alignment=Alignment(horizontal="right",vertical="center")
+            if col==3: c.number_format='#,##0.00 "€"'
+        ws_sum.row_dimensions[gr].height=28
+
+        ws_sum.column_dimensions["A"].width=26
+        ws_sum.column_dimensions["B"].width=18
+        ws_sum.column_dimensions["C"].width=16
+        ws_sum.freeze_panes="A3"
+
+    buf=_io.BytesIO(); wb.save(buf); return buf.getvalue()
+
+
+_ZULAGE_PERSNR = {
+    "Adler":{"Philipp":"00041450"},"Auer":{"Frank":"00020795"},
+    "Batkowski":{"Tilo":"00046601"},"Benabbes":{"Badr":"00048980"},
+    "Biebow":{"Thomas":"00042004"},"Blaesing":{"Elmar":"00049093"},
+    "Bursian":{"Ronny":"00025714"},"Buth":{"Sven":"00046673"},
+    "Boehnke":{"Marcel":"00020833"},"Carstensen":{"Martin":"00042412"},
+    "Chege":{"Moses Gichuru":"00046106"},"Dammasch":{"Bernd":"00019297"},
+    "Demuth":{"Harry":"00020796"},"Doroszkiewicz":{"Bogumil":"00049132"},
+    "Duerr":{"Holger":"00039164"},"Effenberger":{"Sven":"00030807"},
+    "Engel":{"Raymond":"00033429"},
+    "Fechner":{"Danny":"00043696","Klaus":"00038278"},
+    "Findeklee":{"Bernd":"00020804"},"Flint":{"Henryk":"00042414"},
+    "Fuhlbruegge":{"Justin":"00046289"},"Gehrmann":{"Rayk":"00046702"},
+    "Gheonea":{"Costel-Daniel":"00054489"},"Glanz":{"Bjoern":"00041914"},
+    "Gnech":{"Torsten":"00018613"},"Greve":{"Nicole":"00040760"},
+    "Guthmann":{"Fred":"00018328"},"Hagen":{"Andy":"00020271"},
+    "Hartig":{"Sebastian":"00044120"},"Haus":{"David":"00046101"},
+    "Heeser":{"Bernd":"00041916"},"Helm":{"Philipp":"00046685"},
+    "Henkel":{"Bastian":"00048187"},"Holtz":{"Torsten":"00021159"},
+    "Hirdina":{"Christopher":"00053400"},"Hintz":{"Leif":"00054808"},
+    "Huebner":{"Christian":"00054531"},"Janikiewicz":{"Radoslaw":"00042159"},
+    "Kelling":{"Jonas Ole":"00044140"},"Kleiber":{"Lutz":"00026255"},
+    "Klemkow":{"Ralf":"00040634"},"Kollmann":{"Steffen":"00040988"},
+    "Koenig":{"Heiko":"00036341"},"Krazewski":{"Cezary":"00039463"},
+    "Krieger":{"Christian":"00049092"},"Krull":{"Benjamin":"00044192"},
+    "Lange":{"Michael":"00035407"},"Lewandowski":{"Kamil":"00041044"},
+    "Likoonski":{"Vladimir":"00044766"},"Linke":{"Erich":"00048377"},
+    "Lefkih":{"Houssni":"00052293"},"Ludolf":{"Michel":"00048814"},
+    "Laemmel":{"Patrick":"00052946"},"Marouni":{"Ayyoub":"00048986"},
+    "Mintel":{"Mario":"00046686"},"Ohlenroth":{"Nadja":"00042114"},
+    "Ohms":{"Torsten":"00019300"},"Okoth":{"Tedy Omondi":"00046107"},
+    "Oszmian":{"Jacub":"00039464"},"Paul":{"Toralf":"00010490"},
+    "Pabst":{"Torsten":"00021976"},"Pawlak":{"Bartosz":"00036381"},
+    "Piepke":{"Torsten":"00021390"},"Plinke":{"Killian":"00044137"},
+    "Pogodski":{"Enrico":"00046668"},"Postu":{"Mihai":"00051391"},
+    "Quint":{"Stefan":"00035718"},"Rimba":{"Rimba Gona":"00046108"},
+    "Rheinschmitt":{"Ronald":"00053356"},"Rudert":{"Kevin":"00052858"},
+    "Rudolph":{"Yves":"00052855"},"Ruge":{"Fabian":"00054705"},
+    "Sarwatka":{"Heiko":"00028747"},"Swietoslawski":{"Jacek":"00052955"},
+    "Seredynski":{"Ireneusz":"00053452"},
+    "Scheil":{"Eric-Rene":"00038579","Rene":"00020851"},
+    "Schlichting":{"Michael":"00021452"},
+    "Schlutt":{"Hubert":"00020880","Rene":"00042932"},
+    "Schmieder":{"Steffen":"00046286"},"Schneider":{"Matthias":"00045495"},
+    "Schulz":{"Julian":"00049130","Stephan":"00041558"},
+    "Singh":{"Jagtah":"00040902"},"Stoltz":{"Thorben":"00040991"},
+    "Thal":{"Jannic":"00046006"},"Tumanow":{"Vasilli":"00045019"},
+    "Wachnowski":{"Klaus":"00026019"},"Wendel":{"Danilo":"00048994"},
+    "Waschitschek":{"Detlef":"00020436"},"Wille":{"Rene":"00021393"},
+    "Wisniewski":{"Krzysztof":"00046550"},"Zander":{"Jan":"00042454"},
+    "Zosel":{"Ingo":"00026303"},
+}
+_ZP_MONTHS_DE = ["","Januar","Februar","März","April","Mai","Juni",
+                  "Juli","August","September","Oktober","November","Dezember"]
+_ZP_DAYS = ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"]
+
+
+def _zp_norm(s):
+    import unicodedata as _uc
+    s=(s or "").strip().lower().replace(" "," ")
+    s=_uc.normalize("NFKC",s).replace("-"," ")
+    for a,b in [("ä","ae"),("ö","oe"),("ü","ue"),("ß","ss")]: s=s.replace(a,b)
+    return " ".join(s.split())
+
+
+def _zp_persnr(nn,vn):
+    nk,vk=_zp_norm(nn),_zp_norm(vn)
+    for ln,inner in _ZULAGE_PERSNR.items():
+        if _zp_norm(ln)==nk:
+            for fn,pn in inner.items():
+                if _zp_norm(fn)==vk: return pn
+            for fn,pn in inner.items():
+                fn2=_zp_norm(fn)
+                if vk.startswith(fn2) or fn2.startswith(vk): return pn
+            return "Unbekannt"
+    return "Unbekannt"
+
+
+def _zp_art(val):
+    try:
+        v=int(str(val).split("-")[-1].strip())
+        if v in [602,156]: return "Gigaliner"
+        if v in [350,620]: return "Tandem"
+        if v in [520,266,458,548,541,542,543,558]: return "Gliederzug"
+    except Exception: pass
+    return "Unbekannt"
+
+
+def _zp_verdienst(lkw1,lkw2):
+    total=0
+    for v in [lkw1,lkw2]:
+        try:
+            if v is None: continue
+            vi=int(str(v).split("-")[-1].strip())
+            if vi in [602,156]: total+=40
+            elif vi in [350,620,520,266,458,548,541,542,543,558]: total+=20
+        except Exception: pass
+    return total
+
+
+def parse_zulage_excel(dateien: list) -> str:
+    import json as _j
+    from io import BytesIO
+    import datetime as _dt
+    sonder_map={}; fuengers_map={}
+    cur_year=_dt.datetime.now().year
+    for datei in dateien:
+        try:
+            datei.seek(0); df_h=pd.read_excel(BytesIO(datei.read()),sheet_name="Touren",header=0)
+            datei.seek(0); df_nh=pd.read_excel(BytesIO(datei.read()),sheet_name="Touren",header=None)
+            df_nh=df_nh.iloc[4:].reset_index(drop=True); df_nh.columns=range(df_nh.shape[1])
+        except Exception: continue
+        try:
+            mask=df_h.iloc[:,13].astype(str).str.strip().str.upper()=="AZ"
+            for _,row in df_h[mask].iterrows():
+                datum=pd.to_datetime(row.iloc[14],errors="coerce")
+                if pd.isna(datum) or datum.year < 2026: continue
+                mk=f"{datum.month:02d}-{datum.year}"; ml=f"{_ZP_MONTHS_DE[datum.month]} {datum.year}"
+                kw=int(datum.strftime("%W"))+1
+                ds=f"{_ZP_DAYS[datum.weekday()]}, {datum.strftime('%d.%m.%Y')} (KW{kw})"
+                def _c(x): return str(x).replace(" "," ").strip() if pd.notnull(x) else ""
+                nn=_c(row.iloc[3] if len(row)>3 else ""); vn=_c(row.iloc[4] if len(row)>4 else "")
+                if not nn or not vn or nn in("0","nan") or vn in("0","nan"):
+                    nn=_c(row.iloc[6] if len(row)>6 else ""); vn=_c(row.iloc[7] if len(row)>7 else "")
+                if not nn or not vn or nn in("0","nan") or vn in("0","nan"): continue
+                lkw1=row.iloc[10] if len(row)>10 and pd.notnull(row.iloc[10]) else None
+                lkw2=row.iloc[11] if len(row)>11 and pd.notnull(row.iloc[11]) else None
+                tour=str(row.iloc[0]).strip() if pd.notnull(row.iloc[0]) else ""
+                verd=_zp_verdienst(lkw1,lkw2)
+                if verd==0: continue
+                if mk not in sonder_map: sonder_map[mk]={"label":ml,"fahrer":{}}
+                sonder_map[mk]["fahrer"].setdefault((nn,vn),[]).append(
+                    {"datum":ds,"tour":tour,"lkw":str(lkw2 or lkw1 or "").strip(),"art":_zp_art(lkw2 or lkw1),"verdienst":verd})
+        except Exception: pass
+        try:
+            for _,row in df_nh.iterrows():
+                komm=str(row[15]).strip() if 15 in row and pd.notnull(row[15]) else ""
+                if "füngers" not in komm.lower() and "fuengers" not in komm.lower(): continue
+                nn=str(row[3]).replace(" "," ").strip() if 3 in row and pd.notnull(row[3]) else ""
+                vn=str(row[4]).replace(" "," ").strip() if 4 in row and pd.notnull(row[4]) else ""
+                if not nn or not vn or nn in("0","nan") or vn in("0","nan"): continue
+                datum=pd.to_datetime(row[14] if 14 in row else None,errors="coerce")
+                if pd.isna(datum) or datum.year < 2026: continue
+                mk=f"{datum.month:02d}-{datum.year}"; ml=f"{_ZP_MONTHS_DE[datum.month]} {datum.year}"
+                kw=datum.isocalendar()[1]; ds=datum.strftime("%d.%m.%Y")+f" (KW {kw})"
+                if mk not in fuengers_map: fuengers_map[mk]={"label":ml,"fahrer":{}}
+                fuengers_map[mk]["fahrer"].setdefault((nn,vn),[]).append(
+                    {"datum":ds,"kommentar":komm,"verdienst":20})
+        except Exception: pass
+    def _build(dm):
+        res=[]
+        for mk in sorted(dm.keys()):
+            e=dm[mk]; fl=[]
+            for (nn,vn),tage in sorted(e["fahrer"].items()):
+                fl.append({"name":f"{vn} {nn}","persnr":_zp_persnr(nn,vn),
+                           "gesamt":sum(t["verdienst"] for t in tage),"tage":tage})
+            fl.sort(key=lambda x:x["name"]); res.append({"monat":e["label"],"fahrer":fl})
+        return res
+    return _j.dumps({"sonder":_build(sonder_map),"fuengers":_build(fuengers_map)},ensure_ascii=False)
+
+
+
+DRITTKUNDEN_KEYWORDS = [
+    "ahaus", "borkholzhausen", "glandorf", "optifair", "opti fair",
+    "edv", "edv fleisch", "elfering", "elfering ahaus"
+]
+
+
+def _dk_check(comment):
+    if isinstance(comment, str):
+        c = comment.lower()
+        return any(k in c for k in DRITTKUNDEN_KEYWORDS)
+    return False
+
+
+def parse_drittkunden_excel(dateien: list) -> str:
+    """Liest Touren-Excels auf Drittkunden-Zulage (Ahaus etc.)."""
+    import json as _j
+    from io import BytesIO
+    import datetime as _dt
+    entries = []
+    _months_de = ["","Januar","Februar","März","April","Mai","Juni",
+                  "Juli","August","September","Oktober","November","Dezember"]
+    for datei in dateien:
+        try:
+            datei.seek(0)
+            df = pd.read_excel(BytesIO(datei.read()), sheet_name=0, header=None)
+            df = df.iloc[4:].reset_index(drop=True)
+            df.columns = range(df.shape[1])
+        except Exception:
+            continue
+        for _, row in df.iterrows():
+            kommentar = str(row[15]).strip() if 15 in row and pd.notna(row[15]) else ""
+            if not _dk_check(kommentar):
+                continue
+            datum = pd.to_datetime(row[14] if 14 in row else None, errors="coerce")
+            if pd.isna(datum) or datum.year < 2026:
+                continue
+            lkw = str(row[11]).strip() if 11 in row and pd.notna(row[11]) else ""
+            info = str(row[1]).strip() if 1 in row and pd.notna(row[1]) else ""
+            kw = f"KW{datum.isocalendar()[1]}"
+            monat_label = f"{_months_de[datum.month]} {datum.year}"
+            datum_str = datum.strftime("%d.%m.%Y")
+            # Two driver pairs: D/E (3/4) and G/H (6/7)
+            fahrer_paare = []
+            if len(row) > 4: fahrer_paare.append((row[3], row[4]))
+            if len(row) > 7: fahrer_paare.append((row[6], row[7]))
+            seen = set()
+            for nn_raw, vn_raw in fahrer_paare:
+                if pd.isna(nn_raw) and pd.isna(vn_raw):
+                    continue
+                nn = str(nn_raw).strip() if pd.notna(nn_raw) else ""
+                vn = str(vn_raw).strip() if pd.notna(vn_raw) else ""
+                if not nn:
+                    continue
+                name = f"{nn}, {vn}".strip().rstrip(",")
+                key = name.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                zulage = 0 if "zippel" in nn.lower() else 20
+                persnr = _zp_persnr(nn, vn)
+                entries.append({
+                    "name": name,
+                    "persnr": persnr,
+                    "datum": datum_str,
+                    "kw": kw,
+                    "lkw": lkw,
+                    "zulage": zulage,
+                    "info": info,
+                    "monat": monat_label,
+                    "monat_sort": f"{datum.year}{datum.month:02d}",
+                })
+    # Group by monat
+    monat_map = {}
+    for e in entries:
+        mk = e["monat_sort"]
+        monat_map.setdefault(mk, {"monat": e["monat"], "eintraege": []})
+        monat_map[mk]["eintraege"].append(e)
+    # Per month: group by name
+    result = []
+    for mk in sorted(monat_map.keys()):
+        m = monat_map[mk]
+        name_map = {}
+        for e in m["eintraege"]:
+            name_map.setdefault(e["name"], []).append(e)
+        fahrer = []
+        for name in sorted(name_map.keys()):
+            tage = sorted(name_map[name], key=lambda x: x["datum"])
+            gesamt = sum(t["zulage"] for t in tage)
+            fahrer.append({"name": name, "persnr": tage[0].get("persnr", "Unbekannt") if tage else "Unbekannt", "gesamt": gesamt, "tage": tage})
+        result.append({"monat": m["monat"], "fahrer": fahrer})
+    return _j.dumps(result, ensure_ascii=False)
+
+
+def generate_drittkunden_excel(drittkunden_json_str: str) -> bytes:
+    """Formatierte Excel für Drittkunden-Zulage."""
+    import io as _io, json as _j
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.utils import get_column_letter
+    try:
+        months = _j.loads(drittkunden_json_str)
+    except Exception:
+        return None
+    if not months:
+        return None
+    wb = Workbook(); wb.remove(wb.active)
+    def _s(st="thin",c="CCCCCC"): return Side(style=st, color=c)
+    thin = Border(left=_s(),right=_s(),top=_s(),bottom=_s())
+    med  = Border(left=_s("medium","1F4E78"),right=_s("medium","1F4E78"),top=_s("medium","1F4E78"),bottom=_s("medium","1F4E78"))
+    gmed = Border(left=_s("medium","70AD47"),right=_s("medium","70AD47"),top=_s("medium","70AD47"),bottom=_s("medium","70AD47"))
+    FT=PatternFill("solid",fgColor="1F4E78"); FH=PatternFill("solid",fgColor="D9E2F3")
+    FN=PatternFill("solid",fgColor="4472C4"); FG=PatternFill("solid",fgColor="70AD47")
+    FL=PatternFill("solid",fgColor="1F4E78"); FA=PatternFill("solid",fgColor="F8F9FA")
+    FW=PatternFill("solid",fgColor="FFFFFF")
+    hdrs   = ["Name","Datum","KW","LKW","Zulage","Info"]
+    widths = [26,14,8,14,12,30]
+    nc = len(hdrs)
+    # Summary sheet first
+    summary = {}
+    for monat in months:
+        for f in monat["fahrer"]:
+            summary[f["name"]] = summary.get(f["name"], 0) + f["gesamt"]
+    ws_sum = wb.create_sheet(title="Zusammenfassung", index=0)
+    ws_sum.append([f"Zusammenfassung – Drittkunden","",""])
+    tr=ws_sum.max_row; ws_sum.merge_cells(start_row=tr,start_column=1,end_row=tr,end_column=3)
+    c=ws_sum.cell(tr,1); c.font=Font(name="Calibri",bold=True,size=14,color="FFFFFF")
+    c.fill=FT; c.alignment=Alignment(horizontal="center",vertical="center"); c.border=med
+    ws_sum.row_dimensions[tr].height=30
+    ws_sum.append(["Name","Personalnummer","Gesamt"]); hr=ws_sum.max_row
+    for col in range(1,4):
+        c=ws_sum.cell(hr,col); c.font=Font(name="Calibri",bold=True,size=11,color="1F4E78")
+        c.fill=FH; c.alignment=Alignment(horizontal="center",vertical="center"); c.border=thin
+    ws_sum.row_dimensions[hr].height=24
+    total_all=0
+    for ri,(name,total) in enumerate(sorted(summary.items())):
+        fill=FA if ri%2==0 else FW; ws_sum.append([name,"",total]); r=ws_sum.max_row; total_all+=total
+        for col in range(1,4):
+            c=ws_sum.cell(r,col); iv=(col==3)
+            c.font=Font(name="Calibri",size=11,color="16A34A" if iv else "2C3E50",bold=iv)
+            c.fill=fill; c.border=thin
+            c.alignment=Alignment(horizontal="right" if iv else "left",vertical="center")
+            if iv: c.number_format='#,##0.00 "€"'
+        ws_sum.row_dimensions[r].height=21
+    ws_sum.append(["","Gesamtsumme",total_all]); gr=ws_sum.max_row
+    for col in range(1,4):
+        c=ws_sum.cell(gr,col); c.font=Font(name="Calibri",bold=True,size=13,color="FFFFFF")
+        c.fill=FL; c.border=med; c.alignment=Alignment(horizontal="right",vertical="center")
+        if col==3: c.number_format='#,##0.00 "€"'
+    ws_sum.row_dimensions[gr].height=28
+    ws_sum.column_dimensions["A"].width=26; ws_sum.column_dimensions["B"].width=18; ws_sum.column_dimensions["C"].width=16
+    # Month sheets
+    for monat in months:
+        ws = wb.create_sheet(title=monat["monat"][:31])
+        msum = sum(f["gesamt"] for f in monat["fahrer"])
+        ws.append([monat["monat"]]+[""]*( nc-1)); tr=ws.max_row
+        ws.merge_cells(start_row=tr,start_column=1,end_row=tr,end_column=nc)
+        c=ws.cell(tr,1); c.font=Font(name="Calibri",bold=True,size=14,color="FFFFFF")
+        c.fill=FT; c.alignment=Alignment(horizontal="center",vertical="center"); c.border=med
+        ws.row_dimensions[tr].height=28
+        ws.append(hdrs); hr=ws.max_row
+        for col in range(1,nc+1):
+            c=ws.cell(hr,col); c.font=Font(name="Calibri",bold=True,size=10,color="1F4E78")
+            c.fill=FH; c.alignment=Alignment(horizontal="center",vertical="center"); c.border=thin
+        ws.row_dimensions[hr].height=22
+        alt=False
+        for fahrer in monat["fahrer"]:
+            r0=ws.max_row+1
+            for ti,tag in enumerate(fahrer["tage"]):
+                row=[fahrer["name"] if ti==0 else "",tag["datum"],tag["kw"],tag["lkw"],tag["zulage"],tag.get("info","")]
+                ws.append(row); r=ws.max_row; fill=FA if alt else FW
+                for col in range(1,nc+1):
+                    if col==1 and ti==0: continue
+                    c=ws.cell(r,col); iv=(col==5)
+                    c.font=Font(name="Calibri",size=10,color="16A34A" if iv else "2C3E50",bold=iv)
+                    c.fill=fill; c.border=thin
+                    c.alignment=Alignment(horizontal="right" if iv else "left",vertical="center")
+                    if iv and isinstance(c.value,(int,float)): c.number_format='#,##0.00 "€"'
+                ws.row_dimensions[r].height=20; alt=not alt
+            ws.merge_cells(start_row=r0,start_column=1,end_row=ws.max_row,end_column=1)
+            nc2=ws.cell(r0,1); nc2.font=Font(name="Calibri",bold=True,size=11,color="FFFFFF")
+            nc2.fill=FN; nc2.alignment=Alignment(horizontal="left",vertical="center"); nc2.border=med
+            gv=[""]*nc; gv[nc-2]="Gesamt"; gv[nc-1]=fahrer["gesamt"]
+            ws.append(gv); gr=ws.max_row
+            ws.merge_cells(start_row=gr,start_column=1,end_row=gr,end_column=nc-1)
+            for col in range(1,nc+1):
+                c=ws.cell(gr,col); c.font=Font(name="Calibri",bold=True,size=11,color="FFFFFF")
+                c.fill=FG; c.alignment=Alignment(horizontal="right",vertical="center"); c.border=gmed
+                if col==nc and isinstance(c.value,(int,float)): c.number_format='#,##0.00 "€"'
+            ws.row_dimensions[gr].height=20; alt=False
+            ws.append([""]*nc); ws.row_dimensions[ws.max_row].height=6
+        tv=[""]*nc; tv[nc-2]="Monatsgesamt"; tv[nc-1]=msum
+        ws.append(tv); tr2=ws.max_row
+        ws.merge_cells(start_row=tr2,start_column=1,end_row=tr2,end_column=nc-1)
+        for col in range(1,nc+1):
+            c=ws.cell(tr2,col); c.font=Font(name="Calibri",bold=True,size=13,color="FFFFFF")
+            c.fill=FL; c.alignment=Alignment(horizontal="right",vertical="center"); c.border=med
+            if col==nc and isinstance(c.value,(int,float)): c.number_format='#,##0.00 "€"'
+        ws.row_dimensions[tr2].height=26
+        for i,w in enumerate(widths,1): ws.column_dimensions[get_column_letter(i)].width=w
+        ws.freeze_panes="A3"
+    buf=_io.BytesIO(); wb.save(buf); return buf.getvalue()
+
+
+def parse_telefon_excel(up) -> str:
+    """Liest Telefonnummern.xlsx (Sheet 'aktuell') und gibt JSON-String zurück."""
+    import json as _json
+    try:
+        df = pd.read_excel(up, sheet_name="aktuell", dtype=str)
+        df.columns = ["name","vorname","vorwahl","nummer","mail","gruppe"]
+        df = df.fillna("")
+        groups, current_group, current_entries = [], "Eigene Fahrer", []
+        for _, r in df.iterrows():
+            name    = r["name"].strip()
+            vorname = r["vorname"].strip()
+            vorwahl = r["vorwahl"].strip()
+            nummer  = r["nummer"].strip()
+            mail    = r["mail"].strip()
+            gruppe  = r["gruppe"].strip()
+            if not name and not vorname and not vorwahl and not nummer:
+                if current_entries:
+                    groups.append({"gruppe": current_group, "personen": current_entries})
+                current_entries = []
+                continue
+            if gruppe:
+                if current_entries:
+                    groups.append({"gruppe": current_group, "personen": current_entries})
+                    current_entries = []
+                current_group = gruppe
+            tel = ""
+            if vorwahl and vorwahl.lower() not in ("nan","n.a.",""):
+                tel = vorwahl.strip()
+                if nummer and nummer.lower() not in ("nan","n.a.",""):
+                    tel += " " + nummer.strip()
+            elif nummer and nummer.lower() not in ("nan","n.a.",""):
+                tel = nummer.strip()
+            else:
+                tel = "n.a."
+            vname = " ".join(filter(None, [vorname, name]))
+            if not vname.strip(): continue
+            current_entries.append({
+                "name": vname,
+                "tel":  tel,
+                "mail": mail if mail.lower() not in ("nan","") else ""
+            })
+        if current_entries:
+            groups.append({"gruppe": current_group, "personen": current_entries})
+        return _json.dumps(groups, ensure_ascii=False)
+    except Exception as e:
+        st.warning(f"Telefonliste konnte nicht gelesen werden: {e}")
+        return "[]"
+
+# ── Kombination & Download ─────────────────────────────────────────────────────
+st.divider()
+st.subheader("🔗 Wochen & suche.html herunterladen")
+st.caption("Globale Dateien einmalig hochladen. Pro Instanz (Woche) nur die Wochen-Excel hochladen.")
+
+# ── Globale Dateien (einmalig für alle Wochen) ────────────────────────────────
+st.markdown("**Globale Dateien** – einmalig hochladen, gelten für alle Wochen")
+gc1, gc2, gc3, gc4 = st.columns(4)
+with gc1:
+    _up = st.file_uploader("🖼️ Logo", type=["png","jpg","jpeg","svg"], key="up_logo")
+    if _up: st.session_state.g_logo = _up
+with gc2:
+    _up = st.file_uploader("🔑 Marktschlüssel", type=["xlsx"], key="up_key")
+    if _up: st.session_state.g_key = _up
+with gc3:
+    _up = st.file_uploader("👤 Telefonnummern Fachberater", type=["xlsx"], key="up_fach")
+    if _up: st.session_state.g_fach = _up
+with gc4:
+    _up = st.file_uploader("🔗 Kundenliste Original", type=["xlsx"], key="up_fcsb")
+    if _up: st.session_state.g_fcsb = _up
+
+_glob_status = []
+for _k, _lbl in [("g_logo","Logo"),("g_key","Marktschlüssel"),("g_fach","Tel. Fachberater"),("g_fcsb","Kundenliste")]:
+    _glob_status.append("✅ "+_lbl if st.session_state.get(_k) else "❌ "+_lbl)
+st.caption(" · ".join(_glob_status))
+
+st.divider()
+
+# ── Instanzen initialisieren ──────────────────────────────────────────────────
+def _empty_inst(name="Normalwochen"):
+    return {"name": name, "suche_html": None, "druck_html": None}
+
+if "instances" not in st.session_state:
+    st.session_state.instances = [_empty_inst("Normalwochen")]
+
+st.markdown("**Wochen** – pro Woche eine Wochen-Excel hochladen")
+
+for i, inst in enumerate(st.session_state.instances):
+    _is_normal = (i == 0)
+    _expander_label = f"📋 Normalwoche (Referenz Massendruck-Sortierung): {inst['name']}" if _is_normal else f"📅 Woche {i+1}: {inst['name']}"
+    with st.expander(_expander_label, expanded=(i == 0)):
+
+        if _is_normal:
+            st.info("⭐ Diese Woche ist die **Normalwoche** – nach ihr wird der Massendruck sortiert und die Ladefolge ausgerichtet.")
+
+        col_name, col_del = st.columns([5, 1])
+        with col_name:
+            new_name = st.text_input("Bezeichnung", value=inst["name"], key=f"inst_name_{i}")
+            st.session_state.instances[i]["name"] = new_name
+        with col_del:
+            if i > 0:
+                st.write(""); st.write("")
+                if st.button("🗑️ Löschen", key=f"del_inst_{i}"):
+                    st.session_state.instances.pop(i)
+                    st.rerun()
+
+        _excel_label = "📊 Normalwochen-Excel (Referenzdatei) *" if _is_normal else "📊 Wochen-Excel *"
+        excel = st.file_uploader(_excel_label, type=["xlsx"], key=f"excel_{i}")
+
+        _logo = st.session_state.get("g_logo")
+        _key  = st.session_state.get("g_key")
+        _fach = st.session_state.get("g_fach")
+        _fcsb = st.session_state.get("g_fcsb")
+
+        if excel and _logo and _key:
+            try:
+                with st.spinner("Generiere Suche + Druck …"):
+                    for f_ in [excel, _key, _logo] + ([_fach] if _fach else []) + ([_fcsb] if _fcsb else []):
+                        try: f_.seek(0)
+                        except: pass
+                    st.session_state.instances[i]["suche_html"] = generate_suche_html(
+                        excel, _key, _logo, _fach, _fcsb
+                    )
+                    try: excel.seek(0)
+                    except: pass
+                    try: _logo.seek(0)
+                    except: pass
+                    st.session_state.instances[i]["druck_html"] = generate_druck_html(excel, _logo)
+                kb_s = len(st.session_state.instances[i]["suche_html"]) // 1024
+                kb_d = len(st.session_state.instances[i]["druck_html"]) // 1024
+                st.success(f"✅ Suche ({kb_s} KB) + Druck ({kb_d} KB) bereit")
+            except Exception as e:
+                st.error(f"Fehler: {e}")
+        elif inst["suche_html"] and inst["druck_html"]:
+            kb_s = len(inst["suche_html"]) // 1024
+            kb_d = len(inst["druck_html"]) // 1024
+            st.caption(f"✅ Bereits generiert — Suche {kb_s} KB · Druck {kb_d} KB")
+        else:
+            missing = []
+            if not excel: missing.append("Wochen-Excel")
+            if not _logo: missing.append("Logo (global)")
+            if not _key:  missing.append("Marktschlüssel (global)")
+            if missing: st.info(f"Fehlend: {', '.join(missing)}")
+
+if st.button("➕ Woche hinzufügen"):
+    n = len(st.session_state.instances)
+    st.session_state.instances.append(_empty_inst(f"Sonderwoche {n}"))
+    st.rerun()
+
+st.divider()
+
+# ── Telefonliste + Samstags Fahrer (global) ──────────────────────────────────
+tel_up = st.file_uploader("📞 Telefonliste (Excel, optional)", type=["xlsx"], key="tel_upload")
+if tel_up:
+    st.session_state.tel_json = parse_telefon_excel(tel_up)
+    n = len(__import__("json").loads(st.session_state.tel_json))
+    st.caption(f"✅ Telefonliste: {n} Gruppen")
+elif st.session_state.get("tel_json"):
+    st.caption("✅ Telefonliste bereits geladen")
+
+
+touren_ups = st.file_uploader(
+    "📂 Touren-Dateien hochladen (Samstag, Zulagen, Drittkunden, Fahrerauswertung – alle auf einmal)",
+    type=["xlsx"],
+    accept_multiple_files=True,
+    key="touren_upload"
+)
+if touren_ups:
+    with st.spinner("Verarbeite Dateien …"):
+        st.session_state.sam_json        = parse_samstag_excel(touren_ups)
+        st.session_state.zulage_json     = parse_zulage_excel(touren_ups)
+        st.session_state.drittkunden_json = parse_drittkunden_excel(touren_ups)
+        st.session_state.fa_json         = parse_fahrer_excel(touren_ups)
+    import json as _tj
+    _sn  = len(_tj.loads(st.session_state.sam_json))
+    _zd  = _tj.loads(st.session_state.zulage_json)
+    _zns = sum(len(m["fahrer"]) for m in _zd.get("sonder", []))
+    _znf = sum(len(m["fahrer"]) for m in _zd.get("fuengers", []))
+    _dkd = _tj.loads(st.session_state.drittkunden_json)
+    _fan = len(_tj.loads(st.session_state.fa_json))
+    st.caption(
+        f"✅ {len(touren_ups)} Datei(en) verarbeitet – "
+        f"Samstag: {_sn} Fahrer · "
+        f"Sonder: {_zns} · Füngers: {_znf} · Drittkunden: {len(_dkd)} · "
+        f"Fahrerauswertung: {_fan} Fahrer"
+    )
+elif any(st.session_state.get(k) for k in ("sam_json","zulage_json","drittkunden_json","fa_json")):
+    st.caption("✅ Touren-Dateien bereits geladen")
+
+
+
+modul_up = st.file_uploader("🎓 Modulschulungen BKrFQ (Excel)", type=["xlsx"], key="modul_upload")
+if modul_up:
+    with st.spinner("Lese Modulschulungen …"):
+        st.session_state.modul_json = parse_modul_excel(modul_up)
+    n = len(__import__("json").loads(st.session_state.modul_json))
+    st.caption(f"✅ Modulschulungen: {n} Fahrer geladen")
+elif st.session_state.get("modul_json"):
+    n = len(__import__("json").loads(st.session_state.modul_json))
+    st.caption(f"✅ Modulschulungen bereits geladen: {n} Fahrer")
+
+# ── Download ──────────────────────────────────────────────────────────────────
+st.divider()
+ready = [inst for inst in st.session_state.instances if inst["suche_html"] and inst["druck_html"]]
+if ready:
+    with st.spinner("Kombiniere …"):
+        app_html = combine_html(
+            instances=ready,
+            tel_json=st.session_state.get("tel_json", "[]"),
+            sam_json=st.session_state.get("sam_json", "[]"),
+            fa_json=st.session_state.get("fa_json", "[]"),
+            zulage_json=st.session_state.get("zulage_json", "{}"),
+            zulage_xlsx_sonder=(__import__("base64").b64encode(
+                generate_zulage_excel(st.session_state.get("zulage_json","{}"), tab="sonder") or b""
+            ).decode() if st.session_state.get("zulage_json","{}") not in ("{}","") else ""),
+            zulage_xlsx_fuengers=(__import__("base64").b64encode(
+                generate_zulage_excel(st.session_state.get("zulage_json","{}"), tab="fuengers") or b""
+            ).decode() if st.session_state.get("zulage_json","{}") not in ("{}","") else ""),
+            drittkunden_json=st.session_state.get("drittkunden_json", "[]"),
+            zulage_xlsx_drittkunden=(__import__("base64").b64encode(
+                generate_drittkunden_excel(st.session_state.get("drittkunden_json","[]")) or b""
+            ).decode() if st.session_state.get("drittkunden_json","[]") not in ("[]","") else ""),
+            modul_json=st.session_state.get("modul_json", "[]"),
+            last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
+        )
+    st.download_button(
+        label=f"⬇️  suche.html herunterladen ({len(ready)} Woche{'n' if len(ready) > 1 else ''})",
+        data=app_html.encode("utf-8"),
+        file_name="suche.html",
+        mime="text/html",
+        type="primary",
+    )
+    st.caption(f"Gesamtgröße: ca. {len(app_html)//1024} KB | Wochen: {', '.join(i['name'] for i in ready)}")
+else:
+    st.warning("Bitte mindestens eine Woche mit Wochen-Excel befüllen (globale Dateien nicht vergessen).")
