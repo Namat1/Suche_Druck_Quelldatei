@@ -1,3 +1,27 @@
+Keine ausgewählt 
+
+Direkt zum Inhalt
+Gmail mit Screenreadern verwenden
+Konversationen
+(kein Betreff)
+Posteingang
+Diese E‑Mail zusammenfassen
+
+Martin Carstensen <mcarstensen79@gmail.com>
+Anhänge
+Di., 3. März, 19:54 (vor 11 Stunden)
+an mich
+
+
+ 1 Anhang
+  •  Von Gmail gescannt
+# =============================================================================
+# app.py  -  Kombinierter Generator: Suche + Druck  ->  eine app.html
+# =============================================================================
+# Vollstaendig in sich geschlossen. Keine Suche.py / Druck.py benoetigt.
+# Starten:  streamlit run app.py
+# =============================================================================
+
 import streamlit as st
 import pandas as pd
 import json
