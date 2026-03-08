@@ -1673,7 +1673,7 @@ function modDaysDiff(s) {{
   return Math.round((d - today) / 86400000);
 }}
 
-function modPill(bis) {{
+function modPill(bis, am) {{
   if(!bis) return '<span style="color:#cbd5e1;font-size:11px;">–</span>';
   var diff = modDaysDiff(bis);
   var bg, color, border;
@@ -1682,9 +1682,11 @@ function modPill(bis) {{
   else if(diff < 183)    {{ bg="#fef9c3"; color="#92400e"; border="#fde68a"; }}
   else                   {{ bg="#dcfce7"; color="#15803d"; border="#86efac"; }}
   var tip = diff !== null ? (diff < 0 ? "Abgelaufen" : "noch " + diff + " Tage") : "";
-  return '<span title="' + tip + '" style="display:inline-block;padding:3px 8px;border-radius:20px;'
+  var amHtml = am ? '<div style="font-size:9px;font-weight:400;opacity:.7;margin-top:1px;">' + am + '</div>' : '';
+  return '<span title="' + tip + '" style="display:inline-block;padding:3px 8px;border-radius:12px;'
     + 'background:' + bg + ';color:' + color + ';border:1px solid ' + border + ';'
-    + 'font-size:12px;font-weight:600;white-space:nowrap;">' + bis + '</span>';
+    + 'font-size:12px;font-weight:600;white-space:nowrap;line-height:1.4;text-align:center;">'
+    + bis + amHtml + '</span>';
 }}
 
 function modRowStatus(d) {{
@@ -1759,8 +1761,7 @@ function modRender() {{
     var mods   = (d.module||[]).map(function(mod) {{
       var bis = (mod && typeof mod === "object") ? mod.bis : mod;
       var am  = (mod && typeof mod === "object") ? mod.am  : "";
-      var amHtml = am ? '<div style="font-size:9px;color:#94a3b8;margin-top:2px;white-space:nowrap;">' + am + '</div>' : '';
-      return '<td style="padding:6px 10px;text-align:center;">' + modPill(bis) + amHtml + '</td>';
+      return '<td style="padding:6px 10px;text-align:center;">' + modPill(bis, am) + '</td>';
     }}).join("");
     return '<tr style="background:' + rowBg + ';border-bottom:1px solid #e2e8f0;">'
       + '<td style="padding:8px 12px;font-weight:600;white-space:nowrap;">' + d.name + '</td>'
