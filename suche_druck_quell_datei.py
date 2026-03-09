@@ -995,20 +995,19 @@ def parse_modul_excel(datei) -> str:
         def col(i):
             return _fmt(row.iloc[i]) if len(row) > i else ""
 
-        # 4 Module (Spalten 5-12), gemacht am + gültig bis
+        # 5 Module (Spalten D-M = Index 3-12), abg. + gültig bis
         module_bis = []
         for m in range(5):
-            base = 5 + m * 2
+            base = 3 + m * 2
             module_bis.append({"am": col(base), "bis": col(base + 1)})
 
         result.append({
             "name":          name_raw,
             "geburtstag":    col(1),
             "geburtsort":    col(2),
-            "gueltigkeit":   col(4),   # Gültigkeit BKrFQ bis
-            "module":        module_bis,   # Liste mit 4 Strings (gültig bis)
-            "col_95":        col(15),      # Spalte P
-            "col_ce":        col(16),      # Spalte Q
+            "module":        module_bis,   # Liste mit 5 Dicts (abg./gültig bis)
+            "col_95":        col(13),      # Spalte N
+            "col_ce":        col(14),      # Spalte O
         })
 
     return _json.dumps(result, ensure_ascii=False)
@@ -1356,7 +1355,6 @@ iframe.active{{display:block}}
             <tr style="background:#1b66b3;color:#fff;position:sticky;top:0;z-index:2;">
               <th style="padding:8px 12px;text-align:left;white-space:nowrap;">Name</th>
               <th style="padding:8px 12px;text-align:left;white-space:nowrap;">Geburtstag / Ort</th>
-              <th style="padding:8px 12px;text-align:left;white-space:nowrap;">Gültigkeit<br>BKrFQ</th>
               <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 1</th>
               <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 2</th>
               <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 3</th>
@@ -1699,7 +1697,7 @@ function modRowStatus(d) {{
     else if(diff < 183 && worst === "ok")    worst = "warn";
   }};
   (d.module||[]).forEach(function(mod) {{ check((mod && typeof mod === "object") ? mod.bis : mod); }});
-  check(d.col_95); check(d.col_ce); check(d.gueltigkeit);
+  check(d.col_95); check(d.col_ce);
   return worst;
 }}
 
@@ -1708,7 +1706,7 @@ function modBuildFilters() {{
   var data   = Array.isArray(MODULE_DATA) ? MODULE_DATA : [];
   var years  = {{}};
   data.forEach(function(d) {{
-    [d.gueltigkeit, d.col_95, d.col_ce].concat((d.module||[]).map(function(m){{ return (m && typeof m==="object") ? m.bis : m; }})).forEach(function(bis) {{
+    [d.col_95, d.col_ce].concat((d.module||[]).map(function(m){{ return (m && typeof m==="object") ? m.bis : m; }})).forEach(function(bis) {{
       if(!bis) return;
       var p = bis.split("."); if(p.length===3) years[p[2]] = 1;
     }});
@@ -1761,7 +1759,8 @@ function modRender() {{
     var rowBg  = status==="exp" ? "#fff5f5" : status==="warn" ? "#fffbeb" : bg;
     var mods   = (d.module||[]).map(function(mod, idx) {{
       var bis   = (mod && typeof mod === "object") ? mod.bis : mod;
-      var label = "Modul " + (idx + 1);
+      var am    = (mod && typeof mod === "object") ? mod.am  : "";
+      var label = "Modul " + (idx + 1) + (am ? "<br>" + am : "");
       return '<td style="padding:6px 10px;text-align:center;">' + modPill(bis, label) + '</td>';
     }}).join("");
     return '<tr style="background:' + rowBg + ';border-bottom:1px solid #e2e8f0;">'
@@ -1770,7 +1769,6 @@ function modRender() {{
       +   '<span style="font-size:12px;color:#64748b;">' + (d.geburtstag||"–") + '</span>'
       +   (d.geburtsort ? '<span style="font-size:11px;color:#94a3b8;display:block;">' + d.geburtsort + '</span>' : '')
       + '</td>'
-      + '<td style="padding:8px 10px;text-align:center;">' + modPill(d.gueltigkeit) + '</td>'
       + mods
       + '<td style="padding:8px 10px;text-align:center;">' + modPill(d.col_95) + '</td>'
       + '<td style="padding:8px 10px;text-align:center;">' + modPill(d.col_ce) + '</td>'
