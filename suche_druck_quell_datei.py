@@ -2313,7 +2313,7 @@ _ZULAGE_PERSNR = {
     "Fechner":{"Danny":"00043696","Klaus":"00038278"},
     "Findeklee":{"Bernd":"00020804"},"Flint":{"Henryk":"00042414"},
     "Fuhlbruegge":{"Justin":"00046289"},"Gehrmann":{"Rayk":"00046702"},
-    "Gheonea":{"Costel-Daniel":"00054489"},"Glanz":{"Bjoern":"00041914"},
+    "Gheonea":{"Daniel-Costel":"00054489"},"Glanz":{"Bjoern":"00041914"},
     "Gnech":{"Torsten":"00018613"},"Greve":{"Nicole":"00040760"},
     "Guthmann":{"Fred":"00018328"},"Hagen":{"Andy":"00020271"},
     "Hartig":{"Sebastian":"00044120"},"Haus":{"David":"00046101"},
