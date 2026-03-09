@@ -997,7 +997,7 @@ def parse_modul_excel(datei) -> str:
 
         # 4 Module (Spalten 5-12), gemacht am + gültig bis
         module_bis = []
-        for m in range(4):
+        for m in range(5):
             base = 5 + m * 2
             module_bis.append({"am": col(base), "bis": col(base + 1)})
 
@@ -1007,8 +1007,8 @@ def parse_modul_excel(datei) -> str:
             "geburtsort":    col(2),
             "gueltigkeit":   col(4),   # Gültigkeit BKrFQ bis
             "module":        module_bis,   # Liste mit 4 Strings (gültig bis)
-            "col_95":        col(13),      # Spalte N
-            "col_ce":        col(14),      # Spalte O
+            "col_95":        col(15),      # Spalte P
+            "col_ce":        col(16),      # Spalte Q
         })
 
     return _json.dumps(result, ensure_ascii=False)
@@ -1357,10 +1357,11 @@ iframe.active{{display:block}}
               <th style="padding:8px 12px;text-align:left;white-space:nowrap;">Name</th>
               <th style="padding:8px 12px;text-align:left;white-space:nowrap;">Geburtstag / Ort</th>
               <th style="padding:8px 12px;text-align:left;white-space:nowrap;">Gültigkeit<br>BKrFQ</th>
-              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 1<br><small>gültig bis</small></th>
-              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 2<br><small>gültig bis</small></th>
-              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 3<br><small>gültig bis</small></th>
-              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 4<br><small>gültig bis</small></th>
+              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 1</th>
+              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 2</th>
+              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 3</th>
+              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 4</th>
+              <th style="padding:8px 12px;text-align:center;white-space:nowrap;">Modul 5</th>
 
               <th style="padding:8px 12px;text-align:center;white-space:nowrap;">95</th>
               <th style="padding:8px 12px;text-align:center;white-space:nowrap;">CE</th>
@@ -1758,10 +1759,10 @@ function modRender() {{
     var bg     = i%2===0 ? "#fff" : "#f8fafc";
     var status = modRowStatus(d);
     var rowBg  = status==="exp" ? "#fff5f5" : status==="warn" ? "#fffbeb" : bg;
-    var mods   = (d.module||[]).map(function(mod) {{
-      var bis = (mod && typeof mod === "object") ? mod.bis : mod;
-      var am  = (mod && typeof mod === "object") ? mod.am  : "";
-      return '<td style="padding:6px 10px;text-align:center;">' + modPill(bis, am) + '</td>';
+    var mods   = (d.module||[]).map(function(mod, idx) {{
+      var bis   = (mod && typeof mod === "object") ? mod.bis : mod;
+      var label = "Modul " + (idx + 1);
+      return '<td style="padding:6px 10px;text-align:center;">' + modPill(bis, label) + '</td>';
     }}).join("");
     return '<tr style="background:' + rowBg + ';border-bottom:1px solid #e2e8f0;">'
       + '<td style="padding:8px 12px;font-weight:600;white-space:nowrap;">' + d.name + '</td>'
