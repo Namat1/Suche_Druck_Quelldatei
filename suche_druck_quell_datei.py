@@ -2350,7 +2350,7 @@ _ZULAGE_PERSNR = {
     "Wachnowski":{"Klaus":"00026019"},"Wendel":{"Danilo":"00048994"},
     "Waschitschek":{"Detlef":"00020436"},"Wille":{"Rene":"00021393"},
     "Wisniewski":{"Krzysztof":"00046550"},"Zander":{"Jan":"00042454"},
-    "Zosel":{"Ingo":"00026303"},
+    "Zosel":{"Ingo":"00026303"},"Strehlow":{"Yves":"00052855"},
 }
 _ZP_MONTHS_DE = ["","Januar","Februar","März","April","Mai","Juni",
                   "Juli","August","September","Oktober","November","Dezember"]
