@@ -2919,6 +2919,21 @@ elif st.session_state.get("tel_json"):
     st.caption("✅ Telefonliste bereits geladen")
 
 
+fahrzeugwaeschen_up = st.file_uploader(
+    "🧽 Fahrzeugwäschen-Vorlage (Excel, optional)",
+    type=["xlsx"],
+    key="fahrzeugwaeschen_upload",
+)
+if fahrzeugwaeschen_up:
+    try:
+        fahrzeugwaeschen_up.seek(0)
+    except Exception:
+        pass
+    st.session_state.fahrzeugwaeschen_xlsx = fahrzeugwaeschen_up.read()
+    st.caption("✅ Fahrzeugwäschen-Vorlage geladen")
+elif st.session_state.get("fahrzeugwaeschen_xlsx"):
+    st.caption("✅ Fahrzeugwäschen-Vorlage bereits geladen")
+
 touren_ups = st.file_uploader(
     "📂 Touren-Dateien hochladen (Samstag, Zulagen, Drittkunden, Fahrerauswertung – alle auf einmal)",
     type=["xlsx"],
@@ -2965,9 +2980,13 @@ ready = [inst for inst in st.session_state.instances if inst["suche_html"] and i
 if ready:
     with st.spinner("Kombiniere …"):
         _fw_template = ""
-        _fw_path = Path(__file__).with_name("Fahrzeugwaeschen.xlsx")
-        if _fw_path.exists():
-            _fw_template = base64.b64encode(_fw_path.read_bytes()).decode("ascii")
+        _fw_bytes = st.session_state.get("fahrzeugwaeschen_xlsx")
+        if _fw_bytes:
+            _fw_template = base64.b64encode(_fw_bytes).decode("ascii")
+        else:
+            _fw_path = Path(__file__).with_name("Fahrzeugwaeschen.xlsx")
+            if _fw_path.exists():
+                _fw_template = base64.b64encode(_fw_path.read_bytes()).decode("ascii")
         app_html = combine_html(
             instances=ready,
             tel_json=st.session_state.get("tel_json", "[]"),
