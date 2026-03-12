@@ -1573,6 +1573,7 @@ var vzSelectedDay = null;
 var fwSelectedDay = null;
 var fwSelectedDate = null;
 var vzAllData = null;
+var FW_EXCLUDED_SUFFIXES = ["99852221","2222","2223","4444","7773","7778","7779"];
 
 function vzSelectDay(day) {{
   vzSelectedDay = day;
@@ -1600,6 +1601,14 @@ function fwSetDate(value) {{
   fwSelectedDate = value || null;
 }}
 
+function fwIsExcludedNumber(value) {{
+  var s = (value == null ? "" : String(value)).replace(/\D/g, "");
+  if(!s) return false;
+  return FW_EXCLUDED_SUFFIXES.some(function(suffix) {{
+    return s.endsWith(suffix);
+  }});
+}}
+
 function vzHandleData(allData) {{
   vzAllData = allData;
   var day = vzSelectedDay;
@@ -1610,6 +1619,8 @@ function vzHandleData(allData) {{
     var areaData = allData[area] || {{}};
     Object.keys(areaData).forEach(function(knr) {{
       var c = areaData[knr];
+      var refNum = c && (c.sap_nummer || c.kunden_nr || knr);
+      if(fwIsExcludedNumber(refNum)) return;
       if(c.tours && c.tours[day]) {{
         var t = c.tours[day].toString().trim();
         if(t && t !== "\u2014" && t !== "-") {{
@@ -1645,6 +1656,8 @@ function vzCollectToursByDay(allData, day) {{
     var areaData = allData[area] || {{}};
     Object.keys(areaData).forEach(function(knr) {{
       var c = areaData[knr];
+      var refNum = c && (c.sap_nummer || c.kunden_nr || knr);
+      if(fwIsExcludedNumber(refNum)) return;
       if(!c || !c.tours || !c.tours[day]) return;
       var t = c.tours[day].toString().trim();
       if(!t || t === "\u2014" || t === "-") return;
