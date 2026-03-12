@@ -1113,6 +1113,8 @@ def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa
 <title>Kunden-App &ndash; Suche &amp; Druck</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 html,body{{height:100%;font-family:'Segoe UI',Arial,sans-serif}}
@@ -1229,7 +1231,10 @@ iframe.active{{display:block}}
     <div style="max-width:700px;margin:0 auto">
       <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 6px 0">&#9200; Versp&#228;tungstabelle</h2>
       <p style="color:#64748b;font-size:13px;margin:0 0 20px 0">Liefertag w&#228;hlen &#8594; Excel wird generiert</p>
-      <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+        <button onclick="fwExportPdf()" style="padding:8px 16px;background:#dc2626;color:#fff;border:none;border-radius:20px;font-weight:800;font-size:12px;cursor:pointer;">
+          &#128196; Fahrzeugw&#228;schen PDF (A4)
+        </button>
         <button onclick="fwExportExcel()" style="padding:8px 16px;background:#1d6f42;color:#fff;border:none;border-radius:20px;font-weight:800;font-size:12px;cursor:pointer;">
           &#128190; Fahrzeugw&#228;schen Excel (Mo-Fr)
         </button>
