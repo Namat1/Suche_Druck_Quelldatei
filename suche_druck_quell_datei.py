@@ -1230,7 +1230,29 @@ iframe.active{{display:block}}
   <div id="panel-vz" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#f4f6fa;font-family:'Segoe UI',Arial,sans-serif">
     <div style="max-width:700px;margin:0 auto">
       <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 6px 0">&#9200; Versp&#228;tungstabelle</h2>
-      <p style="color:#64748b;font-size:13px;margin:0 0 20px 0">Liefertag w&#228;hlen &#8594; Excel wird generiert</p>
+      <p style="color:#64748b;font-size:13px;margin:0 0 14px 0">Versp&#228;tung und Fahrzeugw&#228;sche haben jetzt eigene Tagesauswahlen.</p>
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px;font-weight:800;color:#1b66b3;margin-bottom:8px">Versp&#228;tungstag</div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px" id="vz-day-btns">
+          <button class="vz-day-btn" onclick="vzSelectDay('Montag')">Montag</button>
+          <button class="vz-day-btn" onclick="vzSelectDay('Dienstag')">Dienstag</button>
+          <button class="vz-day-btn" onclick="vzSelectDay('Mittwoch')">Mittwoch</button>
+          <button class="vz-day-btn" onclick="vzSelectDay('Donnerstag')">Donnerstag</button>
+          <button class="vz-day-btn" onclick="vzSelectDay('Freitag')">Freitag</button>
+          <button class="vz-day-btn" onclick="vzSelectDay('Samstag')">Samstag</button>
+        </div>
+      </div>
+      <div style="margin-bottom:14px">
+        <div style="font-size:12px;font-weight:800;color:#1d6f42;margin-bottom:8px">Fahrzeugw&#228;sche-Tag</div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px" id="fw-day-btns">
+          <button class="vz-day-btn" onclick="fwSelectDay('Montag')">Montag</button>
+          <button class="vz-day-btn" onclick="fwSelectDay('Dienstag')">Dienstag</button>
+          <button class="vz-day-btn" onclick="fwSelectDay('Mittwoch')">Mittwoch</button>
+          <button class="vz-day-btn" onclick="fwSelectDay('Donnerstag')">Donnerstag</button>
+          <button class="vz-day-btn" onclick="fwSelectDay('Freitag')">Freitag</button>
+          <button class="vz-day-btn" onclick="fwSelectDay('Samstag')">Samstag</button>
+        </div>
+      </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:14px">
         <button onclick="fwExportPdf()" style="padding:8px 16px;background:#dc2626;color:#fff;border:none;border-radius:20px;font-weight:800;font-size:12px;cursor:pointer;">
           &#128196; Fahrzeugw&#228;schen PDF
@@ -1238,14 +1260,6 @@ iframe.active{{display:block}}
         <button onclick="fwExportExcel()" style="padding:8px 16px;background:#1d6f42;color:#fff;border:none;border-radius:20px;font-weight:800;font-size:12px;cursor:pointer;">
           &#128190; Fahrzeugw&#228;schen Excel
         </button>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px" id="vz-day-btns">
-        <button class="vz-day-btn" onclick="vzSelectDay('Montag')">Montag</button>
-        <button class="vz-day-btn" onclick="vzSelectDay('Dienstag')">Dienstag</button>
-        <button class="vz-day-btn" onclick="vzSelectDay('Mittwoch')">Mittwoch</button>
-        <button class="vz-day-btn" onclick="vzSelectDay('Donnerstag')">Donnerstag</button>
-        <button class="vz-day-btn" onclick="vzSelectDay('Freitag')">Freitag</button>
-        <button class="vz-day-btn" onclick="vzSelectDay('Samstag')">Samstag</button>
       </div>
       <div id="vz-status" style="color:#1b66b3;font-size:13px;font-weight:700;min-height:20px"></div>
       <div id="vz-preview" style="margin-top:16px"></div>
@@ -1549,11 +1563,12 @@ window.addEventListener("message", function(e) {{
 
 // ── Verspätungstabelle ────────────────────────────────────────────────────────
 var vzSelectedDay = null;
+var fwSelectedDay = null;
 var vzAllData = null;
 
 function vzSelectDay(day) {{
   vzSelectedDay = day;
-  document.querySelectorAll(".vz-day-btn").forEach(function(b) {{
+  document.querySelectorAll("#vz-day-btns .vz-day-btn").forEach(function(b) {{
     b.classList.toggle("active", b.textContent.trim()===day);
   }});
   if(!vzAllData) {{
@@ -1564,6 +1579,13 @@ function vzSelectDay(day) {{
     return;
   }}
   vzHandleData(vzAllData);
+}}
+
+function fwSelectDay(day) {{
+  fwSelectedDay = day;
+  document.querySelectorAll("#fw-day-btns .vz-day-btn").forEach(function(b) {{
+    b.classList.toggle("active", b.textContent.trim()===day);
+  }});
 }}
 
 function vzHandleData(allData) {{
@@ -1689,11 +1711,11 @@ function fwTodayLabel() {{
 }}
 
 function fwGetSelectedDay() {{
-  if(!vzSelectedDay) {{
-    alert("Bitte zuerst einen Tag ausw\u00e4hlen.");
+  if(!fwSelectedDay) {{
+    alert("Bitte zuerst einen Fahrzeugwaesche-Tag auswaehlen.");
     return null;
   }}
-  return vzSelectedDay;
+  return fwSelectedDay;
 }}
 
 function fwChunkArray(items, size) {{
