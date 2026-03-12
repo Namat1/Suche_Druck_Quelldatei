@@ -1233,10 +1233,10 @@ iframe.active{{display:block}}
       <p style="color:#64748b;font-size:13px;margin:0 0 20px 0">Liefertag w&#228;hlen &#8594; Excel wird generiert</p>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:14px">
         <button onclick="fwExportPdf()" style="padding:8px 16px;background:#dc2626;color:#fff;border:none;border-radius:20px;font-weight:800;font-size:12px;cursor:pointer;">
-          &#128196; Fahrzeugw&#228;schen PDF (A4)
+          &#128196; Fahrzeugw&#228;schen PDF
         </button>
         <button onclick="fwExportExcel()" style="padding:8px 16px;background:#1d6f42;color:#fff;border:none;border-radius:20px;font-weight:800;font-size:12px;cursor:pointer;">
-          &#128190; Fahrzeugw&#228;schen Excel (Mo-Fr)
+          &#128190; Fahrzeugw&#228;schen Excel
         </button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px" id="vz-day-btns">
@@ -1688,6 +1688,14 @@ function fwTodayLabel() {{
   return new Date().toLocaleDateString("de-DE", {{ day:"2-digit", month:"2-digit", year:"numeric" }});
 }}
 
+function fwGetSelectedDay() {{
+  if(!vzSelectedDay) {{
+    alert("Bitte zuerst einen Tag ausw\u00e4hlen.");
+    return null;
+  }}
+  return vzSelectedDay;
+}}
+
 function fwChunkArray(items, size) {{
   var out = [];
   for(var i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
@@ -1742,8 +1750,9 @@ function fwExportExcel() {{
     try {{ document.getElementById("frame-druck").contentWindow.postMessage({{type:"request-vz-data"}}, "*"); }} catch(e) {{}}
     return;
   }}
+  var day = fwGetSelectedDay();
+  if(!day) return;
 
-  var days = ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag"];
   var wb = XLSX.read(FAHRZEUGWAESCHEN_XLSX, {{ type:"base64", cellStyles:true }});
   var firstSheetName = wb.SheetNames[0];
   if(!firstSheetName) {{
@@ -1755,18 +1764,16 @@ function fwExportExcel() {{
   wb.Sheets = {{}};
 
   var label = (INSTANCES[currentInst] && INSTANCES[currentInst].name) ? INSTANCES[currentInst].name : "Woche";
-  days.forEach(function(day) {{
-    var chunks = fwChunkArray(vzCollectToursByDay(vzAllData, day), 23);
-    chunks.forEach(function(part, idx) {{
-      var ws = fwCloneSheet(baseSheet);
-      var name = day + (chunks.length > 1 ? " " + (idx + 1) : "");
-      fwFillSheet(ws, label + " - " + day + " Fahrzeugwaeschen", part, idx + 1, chunks.length);
-      wb.SheetNames.push(name);
-      wb.Sheets[name] = ws;
-    }});
+  var chunks = fwChunkArray(vzCollectToursByDay(vzAllData, day), 23);
+  chunks.forEach(function(part, idx) {{
+    var ws = fwCloneSheet(baseSheet);
+    var name = day + (chunks.length > 1 ? " " + (idx + 1) : "");
+    fwFillSheet(ws, label + " - " + day + " Fahrzeugwaeschen", part, idx + 1, chunks.length);
+    wb.SheetNames.push(name);
+    wb.Sheets[name] = ws;
   }});
 
-  XLSX.writeFile(wb, "Fahrzeugwaeschen_" + label.replace(/[\\\\/:*?\"<>|]+/g, "_") + ".xlsx");
+  XLSX.writeFile(wb, "Fahrzeugwaeschen_" + day + "_" + label.replace(/[\\\\/:*?\"<>|]+/g, "_") + ".xlsx");
 }}
 
 function fwExportPdf() {{
@@ -1775,6 +1782,8 @@ function fwExportPdf() {{
     try {{ document.getElementById("frame-druck").contentWindow.postMessage({{type:"request-vz-data"}}, "*"); }} catch(e) {{}}
     return;
   }}
+  var day = fwGetSelectedDay();
+  if(!day) return;
   if(!window.jspdf || !window.jspdf.jsPDF || typeof window.jspdf.jsPDF !== "function") {{
     alert("PDF-Bibliothek ist nicht geladen.");
     return;
@@ -1782,81 +1791,70 @@ function fwExportPdf() {{
 
   var jsPDF = window.jspdf.jsPDF;
   var doc = new jsPDF({{ orientation:"portrait", unit:"mm", format:"a4" }});
-  var days = ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag"];
   var label = (INSTANCES[currentInst] && INSTANCES[currentInst].name) ? INSTANCES[currentInst].name : "Woche";
-  var created = false;
+  var tours = vzCollectToursByDay(vzAllData, day);
 
-  days.forEach(function(day, dayIndex) {{
-    var tours = vzCollectToursByDay(vzAllData, day);
-    if(dayIndex > 0) doc.addPage("a4", "portrait");
-    created = true;
+  doc.setFillColor(27, 102, 179);
+  doc.roundedRect(12, 10, 186, 18, 3, 3, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(17);
+  doc.text("Fahrzeugwaeschen", 16, 18);
+  doc.setFontSize(10);
+  doc.text(label + " - " + day, 16, 24);
+  doc.text("Stand: " + fwTodayLabel(), 155, 24);
 
-    doc.setFillColor(27, 102, 179);
-    doc.roundedRect(12, 10, 186, 18, 3, 3, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(17);
-    doc.text("Fahrzeugwaeschen", 16, 18);
-    doc.setFontSize(10);
-    doc.text(label + " - " + day, 16, 24);
-    doc.text("Stand: " + fwTodayLabel(), 155, 24);
+  doc.setTextColor(11, 18, 32);
+  doc.setFontSize(9);
+  doc.text("A4-Format, automatisch auf mehrere Seiten verteilt", 14, 35);
 
-    doc.setTextColor(11, 18, 32);
-    doc.setFontSize(9);
-    doc.text("A4-Format, automatisch auf mehrere Seiten verteilt", 14, 35);
+  var rows = tours.map(function(t) {{
+    return ["", t, "", "", ""];
+  }});
+  if(!rows.length) rows = [["", "-", "", "", ""]];
 
-    var rows = tours.map(function(t) {{
-      return ["", t, "", "", ""];
-    }});
-    if(!rows.length) rows = [["", "-", "", "", ""]];
-
-    doc.autoTable({{
-      startY: 39,
-      head: [["Name", "Tour", "Reinigung ja/nein", "Grund", "Uhrzeit / Feierabend"]],
-      body: rows,
-      theme: "grid",
-      styles: {{
-        font: "helvetica",
-        fontSize: 10,
-        cellPadding: 2.6,
-        lineColor: [205, 213, 225],
-        lineWidth: 0.2,
-        minCellHeight: 10,
-        valign: "middle",
-        overflow: "linebreak"
-      }},
-      headStyles: {{
-        fillColor: [232, 240, 251],
-        textColor: [27, 102, 179],
-        fontStyle: "bold",
-        halign: "left",
-        lineColor: [27, 102, 179],
-        lineWidth: 0.25
-      }},
-      columnStyles: {{
-        0: {{ cellWidth: 33 }},
-        1: {{ cellWidth: 23, halign: "center" }},
-        2: {{ cellWidth: 33 }},
-        3: {{ cellWidth: 56 }},
-        4: {{ cellWidth: 41 }}
-      }},
-      margin: {{ left: 12, right: 12, top: 10, bottom: 12 }},
-      didDrawPage: function(data) {{
-        var pageSize = doc.internal.pageSize;
-        var pageHeight = pageSize.height || pageSize.getHeight();
-        doc.setFontSize(8);
-        doc.setTextColor(100, 116, 139);
-        doc.text(day + "  |  " + label, 12, pageHeight - 6);
-        doc.text("Seite " + doc.getNumberOfPages(), pageSize.width - 24, pageHeight - 6);
-      }}
-    }});
+  doc.autoTable({{
+    startY: 39,
+    head: [["Name", "Tour", "Reinigung ja/nein", "Grund", "Uhrzeit / Feierabend"]],
+    body: rows,
+    theme: "grid",
+    styles: {{
+      font: "helvetica",
+      fontSize: 10,
+      cellPadding: 2.6,
+      lineColor: [205, 213, 225],
+      lineWidth: 0.2,
+      minCellHeight: 10,
+      valign: "middle",
+      overflow: "linebreak"
+    }},
+    headStyles: {{
+      fillColor: [232, 240, 251],
+      textColor: [27, 102, 179],
+      fontStyle: "bold",
+      halign: "left",
+      lineColor: [27, 102, 179],
+      lineWidth: 0.25
+    }},
+    columnStyles: {{
+      0: {{ cellWidth: 33 }},
+      1: {{ cellWidth: 23, halign: "center" }},
+      2: {{ cellWidth: 33 }},
+      3: {{ cellWidth: 56 }},
+      4: {{ cellWidth: 41 }}
+    }},
+    margin: {{ left: 12, right: 12, top: 10, bottom: 12 }},
+    didDrawPage: function(data) {{
+      var pageSize = doc.internal.pageSize;
+      var pageHeight = pageSize.height || pageSize.getHeight();
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(day + "  |  " + label, 12, pageHeight - 6);
+      doc.text("Seite " + doc.getCurrentPageInfo().pageNumber, pageSize.width - 24, pageHeight - 6);
+    }}
   }});
 
-  if(!created) {{
-    alert("Keine Fahrzeugwaeschen-Daten vorhanden.");
-    return;
-  }}
-  doc.save("Fahrzeugwaeschen_" + label.replace(/[\\\\/:*?\"<>|]+/g, "_") + ".pdf");
+  doc.save("Fahrzeugwaeschen_" + day + "_" + label.replace(/[\\\\/:*?\"<>|]+/g, "_") + ".pdf");
 }}
 
 var TEL_DATA = {tel_json};
