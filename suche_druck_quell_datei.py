@@ -1253,6 +1253,11 @@ iframe.active{{display:block}}
           <button class="vz-day-btn" onclick="fwSelectDay('Samstag')">Samstag</button>
         </div>
       </div>
+      <div style="margin-bottom:14px">
+        <div style="font-size:12px;font-weight:800;color:#1d6f42;margin-bottom:8px">Fahrzeugw&#228;sche-Datum</div>
+        <input id="fw-date-picker" type="date" onchange="fwSetDate(this.value)"
+          style="padding:8px 12px;border:2px solid #1d6f42;border-radius:12px;font-size:13px;font-family:inherit;outline:none;background:#fff;color:#0b1220;min-width:190px">
+      </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:14px">
         <button onclick="fwExportPdf()" style="padding:8px 16px;background:#dc2626;color:#fff;border:none;border-radius:20px;font-weight:800;font-size:12px;cursor:pointer;">
           &#128196; Fahrzeugw&#228;schen PDF
@@ -1530,6 +1535,7 @@ function showArea(s) {{
   if(modBtn) modBtn.className = "nav-btn" + (s==="module" ? " active" : "");
   var modPanel = document.getElementById("panel-module");
   if(modPanel) modPanel.style.display = (s==="module") ? "block" : "none";
+  if(s==="vz") fwInitDatePicker();
   if(s==="tel" && !telPanel.dataset.loaded) {{ telRender(""); telPanel.dataset.loaded="1"; }}
   if(s==="sam" && samPanel && !samPanel.dataset.loaded) {{ samRender(""); samPanel.dataset.loaded="1"; }}
   if(s==="zulage" && zulagePanel && !zulagePanel.dataset.loaded) {{ zulagenInit(); zulagePanel.dataset.loaded="1"; }}
@@ -1540,6 +1546,7 @@ if(INSTANCES.length > 0) {{
   document.getElementById("frame-suche").srcdoc = b64ChunksToString(INSTANCES[0].s);
   document.getElementById("frame-druck" ).srcdoc = b64ChunksToString(INSTANCES[0].d);
   updateInstLabels();
+  fwInitDatePicker();
 }}
 
 var normalInstData = null;  // ALL_DATA der Normalwochen (Instanz 0)
@@ -1564,6 +1571,7 @@ window.addEventListener("message", function(e) {{
 // ── Verspätungstabelle ────────────────────────────────────────────────────────
 var vzSelectedDay = null;
 var fwSelectedDay = null;
+var fwSelectedDate = null;
 var vzAllData = null;
 
 function vzSelectDay(day) {{
@@ -1586,6 +1594,10 @@ function fwSelectDay(day) {{
   document.querySelectorAll("#fw-day-btns .vz-day-btn").forEach(function(b) {{
     b.classList.toggle("active", b.textContent.trim()===day);
   }});
+}}
+
+function fwSetDate(value) {{
+  fwSelectedDate = value || null;
 }}
 
 function vzHandleData(allData) {{
@@ -1710,6 +1722,26 @@ function fwTodayLabel() {{
   return new Date().toLocaleDateString("de-DE", {{ day:"2-digit", month:"2-digit", year:"numeric" }});
 }}
 
+function fwInitDatePicker() {{
+  var el = document.getElementById("fw-date-picker");
+  if(!el) return;
+  if(!fwSelectedDate) {{
+    var now = new Date();
+    var month = String(now.getMonth() + 1).padStart(2, "0");
+    var day = String(now.getDate()).padStart(2, "0");
+    fwSelectedDate = now.getFullYear() + "-" + month + "-" + day;
+  }}
+  el.value = fwSelectedDate;
+}}
+
+function fwDisplayDate() {{
+  if(fwSelectedDate) {{
+    var parts = fwSelectedDate.split("-");
+    if(parts.length === 3) return parts[2] + "." + parts[1] + "." + parts[0];
+  }}
+  return fwTodayLabel();
+}}
+
 function fwGetSelectedDay() {{
   if(!fwSelectedDay) {{
     alert("Bitte zuerst einen Fahrzeugwaesche-Tag auswaehlen.");
@@ -1731,7 +1763,7 @@ function fwFillSheet(ws, title, tours, partIndex, partCount) {{
   var styleC = ws["C3"] && ws["C3"].s;
   var styleD = ws["D3"] && ws["D3"].s;
   var styleE = ws["E3"] && ws["E3"].s;
-  var fullTitle = fwTodayLabel() + " " + title + (partCount > 1 ? " (" + partIndex + "/" + partCount + ")" : "");
+  var fullTitle = fwDisplayDate() + " " + title + (partCount > 1 ? " (" + partIndex + "/" + partCount + ")" : "");
   fwSetCell(ws, "A1", fullTitle, ws["A1"] && ws["A1"].s);
   var maxRow = Math.max(25, tours.length + 2);
   for(var row = 3; row <= maxRow; row++) {{
@@ -1824,11 +1856,7 @@ function fwExportPdf() {{
   doc.text("Fahrzeugwaeschen", 16, 18);
   doc.setFontSize(10);
   doc.text(label + " - " + day, 16, 24);
-  doc.text("Stand: " + fwTodayLabel(), 155, 24);
-
-  doc.setTextColor(11, 18, 32);
-  doc.setFontSize(9);
-  doc.text("A4-Format, automatisch auf mehrere Seiten verteilt", 14, 35);
+  doc.text("Stand: " + fwDisplayDate(), 155, 24);
 
   var rows = tours.map(function(t) {{
     return ["", t, "", "", ""];
@@ -1836,7 +1864,7 @@ function fwExportPdf() {{
   if(!rows.length) rows = [["", "-", "", "", ""]];
 
   doc.autoTable({{
-    startY: 39,
+    startY: 33,
     head: [["Name", "Tour", "Reinigung ja/nein", "Grund", "Uhrzeit / Feierabend"]],
     body: rows,
     theme: "grid",
