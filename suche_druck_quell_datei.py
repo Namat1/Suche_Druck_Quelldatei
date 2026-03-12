@@ -1013,7 +1013,7 @@ def parse_modul_excel(datei) -> str:
     return _json.dumps(result, ensure_ascii=False)
 
 
-def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", modul_json: str = "[]", fahrzeugwaeschen_xlsx: str = "", last_updated: str = "") -> str:
+def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", modul_json: str = "[]", last_updated: str = "") -> str:
     """
     Bettet beliebig viele Suche+Druck-Paare (Instanzen) in eine HTML ein.
     Instanz-Wechsler im Topnav.
@@ -1261,9 +1261,6 @@ iframe.active{{display:block}}
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:14px">
         <button onclick="fwExportPdf()" style="padding:8px 16px;background:#dc2626;color:#fff;border:none;border-radius:20px;font-weight:800;font-size:12px;cursor:pointer;">
           &#128196; Fahrzeugw&#228;schen PDF
-        </button>
-        <button onclick="fwExportExcel()" style="padding:8px 16px;background:#1d6f42;color:#fff;border:none;border-radius:20px;font-weight:800;font-size:12px;cursor:pointer;">
-          &#128190; Fahrzeugw&#228;schen Excel
         </button>
       </div>
       <div id="vz-status" style="color:#1b66b3;font-size:13px;font-weight:700;min-height:20px"></div>
@@ -1726,15 +1723,6 @@ function vzGenerateExcel(rows, day) {{
 }}
 
 // ── Telefonliste ──────────────────────────────────────────────────────────────
-function fwCloneSheet(ws) {{
-  return JSON.parse(JSON.stringify(ws || {{}}));
-}}
-
-function fwSetCell(ws, ref, value, styleIdx) {{
-  ws[ref] = {{ t: "s", v: value == null ? "" : String(value) }};
-  if(styleIdx !== undefined && styleIdx !== null) ws[ref].s = styleIdx;
-}}
-
 function fwTodayLabel() {{
   return new Date().toLocaleDateString("de-DE", {{ day:"2-digit", month:"2-digit", year:"numeric" }});
 }}
@@ -1767,90 +1755,10 @@ function fwGetSelectedDay() {{
   return fwSelectedDay;
 }}
 
-function fwChunkArray(items, size) {{
-  var out = [];
-  for(var i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  if(!out.length) out.push([]);
-  return out;
-}}
-
 function fwFilterTours(tours) {{
   return (tours || []).filter(function(t) {{
     return !fwIsExcludedNumber(t);
   }});
-}}
-
-function fwFillSheet(ws, title, tours, partIndex, partCount) {{
-  var styleA = ws["A3"] && ws["A3"].s;
-  var styleB = ws["B3"] && ws["B3"].s;
-  var styleC = ws["C3"] && ws["C3"].s;
-  var styleD = ws["D3"] && ws["D3"].s;
-  var styleE = ws["E3"] && ws["E3"].s;
-  var fullTitle = fwDisplayDate() + " " + title + (partCount > 1 ? " (" + partIndex + "/" + partCount + ")" : "");
-  fwSetCell(ws, "A1", fullTitle, ws["A1"] && ws["A1"].s);
-  var maxRow = Math.max(25, tours.length + 2);
-  for(var row = 3; row <= maxRow; row++) {{
-    fwSetCell(ws, "A" + row, "", styleA);
-    fwSetCell(ws, "B" + row, "", styleB);
-    fwSetCell(ws, "C" + row, "", styleC);
-    fwSetCell(ws, "D" + row, "", styleD);
-    fwSetCell(ws, "E" + row, "", styleE);
-  }}
-  tours.forEach(function(tour, idx) {{
-    var row = 3 + idx;
-    fwSetCell(ws, "A" + row, "", styleA);
-    fwSetCell(ws, "B" + row, tour, styleB);
-    fwSetCell(ws, "C" + row, "", styleC);
-    fwSetCell(ws, "D" + row, "", styleD);
-    fwSetCell(ws, "E" + row, "", styleE);
-  }});
-  ws["!ref"] = "A1:E" + maxRow;
-  ws["!rows"] = ws["!rows"] || [];
-  for(var i = 0; i <= maxRow; i++) {{
-    if(i === 0) ws["!rows"][i] = {{ hpt: 27 }};
-    else if(i === 1) ws["!rows"][i] = {{ hpt: 24 }};
-    else ws["!rows"][i] = {{ hpt: 21 }};
-  }}
-}}
-
-function fwExportExcel() {{
-  if(typeof XLSX === "undefined") {{
-    alert("SheetJS ist nicht geladen.");
-    return;
-  }}
-  if(!FAHRZEUGWAESCHEN_XLSX) {{
-    alert("Die Fahrzeugwaeschen-Vorlage ist nicht eingebettet.");
-    return;
-  }}
-  if(!vzAllData) {{
-    alert("Die Wochendaten sind noch nicht bereit. Bitte kurz warten und erneut versuchen.");
-    try {{ document.getElementById("frame-druck").contentWindow.postMessage({{type:"request-vz-data"}}, "*"); }} catch(e) {{}}
-    return;
-  }}
-  var day = fwGetSelectedDay();
-  if(!day) return;
-
-  var wb = XLSX.read(FAHRZEUGWAESCHEN_XLSX, {{ type:"base64", cellStyles:true }});
-  var firstSheetName = wb.SheetNames[0];
-  if(!firstSheetName) {{
-    alert("Die Fahrzeugwaeschen-Vorlage ist leer.");
-    return;
-  }}
-  var baseSheet = fwCloneSheet(wb.Sheets[firstSheetName]);
-  wb.SheetNames = [];
-  wb.Sheets = {{}};
-
-  var label = (INSTANCES[currentInst] && INSTANCES[currentInst].name) ? INSTANCES[currentInst].name : "Woche";
-  var chunks = fwChunkArray(fwFilterTours(vzCollectToursByDay(vzAllData, day)), 23);
-  chunks.forEach(function(part, idx) {{
-    var ws = fwCloneSheet(baseSheet);
-    var name = day + (chunks.length > 1 ? " " + (idx + 1) : "");
-    fwFillSheet(ws, label + " - " + day + " Fahrzeugwaeschen", part, idx + 1, chunks.length);
-    wb.SheetNames.push(name);
-    wb.Sheets[name] = ws;
-  }});
-
-  XLSX.writeFile(wb, "Fahrzeugwaeschen_" + day + "_" + label.replace(/[\\\\/:*?\"<>|]+/g, "_") + ".xlsx");
 }}
 
 function fwExportPdf() {{
@@ -1939,7 +1847,6 @@ var ZULAGE_XLSX_FUENGERS    = "{zulage_xlsx_fuengers}";
 var DRITTKUNDEN_DATA        = {drittkunden_json};
 var ZULAGE_XLSX_DRITTKUNDEN = "{zulage_xlsx_drittkunden}";
 var MODULE_DATA             = {modul_json};
-var FAHRZEUGWAESCHEN_XLSX   = "{fahrzeugwaeschen_xlsx}";
 
 
 // ── Modulschulungen ───────────────────────────────────────────────────────────
@@ -3153,10 +3060,6 @@ st.divider()
 ready = [inst for inst in st.session_state.instances if inst["suche_html"] and inst["druck_html"]]
 if ready:
     with st.spinner("Kombiniere …"):
-        _fw_template = ""
-        _fw_path = Path(__file__).with_name("Fahrzeugwaeschen.xlsx")
-        if _fw_path.exists():
-            _fw_template = base64.b64encode(_fw_path.read_bytes()).decode("ascii")
         app_html = combine_html(
             instances=ready,
             tel_json=st.session_state.get("tel_json", "[]"),
@@ -3174,7 +3077,6 @@ if ready:
                 generate_drittkunden_excel(st.session_state.get("drittkunden_json","[]")) or b""
             ).decode() if st.session_state.get("drittkunden_json","[]") not in ("[]","") else ""),
             modul_json=st.session_state.get("modul_json", "[]"),
-            fahrzeugwaeschen_xlsx=_fw_template,
             last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
         )
     st.download_button(
