@@ -1573,7 +1573,7 @@ var vzSelectedDay = null;
 var fwSelectedDay = null;
 var fwSelectedDate = null;
 var vzAllData = null;
-var FW_EXCLUDED_SUFFIXES = ["998","2221","2222","2223","4444","7773","7778","7779"];
+var FW_EXCLUDED_SUFFIXES = ["998","999","2221","2222","2223","4444","7773","7778","7779"];
 
 function vzSelectDay(day) {{
   vzSelectedDay = day;
@@ -1605,7 +1605,11 @@ function fwIsExcludedNumber(value) {{
   var s = (value == null ? "" : String(value)).replace(/\D/g, "");
   if(!s) return false;
   return FW_EXCLUDED_SUFFIXES.some(function(suffix) {{
-    return s.endsWith(suffix);
+    if(s.endsWith(suffix)) return true;
+    if(s.length >= suffix.length + 1 && /^[1-6]$/.test(s.charAt(0))) {{
+      return s.slice(1).endsWith(suffix);
+    }}
+    return false;
   }});
 }}
 
@@ -1623,7 +1627,7 @@ function vzHandleData(allData) {{
       if(fwIsExcludedNumber(refNum)) return;
       if(c.tours && c.tours[day]) {{
         var t = c.tours[day].toString().trim();
-        if(t && t !== "\u2014" && t !== "-") {{
+        if(t && t !== "\u2014" && t !== "-" && !fwIsExcludedNumber(t)) {{
           if(!tourMap[t]) tourMap[t] = [];
           tourMap[t].push({{ sap: c.sap_nummer || c.kunden_nr || knr, name: c.name || "" }});
         }}
@@ -1660,7 +1664,7 @@ function vzCollectToursByDay(allData, day) {{
       if(fwIsExcludedNumber(refNum)) return;
       if(!c || !c.tours || !c.tours[day]) return;
       var t = c.tours[day].toString().trim();
-      if(!t || t === "\u2014" || t === "-") return;
+      if(!t || t === "\u2014" || t === "-" || fwIsExcludedNumber(t)) return;
       seen[t] = 1;
     }});
   }});
@@ -1770,6 +1774,12 @@ function fwChunkArray(items, size) {{
   return out;
 }}
 
+function fwFilterTours(tours) {{
+  return (tours || []).filter(function(t) {{
+    return !fwIsExcludedNumber(t);
+  }});
+}}
+
 function fwFillSheet(ws, title, tours, partIndex, partCount) {{
   var styleA = ws["A3"] && ws["A3"].s;
   var styleB = ws["B3"] && ws["B3"].s;
@@ -1831,7 +1841,7 @@ function fwExportExcel() {{
   wb.Sheets = {{}};
 
   var label = (INSTANCES[currentInst] && INSTANCES[currentInst].name) ? INSTANCES[currentInst].name : "Woche";
-  var chunks = fwChunkArray(vzCollectToursByDay(vzAllData, day), 23);
+  var chunks = fwChunkArray(fwFilterTours(vzCollectToursByDay(vzAllData, day)), 23);
   chunks.forEach(function(part, idx) {{
     var ws = fwCloneSheet(baseSheet);
     var name = day + (chunks.length > 1 ? " " + (idx + 1) : "");
@@ -1859,7 +1869,7 @@ function fwExportPdf() {{
   var jsPDF = window.jspdf.jsPDF;
   var doc = new jsPDF({{ orientation:"portrait", unit:"mm", format:"a4" }});
   var label = (INSTANCES[currentInst] && INSTANCES[currentInst].name) ? INSTANCES[currentInst].name : "Woche";
-  var tours = vzCollectToursByDay(vzAllData, day);
+  var tours = fwFilterTours(vzCollectToursByDay(vzAllData, day));
 
   doc.setFillColor(27, 102, 179);
   doc.roundedRect(12, 10, 186, 18, 3, 3, "F");
