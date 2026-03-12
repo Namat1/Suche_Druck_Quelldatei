@@ -1573,7 +1573,7 @@ var vzSelectedDay = null;
 var fwSelectedDay = null;
 var fwSelectedDate = null;
 var vzAllData = null;
-var FW_EXCLUDED_SUFFIXES = ["99852221","2222","2223","4444","7773","7778","7779"];
+var FW_EXCLUDED_SUFFIXES = ["998","2221","2222","2223","4444","7773","7778","7779"];
 
 function vzSelectDay(day) {{
   vzSelectedDay = day;
