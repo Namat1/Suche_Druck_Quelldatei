@@ -1684,14 +1684,27 @@ function fwSetCell(ws, ref, value, styleIdx) {{
   if(styleIdx !== undefined && styleIdx !== null) ws[ref].s = styleIdx;
 }}
 
-function fwFillSheet(ws, title, tours) {{
+function fwTodayLabel() {{
+  return new Date().toLocaleDateString("de-DE", {{ day:"2-digit", month:"2-digit", year:"numeric" }});
+}}
+
+function fwChunkArray(items, size) {{
+  var out = [];
+  for(var i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  if(!out.length) out.push([]);
+  return out;
+}}
+
+function fwFillSheet(ws, title, tours, partIndex, partCount) {{
   var styleA = ws["A3"] && ws["A3"].s;
   var styleB = ws["B3"] && ws["B3"].s;
   var styleC = ws["C3"] && ws["C3"].s;
   var styleD = ws["D3"] && ws["D3"].s;
   var styleE = ws["E3"] && ws["E3"].s;
-  fwSetCell(ws, "A1", title, ws["A1"] && ws["A1"].s);
-  for(var row = 3; row <= 25; row++) {{
+  var fullTitle = fwTodayLabel() + " " + title + (partCount > 1 ? " (" + partIndex + "/" + partCount + ")" : "");
+  fwSetCell(ws, "A1", fullTitle, ws["A1"] && ws["A1"].s);
+  var maxRow = Math.max(25, tours.length + 2);
+  for(var row = 3; row <= maxRow; row++) {{
     fwSetCell(ws, "A" + row, "", styleA);
     fwSetCell(ws, "B" + row, "", styleB);
     fwSetCell(ws, "C" + row, "", styleC);
@@ -1706,7 +1719,13 @@ function fwFillSheet(ws, title, tours) {{
     fwSetCell(ws, "D" + row, "", styleD);
     fwSetCell(ws, "E" + row, "", styleE);
   }});
-  ws["!ref"] = "A1:E" + Math.max(25, tours.length + 2);
+  ws["!ref"] = "A1:E" + maxRow;
+  ws["!rows"] = ws["!rows"] || [];
+  for(var i = 0; i <= maxRow; i++) {{
+    if(i === 0) ws["!rows"][i] = {{ hpt: 27 }};
+    else if(i === 1) ws["!rows"][i] = {{ hpt: 24 }};
+    else ws["!rows"][i] = {{ hpt: 21 }};
+  }}
 }}
 
 function fwExportExcel() {{
@@ -1737,13 +1756,107 @@ function fwExportExcel() {{
 
   var label = (INSTANCES[currentInst] && INSTANCES[currentInst].name) ? INSTANCES[currentInst].name : "Woche";
   days.forEach(function(day) {{
-    var ws = fwCloneSheet(baseSheet);
-    fwFillSheet(ws, label + " - " + day + " Fahrzeugwaeschen", vzCollectToursByDay(vzAllData, day));
-    wb.SheetNames.push(day);
-    wb.Sheets[day] = ws;
+    var chunks = fwChunkArray(vzCollectToursByDay(vzAllData, day), 23);
+    chunks.forEach(function(part, idx) {{
+      var ws = fwCloneSheet(baseSheet);
+      var name = day + (chunks.length > 1 ? " " + (idx + 1) : "");
+      fwFillSheet(ws, label + " - " + day + " Fahrzeugwaeschen", part, idx + 1, chunks.length);
+      wb.SheetNames.push(name);
+      wb.Sheets[name] = ws;
+    }});
   }});
 
   XLSX.writeFile(wb, "Fahrzeugwaeschen_" + label.replace(/[\\\\/:*?\"<>|]+/g, "_") + ".xlsx");
+}}
+
+function fwExportPdf() {{
+  if(!vzAllData) {{
+    alert("Die Wochendaten sind noch nicht bereit. Bitte kurz warten und erneut versuchen.");
+    try {{ document.getElementById("frame-druck").contentWindow.postMessage({{type:"request-vz-data"}}, "*"); }} catch(e) {{}}
+    return;
+  }}
+  if(!window.jspdf || !window.jspdf.jsPDF || typeof window.jspdf.jsPDF !== "function") {{
+    alert("PDF-Bibliothek ist nicht geladen.");
+    return;
+  }}
+
+  var jsPDF = window.jspdf.jsPDF;
+  var doc = new jsPDF({{ orientation:"portrait", unit:"mm", format:"a4" }});
+  var days = ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag"];
+  var label = (INSTANCES[currentInst] && INSTANCES[currentInst].name) ? INSTANCES[currentInst].name : "Woche";
+  var created = false;
+
+  days.forEach(function(day, dayIndex) {{
+    var tours = vzCollectToursByDay(vzAllData, day);
+    if(dayIndex > 0) doc.addPage("a4", "portrait");
+    created = true;
+
+    doc.setFillColor(27, 102, 179);
+    doc.roundedRect(12, 10, 186, 18, 3, 3, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(17);
+    doc.text("Fahrzeugwaeschen", 16, 18);
+    doc.setFontSize(10);
+    doc.text(label + " - " + day, 16, 24);
+    doc.text("Stand: " + fwTodayLabel(), 155, 24);
+
+    doc.setTextColor(11, 18, 32);
+    doc.setFontSize(9);
+    doc.text("A4-Format, automatisch auf mehrere Seiten verteilt", 14, 35);
+
+    var rows = tours.map(function(t) {{
+      return ["", t, "", "", ""];
+    }});
+    if(!rows.length) rows = [["", "-", "", "", ""]];
+
+    doc.autoTable({{
+      startY: 39,
+      head: [["Name", "Tour", "Reinigung ja/nein", "Grund", "Uhrzeit / Feierabend"]],
+      body: rows,
+      theme: "grid",
+      styles: {{
+        font: "helvetica",
+        fontSize: 10,
+        cellPadding: 2.6,
+        lineColor: [205, 213, 225],
+        lineWidth: 0.2,
+        minCellHeight: 10,
+        valign: "middle",
+        overflow: "linebreak"
+      }},
+      headStyles: {{
+        fillColor: [232, 240, 251],
+        textColor: [27, 102, 179],
+        fontStyle: "bold",
+        halign: "left",
+        lineColor: [27, 102, 179],
+        lineWidth: 0.25
+      }},
+      columnStyles: {{
+        0: {{ cellWidth: 33 }},
+        1: {{ cellWidth: 23, halign: "center" }},
+        2: {{ cellWidth: 33 }},
+        3: {{ cellWidth: 56 }},
+        4: {{ cellWidth: 41 }}
+      }},
+      margin: {{ left: 12, right: 12, top: 10, bottom: 12 }},
+      didDrawPage: function(data) {{
+        var pageSize = doc.internal.pageSize;
+        var pageHeight = pageSize.height || pageSize.getHeight();
+        doc.setFontSize(8);
+        doc.setTextColor(100, 116, 139);
+        doc.text(day + "  |  " + label, 12, pageHeight - 6);
+        doc.text("Seite " + doc.getNumberOfPages(), pageSize.width - 24, pageHeight - 6);
+      }}
+    }});
+  }});
+
+  if(!created) {{
+    alert("Keine Fahrzeugwaeschen-Daten vorhanden.");
+    return;
+  }}
+  doc.save("Fahrzeugwaeschen_" + label.replace(/[\\\\/:*?\"<>|]+/g, "_") + ".pdf");
 }}
 
 var TEL_DATA = {tel_json};
