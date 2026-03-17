@@ -1761,6 +1761,14 @@ function fwFilterTours(tours) {{
   }});
 }}
 
+function fwAppendExtraWashRows(rows) {{
+  var extras = [];
+  for(var i = 0; i < 3; i++) extras.push(["", "Malchow", "", "", ""]);
+  for(var j = 0; j < 3; j++) extras.push(["", "NMS", "", "", ""]);
+  for(var k = 0; k < 5; k++) extras.push(["", "z.b.v.", "", "", ""]);
+  return rows.concat(extras);
+}}
+
 function fwExportPdf() {{
   if(!vzAllData) {{
     alert("Die Wochendaten sind noch nicht bereit. Bitte kurz warten und erneut versuchen.");
@@ -1792,6 +1800,7 @@ function fwExportPdf() {{
   var rows = tours.map(function(t) {{
     return ["", t, "", "", ""];
   }});
+  rows = fwAppendExtraWashRows(rows);
   if(!rows.length) rows = [["", "-", "", "", ""]];
 
   doc.autoTable({{
