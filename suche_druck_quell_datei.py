@@ -464,7 +464,7 @@ def generate_suche_html(excel_file, key_file, logo_file,
                     entry["fachberater"] = berater_csb_map[csb]["name"]
                 tour_dict.setdefault(tournr, []).append(entry)
 
-    with st.spinner("Verarbeite Kundennamendatei ..."):
+    with st.spinner("Verarbeite Kundendatei ..."):
         # Blattnamen der Datei ermitteln (openpyxl)
         excel_file.seek(0)
         alle_blaetter: list = []
@@ -492,7 +492,7 @@ def generate_suche_html(excel_file, key_file, logo_file,
     if not tour_dict:
         blaetter_info = ", ".join(alle_blaetter) if alle_blaetter else "unbekannt"
         raise ValueError(
-            f"Keine gueltigen Kundennamendaten gefunden. "
+            f"Keine gueltigen Kundendaten gefunden. "
             f"Verfuegbare Blaetter: {blaetter_info}. "
             f"Erwartet: {', '.join(BLATTNAMEN)}"
         )
@@ -647,7 +647,7 @@ def generate_druck_html(up, logo_up) -> str:
             }
 
         all_data[area_key] = data
-        st.success(f"✓ {sheet_name}: {len(data)} Kundennamen verarbeitet")
+        st.success(f"✓ {sheet_name}: {len(data)} Kunden verarbeitet")
 
     # Ladefolge aus Marktschlüssel-Excel (Mo-Sa Winter)
     ladefolge_map: dict = {}
@@ -1110,7 +1110,7 @@ def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Kundennamen-App &ndash; Suche &amp; Druck</title>
+<title>Kunden-App &ndash; Suche &amp; Druck</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -1225,7 +1225,7 @@ iframe.active{{display:block}}
 </nav>
 
 <div class="frame-wrap">
-  <iframe id="frame-suche" class="active" title="Kundennamen-Suche"></iframe>
+  <iframe id="frame-suche" class="active" title="Kunden-Suche"></iframe>
   <iframe id="frame-druck"                title="Druckbereich"></iframe>
   <div id="panel-vz" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#f4f6fa;font-family:'Segoe UI',Arial,sans-serif">
     <div style="max-width:700px;margin:0 auto">
@@ -1626,7 +1626,7 @@ function vzHandleData(allData) {{
         var t = c.tours[day].toString().trim();
         if(t && t !== "\u2014" && t !== "-" && !fwIsExcludedNumber(t)) {{
           if(!tourMap[t]) tourMap[t] = [];
-          tourMap[t].push({{ sap: c.sap_nummer || c.kunden_nr || knr, name: c.name || "" }});
+          tourMap[t].push({{ csb: c.csb_nummer || knr || "", sap: c.sap_nummer || c.kunden_nr || knr, name: c.name || "" }});
         }}
       }}
     }});
@@ -1639,13 +1639,13 @@ function vzHandleData(allData) {{
     rows.push({{ type:"tour", tour:t, soll:"", ist:"", verz:"" }});
     tourMap[t].sort(function(a,b){{ return (parseInt(a.sap,10)||0)-(parseInt(b.sap,10)||0); }});
     tourMap[t].forEach(function(k) {{
-      rows.push({{ type:"kunde", sap:k.sap, name:k.name }});
+      rows.push({{ type:"kunde", csb:k.csb || "", sap:k.sap, name:k.name }});
     }});
   }});
   var tourCount = tours.length;
   var kundeCount = rows.filter(function(r){{return r.type==="kunde";}}).length;
   document.getElementById("vz-status").textContent =
-    tourCount + " Touren, " + kundeCount + " Kundennamen am " + day;
+    tourCount + " Touren, " + kundeCount + " Kunden am " + day;
   vzRenderPreview(rows);
   vzGenerateExcel(rows, day);
 }}
@@ -1673,7 +1673,7 @@ function vzCollectToursByDay(allData, day) {{
 function vzRenderPreview(rows) {{
   var html = "<table style='width:100%;border-collapse:collapse;font-size:12px;margin-top:12px'>";
   html += "<thead><tr style='background:#1b66b3;color:#fff'>";
-  ["Tournummer","SAP-Nr.","Kundennamenname","Soll Startzeit","Ist Startzeit","Verz\u00f6gerung"]
+  ["Tournummer","SAP-Nr.","Kundenname","Soll Startzeit","Ist Startzeit","Verz\u00f6gerung"]
     .forEach(function(h){{html+="<th style='padding:5px 8px;text-align:left'>"+h+"</th>";}});
   html += "</tr></thead><tbody>";
   var shown=0;
@@ -1682,7 +1682,7 @@ function vzRenderPreview(rows) {{
     if(r.type==="tour") {{
       html += "<tr style='background:#1e3a5f;color:#fff;font-weight:800'>";
       html += "<td style='padding:4px 8px'>"+r.tour+"</td>";
-      html += "<td></td><td></td>";
+      html += "<td></td><td></td><td></td>";
       html += "<td style='padding:4px 8px'>"+r.soll+"</td>";
       html += "<td style='padding:4px 8px'>"+r.ist+"</td>";
       html += "<td style='padding:4px 8px'>"+r.verz+"</td>";
@@ -1690,13 +1690,14 @@ function vzRenderPreview(rows) {{
     }} else {{
       html += "<tr style='background:#f8fafc'>";
       html += "<td style='padding:3px 8px;color:#64748b'></td>";
+      html += "<td style='padding:3px 8px;font-family:monospace'>"+(r.csb||"")+"</td>";
       html += "<td style='padding:3px 8px;font-family:monospace'>"+r.sap+"</td>";
       html += "<td style='padding:3px 8px'>"+r.name+"</td>";
       html += "<td colspan=3></td></tr>";
     }}
     shown++;
   }});
-  if(rows.length>20) html += "<tr><td colspan=6 style='padding:6px 8px;color:#64748b'>... und "+(rows.length-20)+" weitere Zeilen</td></tr>";
+  if(rows.length>20) html += "<tr><td colspan=7 style='padding:6px 8px;color:#64748b'>... und "+(rows.length-20)+" weitere Zeilen</td></tr>";
   html += "</tbody></table>";
   document.getElementById("vz-preview").innerHTML = html;
 }}
@@ -1706,17 +1707,17 @@ function vzGenerateExcel(rows, day) {{
     document.getElementById("vz-status").textContent += " (SheetJS nicht geladen)";
     return;
   }}
-  var wsData = [["Tournummer","SAP-Nr.","Kundennamenname","Soll Startzeit","Ist Startzeit","Verz\u00f6gerung in Stunden"]];
+  var wsData = [["Tournummer","SAP-Nr.","Kundenname","Soll Startzeit","Ist Startzeit","Verz\u00f6gerung in Stunden"]];
   rows.forEach(function(r) {{
     if(r.type==="tour") {{
-      wsData.push([r.tour, "", "", r.soll, r.ist, r.verz]);
+      wsData.push([r.tour, "", "", "", r.soll, r.ist, r.verz]);
     }} else {{
-      wsData.push(["", r.sap, r.name, "", "", ""]);
+      wsData.push(["", r.csb || "", r.sap, r.name, "", "", ""]);
     }}
   }});
   var wb = XLSX.utils.book_new();
   var ws = XLSX.utils.aoa_to_sheet(wsData);
-  ws["!cols"] = [{{wch:14}},{{wch:14}},{{wch:35}},{{wch:16}},{{wch:14}},{{wch:26}}];
+  ws["!cols"] = [{{wch:14}},{{wch:14}},{{wch:14}},{{wch:35}},{{wch:16}},{{wch:14}},{{wch:26}}];
   XLSX.utils.book_append_sheet(wb, ws, "Versp\u00e4tung "+day);
   XLSX.writeFile(wb, "Verspaetung_"+day+".xlsx");
   document.getElementById("vz-status").textContent += " \u2705 Excel heruntergeladen.";
@@ -1761,6 +1762,14 @@ function fwFilterTours(tours) {{
   }});
 }}
 
+function fwAppendExtraWashRows(rows) {{
+  var extras = [];
+  for(var i = 0; i < 3; i++) extras.push(["", "Malchow", "", "", ""]);
+  for(var j = 0; j < 3; j++) extras.push(["", "NMS", "", "", ""]);
+  for(var k = 0; k < 5; k++) extras.push(["", "z.b.v.", "", "", ""]);
+  return rows.concat(extras);
+}}
+
 function fwExportPdf() {{
   if(!vzAllData) {{
     alert("Die Wochendaten sind noch nicht bereit. Bitte kurz warten und erneut versuchen.");
@@ -1792,6 +1801,7 @@ function fwExportPdf() {{
   var rows = tours.map(function(t) {{
     return ["", t, "", "", ""];
   }});
+  rows = fwAppendExtraWashRows(rows);
   if(!rows.length) rows = [["", "-", "", "", ""]];
 
   doc.autoTable({{
@@ -2922,11 +2932,11 @@ with gc3:
     _up = st.file_uploader("👤 Telefonnummern Fachberater", type=["xlsx"], key="up_fach")
     if _up: st.session_state.g_fach = _up
 with gc4:
-    _up = st.file_uploader("🔗 Kundennamenliste Original", type=["xlsx"], key="up_fcsb")
+    _up = st.file_uploader("🔗 Kundenliste Original", type=["xlsx"], key="up_fcsb")
     if _up: st.session_state.g_fcsb = _up
 
 _glob_status = []
-for _k, _lbl in [("g_logo","Logo"),("g_key","Marktschlüssel"),("g_fach","Tel. Fachberater"),("g_fcsb","Kundennamenliste")]:
+for _k, _lbl in [("g_logo","Logo"),("g_key","Marktschlüssel"),("g_fach","Tel. Fachberater"),("g_fcsb","Kundenliste")]:
     _glob_status.append("✅ "+_lbl if st.session_state.get(_k) else "❌ "+_lbl)
 st.caption(" · ".join(_glob_status))
 
