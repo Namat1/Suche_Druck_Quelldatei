@@ -1626,7 +1626,7 @@ function vzHandleData(allData) {{
         var t = c.tours[day].toString().trim();
         if(t && t !== "\u2014" && t !== "-" && !fwIsExcludedNumber(t)) {{
           if(!tourMap[t]) tourMap[t] = [];
-          tourMap[t].push({{ sap: c.sap_nummer || c.kunden_nr || knr, name: c.name || "" }});
+          tourMap[t].push({{ csb: c.csb_nummer || knr || "", sap: c.sap_nummer || c.kunden_nr || knr, name: c.name || "" }});
         }}
       }}
     }});
@@ -1639,7 +1639,7 @@ function vzHandleData(allData) {{
     rows.push({{ type:"tour", tour:t, soll:"", ist:"", verz:"" }});
     tourMap[t].sort(function(a,b){{ return (parseInt(a.sap,10)||0)-(parseInt(b.sap,10)||0); }});
     tourMap[t].forEach(function(k) {{
-      rows.push({{ type:"kunde", sap:k.sap, name:k.name }});
+      rows.push({{ type:"kunde", csb:k.csb || "", sap:k.sap, name:k.name }});
     }});
   }});
   var tourCount = tours.length;
@@ -1682,7 +1682,7 @@ function vzRenderPreview(rows) {{
     if(r.type==="tour") {{
       html += "<tr style='background:#1e3a5f;color:#fff;font-weight:800'>";
       html += "<td style='padding:4px 8px'>"+r.tour+"</td>";
-      html += "<td></td><td></td>";
+      html += "<td></td><td></td><td></td>";
       html += "<td style='padding:4px 8px'>"+r.soll+"</td>";
       html += "<td style='padding:4px 8px'>"+r.ist+"</td>";
       html += "<td style='padding:4px 8px'>"+r.verz+"</td>";
@@ -1690,13 +1690,14 @@ function vzRenderPreview(rows) {{
     }} else {{
       html += "<tr style='background:#f8fafc'>";
       html += "<td style='padding:3px 8px;color:#64748b'></td>";
+      html += "<td style='padding:3px 8px;font-family:monospace'>"+(r.csb||"")+"</td>";
       html += "<td style='padding:3px 8px;font-family:monospace'>"+r.sap+"</td>";
       html += "<td style='padding:3px 8px'>"+r.name+"</td>";
       html += "<td colspan=3></td></tr>";
     }}
     shown++;
   }});
-  if(rows.length>20) html += "<tr><td colspan=6 style='padding:6px 8px;color:#64748b'>... und "+(rows.length-20)+" weitere Zeilen</td></tr>";
+  if(rows.length>20) html += "<tr><td colspan=7 style='padding:6px 8px;color:#64748b'>... und "+(rows.length-20)+" weitere Zeilen</td></tr>";
   html += "</tbody></table>";
   document.getElementById("vz-preview").innerHTML = html;
 }}
@@ -1709,14 +1710,14 @@ function vzGenerateExcel(rows, day) {{
   var wsData = [["Tournummer","SAP-Nr.","Kundenname","Soll Startzeit","Ist Startzeit","Verz\u00f6gerung in Stunden"]];
   rows.forEach(function(r) {{
     if(r.type==="tour") {{
-      wsData.push([r.tour, "", "", r.soll, r.ist, r.verz]);
+      wsData.push([r.tour, "", "", "", r.soll, r.ist, r.verz]);
     }} else {{
-      wsData.push(["", r.sap, r.name, "", "", ""]);
+      wsData.push(["", r.csb || "", r.sap, r.name, "", "", ""]);
     }}
   }});
   var wb = XLSX.utils.book_new();
   var ws = XLSX.utils.aoa_to_sheet(wsData);
-  ws["!cols"] = [{{wch:14}},{{wch:14}},{{wch:35}},{{wch:16}},{{wch:14}},{{wch:26}}];
+  ws["!cols"] = [{{wch:14}},{{wch:14}},{{wch:14}},{{wch:35}},{{wch:16}},{{wch:14}},{{wch:26}}];
   XLSX.utils.book_append_sheet(wb, ws, "Versp\u00e4tung "+day);
   XLSX.writeFile(wb, "Verspaetung_"+day+".xlsx");
   document.getElementById("vz-status").textContent += " \u2705 Excel heruntergeladen.";
