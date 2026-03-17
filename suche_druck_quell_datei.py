@@ -1673,7 +1673,7 @@ function vzCollectToursByDay(allData, day) {{
 function vzRenderPreview(rows) {{
   var html = "<table style='width:100%;border-collapse:collapse;font-size:12px;margin-top:12px'>";
   html += "<thead><tr style='background:#1b66b3;color:#fff'>";
-  ["Tournummer","SAP-Nr.","Kundenname","Soll Startzeit","Ist Startzeit","Verz\u00f6gerung"]
+  ["Tournummer","CSB","SAP","Soll Startzeit","Ist Startzeit","Verz\u00f6gerung"]
     .forEach(function(h){{html+="<th style='padding:5px 8px;text-align:left'>"+h+"</th>";}});
   html += "</tr></thead><tbody>";
   var shown=0;
@@ -1707,7 +1707,7 @@ function vzGenerateExcel(rows, day) {{
     document.getElementById("vz-status").textContent += " (SheetJS nicht geladen)";
     return;
   }}
-  var wsData = [["Tournummer","SAP-Nr.","Kundenname","Soll Startzeit","Ist Startzeit","Verz\u00f6gerung in Stunden"]];
+  var wsData = [["Tournummer","CSB","SAP","Soll Startzeit","Ist Startzeit","Verz\u00f6gerung in Stunden"]];
   rows.forEach(function(r) {{
     if(r.type==="tour") {{
       wsData.push([r.tour, "", "", "", r.soll, r.ist, r.verz]);
