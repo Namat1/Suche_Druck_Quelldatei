@@ -1537,15 +1537,15 @@ function fwExportPdf() {{
   if(!rows.length) rows = [["", "-", "", "", ""]];
 
   // ── Jeden-Tag-Touren (feste Fahrzeuge) ──
-  rows.push([{{content:"Jeden Tag", colSpan:5, styles:{{fillColor:[232,240,251], textColor:[27,102,179], fontStyle:"bold", halign:"left"}}}}]);
+  rows.push([{{content:"Extra", colSpan:5, styles:{{fillColor:[232,240,251], textColor:[27,102,179], fontStyle:"bold", halign:"left"}}}}]);
   var jedenTag = [
     [10, "z.b.V."],
     [3,  "Popp"],
     [1,  "Fuengers"],
     [1,  "Pfeifer"],
     [1,  "Picnic"],
-    [3,  "Hupa NMS"],
-    [5,  "Malchow"],
+    [3,  "Umfuhr NMS"],
+    [5,  "Umfuhr Malchow"],
     [1,  "Langbein"],
     [1,  "Balzer"]
   ];
