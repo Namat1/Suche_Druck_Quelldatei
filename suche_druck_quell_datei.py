@@ -1557,7 +1557,7 @@ function fwExportPdf() {{
 
   doc.autoTable({{
     startY: 33,
-    head: [["Name", "Tour", "Reinigung ja/nein", "Grund", "Uhrzeit / Feierabend"]],
+    head: [["Fahrer Name", "Tour", "Reinigung ja/nein", "Grund warum nicht gewaschen wurde", "Uhrzeit / Feierabend"]],
     body: rows,
     theme: "grid",
     styles: {{
