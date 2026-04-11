@@ -758,6 +758,16 @@ document.addEventListener('DOMContentLoaded', function(){
     if helper not in template:
         template = template.replace('</script>', helper + '\n</script>', 1)
 
+    template = template.replace(
+        "ensureTourSummaryToggleBindings();\\n$('#btnCopyTour').addEventListener('click', onCopyTour);",
+        "ensureTourSummaryToggleBindings();\n$('#btnCopyTour').addEventListener('click', onCopyTour);"
+    )
+    template = template.replace(
+        "$('#btnPrintTour').addEventListener('click', ()=>{\n  if($('#tourSummary').style.display==='none'){ return; }\n  window.print();\n});",
+        "$('#btnPrintTour').addEventListener('click', ()=>{\n  const wrap = $('#tourSummary');\n  if(!wrap || getComputedStyle(wrap).display==='none'){ return; }\n  setTourSummaryCollapsed(false);\n  window.print();\n});",
+        1,
+    )
+
     return template
 
 
