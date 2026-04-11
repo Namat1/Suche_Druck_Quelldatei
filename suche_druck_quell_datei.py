@@ -88,6 +88,63 @@ SUCHE_HTML_TEMPLATE = (
         ".brand-logo{height:32px; width:auto; margin-left:4px}"
     )
 )
+
+
+def _patch_suche_template_weniger_luftig(template: str) -> str:
+    """Macht die obere Übersicht wieder etwas kompakter, ohne ungleich zu wirken."""
+    replacements = [
+        (
+            '.table-section{\n  padding:10px 12px 16px;\n  overflow:visible;\n}',
+            '.table-section{\n  padding:8px 12px 12px;\n  overflow:visible;\n}'
+        ),
+        (
+            'tbody td{\n  padding:10px 10px;\n  vertical-align:top;\n  font-weight:650;\n  border-bottom:1px solid var(--grid);\n  border-right:1px solid var(--grid);\n  background:#fff;\n  overflow:hidden;\n}',
+            'tbody td{\n  padding:8px 9px;\n  vertical-align:top;\n  font-weight:650;\n  border-bottom:1px solid var(--grid);\n  border-right:1px solid var(--grid);\n  background:#fff;\n  overflow:hidden;\n}'
+        ),
+        (
+            'tbody tr+tr td{border-top:2px solid var(--row-sep)}',
+            'tbody tr+tr td{border-top:1px solid var(--row-sep)}'
+        ),
+        (
+            '.cell{display:flex; flex-direction:column; gap:8px; min-height:96px; width:100%; min-width:0; justify-content:flex-start}',
+            '.cell{display:flex; flex-direction:column; gap:4px; min-height:68px; width:100%; min-width:0; justify-content:flex-start}'
+        ),
+        (
+            '.cell-stack{display:flex; flex-direction:column; gap:8px; min-height:100%; min-width:0}',
+            '.cell-stack{display:flex; flex-direction:column; gap:4px; min-height:100%; min-width:0}'
+        ),
+        (
+            '.cell-top{font-weight:800; min-height:18px; line-height:1.25}',
+            '.cell-top{font-weight:800; min-height:16px; line-height:1.15}'
+        ),
+        (
+            '.cell-sub{color:var(--muted); min-height:18px; line-height:1.25}',
+            '.cell-sub{color:var(--muted); min-height:14px; line-height:1.15}'
+        ),
+        (
+            '.cell-slot.note-slot{min-height:32px}',
+            '.cell-slot.note-slot{min-height:22px}'
+        ),
+        (
+            '.tour-inline{display:flex; flex-wrap:wrap; gap:6px; row-gap:8px; align-content:flex-start; min-height:26px; width:100%; min-width:0}',
+            '.tour-inline{display:flex; flex-wrap:wrap; gap:6px; row-gap:6px; align-content:flex-start; min-height:24px; width:100%; min-width:0}'
+        ),
+        (
+            '.tour-btn{\n  display:inline-flex;\n  align-items:center;\n  min-height:24px;\n  max-width:100%;\n  min-width:0;\n  flex:0 1 auto;\n  background:var(--chip-tour-bg);\n  border:1px solid var(--chip-tour-bd);\n  color:var(--chip-tour-tx);\n  padding:4px 8px;\n  border-radius:var(--radius-pill);\n  font-weight:800;\n  font-size:10px;\n  cursor:pointer;\n  line-height:1.2;\n  letter-spacing:.12px;\n  box-shadow:none;\n}',
+            '.tour-btn{\n  display:inline-flex;\n  align-items:center;\n  min-height:22px;\n  max-width:100%;\n  min-width:0;\n  flex:0 1 auto;\n  background:var(--chip-tour-bg);\n  border:1px solid var(--chip-tour-bd);\n  color:var(--chip-tour-tx);\n  padding:3px 8px;\n  border-radius:var(--radius-pill);\n  font-weight:800;\n  font-size:10px;\n  cursor:pointer;\n  line-height:1.15;\n  letter-spacing:.12px;\n  box-shadow:none;\n}'
+        ),
+        (
+            '.phone-col{display:grid; grid-template-columns:1fr; gap:6px; align-content:start; min-height:108px; min-width:0}',
+            '.phone-col{display:grid; grid-template-columns:1fr; gap:5px; align-content:start; min-height:92px; min-width:0}'
+        ),
+    ]
+    for old, new in replacements:
+        template = template.replace(old, new)
+    return template
+
+
+SUCHE_HTML_TEMPLATE = _patch_suche_template_weniger_luftig(SUCHE_HTML_TEMPLATE)
+
 DRUCK_HTML_TEMPLATE: str = base64.b64decode(_DRUCK_B64).decode("utf-8")
 
 
