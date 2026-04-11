@@ -553,6 +553,7 @@ def generate_suche_html(excel_file, key_file, logo_file,
         .replace("const kundenNotizen    = {  }",
                  f"const kundenNotizen    = {json.dumps(notizen_map, ensure_ascii=False)}")
         .replace("__LOGO_DATA_URL__", logo_data_url)
+        .replace("</style>", ".header{display:none !important;} .page{padding-top:0 !important;} .container{margin-top:0 !important;} </style>")
     )
 
 
@@ -1093,11 +1094,11 @@ def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa
 *{{box-sizing:border-box;margin:0;padding:0}}
 html,body{{height:100%;font-family:'Segoe UI',Arial,sans-serif}}
 .topnav{{
-  height:52px;
-  background:#475569;
-  display:flex;align-items:center;padding:0 12px;gap:4px;
-  box-shadow:0 2px 8px rgba(0,0,0,.15);
-  border-bottom:none;
+  height:56px;
+  background:linear-gradient(180deg,#eef2f6 0%,#dde4eb 100%);
+  display:flex;align-items:center;padding:0 12px;gap:6px;
+  box-shadow:0 2px 10px rgba(15,23,42,.08);
+  border-bottom:1px solid #c5ced8;
   flex-shrink:0;
   overflow-x:auto;
   scrollbar-width:none;
@@ -1114,58 +1115,60 @@ html,body{{height:100%;font-family:'Segoe UI',Arial,sans-serif}}
   object-fit:contain;
 }}
 .nav-sep{{
-  width:1px;height:20px;background:rgba(255,255,255,.12);flex-shrink:0;margin:0 2px;
+  width:1px;height:22px;background:#c8d1db;flex-shrink:0;margin:0 4px;
 }}
 .nav-btn{{
-  padding:4px 10px;border-radius:5px;
-  border:2px solid rgba(255,255,255,.18);
-  cursor:pointer;font-weight:700;font-size:11px;
-  transition:all .15s ease;background:rgba(255,255,255,.08);color:#c8d4e6;
+  padding:7px 12px;border-radius:8px;
+  border:1px solid #bcc8d6;
+  cursor:pointer;font-weight:800;font-size:12px;
+  transition:all .15s ease;background:linear-gradient(180deg,#f9fbfd 0%,#edf2f7 100%);color:#334155;
   white-space:nowrap;flex-shrink:0;
   position:relative;
+  box-shadow:0 1px 2px rgba(15,23,42,.05);
 }}
-.nav-btn:hover:not(.active){{background:rgba(255,255,255,.15)}}
-.nav-btn.active{{background:#4f7cdb;color:#fff;box-shadow:0 2px 8px rgba(79,124,219,.4)}}
-.inst-btn{{border-color:rgba(255,255,255,.2);color:#a8bdd6}}
-.inst-btn:hover:not(.active){{background:rgba(255,255,255,.12)}}
-.inst-btn.active{{background:#3a5a8c;border-color:#3a5a8c;color:#fff}}
+.nav-btn:hover:not(.active){background:linear-gradient(180deg,#ffffff 0%,#eef3f8 100%);border-color:#aeb9c8}
+.nav-btn.active{background:linear-gradient(180deg,#4f87e8 0%,#3d72d4 100%);border-color:#3f73cf;color:#fff;box-shadow:0 3px 10px rgba(61,114,212,.25)}
+.inst-btn{border-color:#c5cfda;color:#5b6b80}
+.inst-btn:hover:not(.active){background:linear-gradient(180deg,#ffffff 0%,#eef3f8 100%)}
+.inst-btn.active{background:linear-gradient(180deg,#6b7f99 0%,#55677f 100%);border-color:#55677f;color:#fff}
 /* ── Dropdown ── */
 .nav-dd{{position:relative;flex-shrink:0}}
 .nav-dd-btn{{
-  padding:5px 14px;border-radius:5px;
-  border:2px solid rgba(255,255,255,.18);
-  cursor:pointer;font-weight:700;font-size:12px;
-  transition:all .15s ease;background:rgba(255,255,255,.08);color:#c8d4e6;
-  white-space:nowrap;display:flex;align-items:center;gap:5px;
+  padding:7px 14px;border-radius:8px;
+  border:1px solid #bcc8d6;
+  cursor:pointer;font-weight:800;font-size:12px;
+  transition:all .15s ease;background:linear-gradient(180deg,#f9fbfd 0%,#edf2f7 100%);color:#334155;
+  white-space:nowrap;display:flex;align-items:center;gap:6px;
+  box-shadow:0 1px 2px rgba(15,23,42,.05);
 }}
-.nav-dd-btn:hover{{background:rgba(255,255,255,.15)}}
-.nav-dd-btn.active{{background:#4f7cdb;color:#fff;box-shadow:0 2px 8px rgba(79,124,219,.4)}}
+.nav-dd-btn:hover{background:linear-gradient(180deg,#ffffff 0%,#eef3f8 100%);border-color:#aeb9c8}
+.nav-dd-btn.active{background:linear-gradient(180deg,#4f87e8 0%,#3d72d4 100%);border-color:#3f73cf;color:#fff;box-shadow:0 3px 10px rgba(61,114,212,.25)}
 .nav-dd-btn.active .dd-arrow{{filter:brightness(10)}}
-.dd-arrow{{font-size:9px;opacity:.7;transition:transform .15s}}
-.inst-label{{font-size:10px;font-weight:600;opacity:.85;background:rgba(255,255,255,.25);border-radius:4px;padding:1px 6px;margin:0 4px 0 5px;white-space:nowrap}}
+.dd-arrow{font-size:9px;opacity:.75;transition:transform .15s}
+.inst-label{font-size:10px;font-weight:700;opacity:1;background:#dbe5f0;border:1px solid #c0cad8;border-radius:5px;padding:1px 6px;margin:0 4px 0 5px;white-space:nowrap;color:#4b5d73}
 .nav-dd.open .dd-arrow{{transform:rotate(180deg)}}
 .dd-menu{{
   display:none;
   position:fixed;
-  background:#475569;border:1px solid rgba(255,255,255,.12);
-  border-radius:5px;min-width:160px;
-  box-shadow:0 8px 24px rgba(0,0,0,.25);
+  background:#f7f9fc;border:1px solid #c5ced8;
+  border-radius:8px;min-width:170px;
+  box-shadow:0 10px 24px rgba(15,23,42,.12);
   z-index:99999;overflow:hidden;
 }}
 .nav-dd.open .dd-menu{{display:block}}
 .dd-item{{
-  padding:8px 14px;cursor:pointer;font-size:12px;font-weight:700;
-  color:#c8d4e6;transition:background .12s;white-space:nowrap;
-  border-bottom:1px solid rgba(255,255,255,.08);
+  padding:9px 14px;cursor:pointer;font-size:12px;font-weight:700;
+  color:#334155;transition:background .12s;white-space:nowrap;
+  border-bottom:1px solid #e2e8f0;
 }}
 .dd-item:last-child{{border-bottom:none}}
-.dd-item:hover{{background:rgba(255,255,255,.1)}}
-.dd-item.active{{background:#4f7cdb;color:#fff}}
+.dd-item:hover{background:#edf3f9}
+.dd-item.active{background:linear-gradient(180deg,#4f87e8 0%,#3d72d4 100%);color:#fff}
 .topnav-stamp{{
-  margin-left:auto;font-size:11px;font-weight:700;
-  color:#8a97aa;white-space:nowrap;padding-left:8px;
+  margin-left:auto;font-size:11px;font-weight:800;
+  color:#5b6b80;white-space:nowrap;padding-left:10px;
 }}
-.frame-wrap{{height:calc(100vh - 52px);display:flex;flex-direction:column}}
+.frame-wrap{height:calc(100vh - 56px);display:flex;flex-direction:column}
 iframe{{flex:1;width:100%;border:none;display:none}}
 iframe.active{{display:block}}
 .vz-day-btn{{padding:8px 20px;border:2px solid #2554b0;background:#f0f2f6;color:#2554b0;border-radius:5px;cursor:pointer;font-weight:800;font-size:13px;font-family:'Segoe UI',Arial,sans-serif;transition:all .15s}}
