@@ -147,6 +147,7 @@ SUCHE_HTML_TEMPLATE = _patch_suche_template_weniger_luftig(SUCHE_HTML_TEMPLATE)
 
 
 def _patch_suche_template_aufklappbare_hinweise(template: str) -> str:
+    # v16: Mehr-Buttons in der oberen Übersicht entfernt
     """Macht die Hinweise in der oberen Tour-Übersicht sichtbar aufklappbar."""
     original_css = """.ts-stack{
   min-height:46px;
@@ -203,14 +204,13 @@ def _patch_suche_template_aufklappbare_hinweise(template: str) -> str:
   font-size:10.5px;
 }
 .ts-note-wrap{
-  position:relative;
   display:flex;
   flex-direction:column;
   align-items:flex-start;
   gap:3px;
   width:100%;
   min-width:0;
-  padding-right:58px;
+  padding-right:0;
 }
 .ts-sub{
   min-height:14px;
@@ -224,45 +224,13 @@ def _patch_suche_template_aufklappbare_hinweise(template: str) -> str:
   overflow:hidden;
   text-overflow:ellipsis;
   display:block;
-}
-.ts-sub.toggleable{
-  cursor:pointer;
-}
-.ts-sub.toggleable:hover{
-  color:#6f5633;
-}
-.ts-note-wrap.expanded .ts-sub{
-  white-space:normal;
-  overflow:visible;
-  text-overflow:clip;
+  cursor:default;
 }
 .ts-note-toggle{
-  position:absolute;
-  top:0;
-  right:0;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  min-height:17px;
-  padding:0 8px;
-  border:1px solid #cfd7e3;
-  border-radius:999px;
-  background:#ffffff;
-  color:#52627c;
-  font-size:8px;
-  font-weight:800;
-  line-height:1;
-  cursor:pointer;
-  box-shadow:0 1px 2px rgba(15,23,42,.06);
-}
-.ts-note-toggle:hover{
-  background:#f8fafc;
+  display:none !important;
 }
 .ts-note-wrap.empty{
   padding-right:0;
-}
-.ts-note-wrap.empty .ts-note-toggle{
-  display:none;
 }
 .ts-sub.empty{
   visibility:hidden;
@@ -289,14 +257,13 @@ def _patch_suche_template_aufklappbare_hinweise(template: str) -> str:
   width:100%;
   min-width:0;
 }""", """.ts-note-wrap{
-  position:relative;
   display:flex;
   flex-direction:column;
   align-items:flex-start;
   gap:3px;
   width:100%;
   min-width:0;
-  padding-right:58px;
+  padding-right:0;
 }""")
     template = template.replace(""".ts-sub{
   min-height:14px;
@@ -323,12 +290,7 @@ def _patch_suche_template_aufklappbare_hinweise(template: str) -> str:
   text-overflow:ellipsis;
   display:block;
 }
-.ts-sub.toggleable{
-  cursor:pointer;
-}
-.ts-sub.toggleable:hover{
-  color:#6f5633;
-}""")
+""")
     template = template.replace(""".ts-note-toggle{
   display:inline-flex;
   align-items:center;
@@ -344,23 +306,7 @@ def _patch_suche_template_aufklappbare_hinweise(template: str) -> str:
   line-height:1;
   cursor:pointer;
 }""", """.ts-note-toggle{
-  position:absolute;
-  top:0;
-  right:0;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  min-height:17px;
-  padding:0 8px;
-  border:1px solid #cfd7e3;
-  border-radius:999px;
-  background:#ffffff;
-  color:#52627c;
-  font-size:8px;
-  font-weight:800;
-  line-height:1;
-  cursor:pointer;
-  box-shadow:0 1px 2px rgba(15,23,42,.06);
+  display:none !important;
 }""")
     template = template.replace(""".ts-note-wrap.empty .ts-note-toggle{
   display:none;
@@ -414,7 +360,6 @@ def _patch_suche_template_aufklappbare_hinweise(template: str) -> str:
     const td3m=document.createElement('div'); td3m.className='ts-main name'; td3m.textContent=name;
     const td3noteWrap=document.createElement('div'); td3noteWrap.className='ts-note-wrap';
     const td3s=document.createElement('div'); td3s.className='ts-sub';
-    const td3btn=document.createElement('button'); td3btn.type='button'; td3btn.className='ts-note-toggle'; td3btn.textContent='Mehr';
     const _nz = kundenNotizen[csb];
     const _parts=[];
     if(_nz){
@@ -423,32 +368,14 @@ def _patch_suche_template_aufklappbare_hinweise(template: str) -> str:
     }
     if(_parts.length){
       const _noteText = _parts.join(' · ');
-      const toggleNote = (ev)=>{
-        if(ev){
-          ev.preventDefault();
-          ev.stopPropagation();
-        }
-        const expanded = td3noteWrap.classList.toggle('expanded');
-        td3btn.textContent = expanded ? 'Weniger' : 'Mehr';
-        td3s.title = expanded ? 'Klicken zum Zuklappen' : 'Klicken zum Aufklappen';
-      };
       td3s.textContent = _noteText;
-      td3s.classList.add('toggleable');
-      td3s.title = 'Klicken zum Aufklappen';
-      td3btn.addEventListener('click', toggleNote);
-      td3s.addEventListener('click', toggleNote);
-      td3s.tabIndex = 0;
-      td3s.addEventListener('keydown', (ev)=>{
-        if(ev.key === 'Enter' || ev.key === ' '){
-          toggleNote(ev);
-        }
-      });
+      td3s.title = _noteText;
     } else {
       td3noteWrap.classList.add('empty');
       td3s.classList.add('empty');
       td3s.textContent='-';
     }
-    td3noteWrap.append(td3s, td3btn);
+    td3noteWrap.append(td3s);
     td3w.append(td3m, td3noteWrap);
     td3.appendChild(td3w);
 
@@ -462,26 +389,8 @@ def _patch_suche_template_aufklappbare_hinweise(template: str) -> str:
         const expanded = td3noteWrap.classList.toggle('expanded');
         td3btn.textContent = expanded ? 'Weniger' : 'Mehr';
       });
-""", """      const toggleNote = (ev)=>{
-        if(ev){
-          ev.preventDefault();
-          ev.stopPropagation();
-        }
-        const expanded = td3noteWrap.classList.toggle('expanded');
-        td3btn.textContent = expanded ? 'Weniger' : 'Mehr';
-        td3s.title = expanded ? 'Klicken zum Zuklappen' : 'Klicken zum Aufklappen';
-      };
-      td3s.textContent = _noteText;
-      td3s.classList.add('toggleable');
-      td3s.title = 'Klicken zum Aufklappen';
-      td3btn.addEventListener('click', toggleNote);
-      td3s.addEventListener('click', toggleNote);
-      td3s.tabIndex = 0;
-      td3s.addEventListener('keydown', (ev)=>{
-        if(ev.key === 'Enter' || ev.key === ' '){
-          toggleNote(ev);
-        }
-      });
+""", """      td3s.textContent = _noteText;
+      td3s.title = _noteText;
 """)
     return template
 
