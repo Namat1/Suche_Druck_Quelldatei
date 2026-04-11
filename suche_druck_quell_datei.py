@@ -442,6 +442,18 @@ def _patch_suche_template_tour_summary_collapsible(template: str) -> str:
 .print-btn{""", """.tour-summary-actions{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
 .summary-toggle-btn{
   min-width:128px;
+  background:linear-gradient(180deg,#ffe27a 0%,#f3c93c 100%) !important;
+  border-color:#d4a514 !important;
+  color:#5f4200 !important;
+  box-shadow:0 1px 0 rgba(255,255,255,.55) inset, 0 1px 2px rgba(15,23,42,.08) !important;
+}
+.summary-toggle-btn:hover{
+  background:linear-gradient(180deg,#ffea97 0%,#f6d458 100%) !important;
+  border-color:#c99700 !important;
+  color:#4d3400 !important;
+}
+.summary-toggle-btn:active{
+  background:linear-gradient(180deg,#efc845 0%,#e2b62f 100%) !important;
 }
 .print-btn{""")
 
@@ -569,7 +581,9 @@ def _patch_suche_template_tour_summary_collapsible_fix(template: str) -> str:
             '.tour-summary.collapsed .tour-summary-tablewrap{display:none !important;}\n'
             '.tour-summary.collapsed #btnCopyTour,\n'
             '.tour-summary.collapsed #btnPrintTour{display:none !important;}\n'
-            '.summary-toggle-btn{min-width:156px;font-weight:900;}\n'
+            '.summary-toggle-btn{min-width:156px;font-weight:900;background:linear-gradient(180deg,#ffe27a 0%,#f3c93c 100%) !important;border-color:#d4a514 !important;color:#5f4200 !important;box-shadow:0 1px 0 rgba(255,255,255,.55) inset, 0 1px 2px rgba(15,23,42,.08) !important;}\n'
+            '.summary-toggle-btn:hover{background:linear-gradient(180deg,#ffea97 0%,#f6d458 100%) !important;border-color:#c99700 !important;color:#4d3400 !important;}\n'
+            '.summary-toggle-btn:active{background:linear-gradient(180deg,#efc845 0%,#e2b62f 100%) !important;}\n'
             '.tour-summary-head-main{cursor:pointer;}\n'
             '</style>',
             1,
