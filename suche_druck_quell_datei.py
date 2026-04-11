@@ -651,6 +651,118 @@ $('#btnPrintTour').addEventListener('click', ()=>{
 
 SUCHE_HTML_TEMPLATE = _patch_suche_template_tour_summary_collapsible(SUCHE_HTML_TEMPLATE)
 
+
+def _patch_suche_template_tour_summary_collapsible_fix(template: str) -> str:
+    """Macht den Aufklapper der oberen Übersicht robust und standardmäßig zugeklappt."""
+    if '.tour-summary.collapsed .tour-summary-tablewrap{display:none !important;}' not in template:
+        template = template.replace(
+            '</style>',
+            '.tour-summary.collapsed .tour-summary-tablewrap{display:none !important;}\n'
+            '.tour-summary.collapsed #btnCopyTour,\n'
+            '.tour-summary.collapsed #btnPrintTour{display:none !important;}\n'
+            '.summary-toggle-btn{min-width:156px;font-weight:900;}\n'
+            '.tour-summary-head-main{cursor:pointer;}\n'
+            '</style>',
+            1,
+        )
+
+    if 'id="tourSummaryTableWrap"' not in template:
+        template = template.replace(
+            '<div class="tour-summary-tablewrap">',
+            '<div class="tour-summary-tablewrap" id="tourSummaryTableWrap">',
+            1,
+        )
+
+    if 'id="btnToggleTourSummary"' not in template:
+        template = template.replace(
+            '<div class="tour-summary-actions">',
+            '<div class="tour-summary-actions">\n'
+            '            <button class="print-btn summary-toggle-btn" id="btnToggleTourSummary" type="button" '
+            'onclick="toggleTourSummary(event); return false;" aria-expanded="false" '
+            'aria-controls="tourSummaryTableWrap" title="Übersicht anzeigen oder ausblenden">Übersicht anzeigen</button>',
+            1,
+        )
+
+    template = template.replace(
+        'id="btnToggleTourSummary" type="button"',
+        'id="btnToggleTourSummary" type="button" onclick="toggleTourSummary(event); return false;" aria-controls="tourSummaryTableWrap"',
+    )
+    template = template.replace(
+        'id="tourSummaryHeadMain" title="Übersicht anzeigen oder ausblenden"',
+        'id="tourSummaryHeadMain" title="Übersicht anzeigen oder ausblenden" onclick="toggleTourSummary(event)" role="button" aria-controls="tourSummaryTableWrap"',
+    )
+
+    template = re.sub(
+        r"wrap\.style\.display='block';\\n(\s*setTourSummaryCollapsed\(true\);\\n)?",
+        "wrap.style.display='block';\\n  ensureTourSummaryToggleBindings();\\n  setTourSummaryCollapsed(true);\\n",
+        template,
+        count=1,
+    )
+
+    template = template.replace(
+        "$('#btnCopyTour').addEventListener('click', onCopyTour);",
+        "ensureTourSummaryToggleBindings();\\n$('#btnCopyTour').addEventListener('click', onCopyTour);",
+        1,
+    )
+
+    template = template.replace(
+        "$('#btnPrintTour').addEventListener('click', ()=>{\\n  if($('#tourSummary').style.display==='none'){ return; }\\n  window.print();\\n});",
+        "$('#btnPrintTour').addEventListener('click', ()=>{\\n  const wrap = $('#tourSummary');\\n  if(!wrap || getComputedStyle(wrap).display==='none'){ return; }\\n  setTourSummaryCollapsed(false);\\n  window.print();\\n});",
+        1,
+    )
+
+    helper = """
+function setTourSummaryCollapsed(collapsed){
+  const wrap = $('#tourSummary');
+  if(!wrap) return;
+  wrap.classList.toggle('collapsed', !!collapsed);
+  const btn = $('#btnToggleTourSummary');
+  if(btn){
+    btn.textContent = collapsed ? 'Übersicht anzeigen' : 'Übersicht ausblenden';
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  }
+}
+function ensureTourSummaryToggleBindings(){
+  const btn = $('#btnToggleTourSummary');
+  if(btn && !btn.dataset.toggleBound){
+    btn.dataset.toggleBound = '1';
+    btn.onclick = function(ev){ toggleTourSummary(ev); return false; };
+  }
+  const head = $('#tourSummaryHeadMain');
+  if(head && !head.dataset.toggleBound){
+    head.dataset.toggleBound = '1';
+    head.onclick = function(ev){ toggleTourSummary(ev); };
+    head.tabIndex = 0;
+    head.addEventListener('keydown', function(ev){
+      if(ev.key === 'Enter' || ev.key === ' '){
+        toggleTourSummary(ev);
+      }
+    });
+  }
+}
+function toggleTourSummary(ev){
+  if(ev){
+    ev.preventDefault();
+    ev.stopPropagation();
+  }
+  const wrap = $('#tourSummary');
+  if(!wrap || getComputedStyle(wrap).display === 'none') return false;
+  setTourSummaryCollapsed(!wrap.classList.contains('collapsed'));
+  return false;
+}
+document.addEventListener('DOMContentLoaded', function(){
+  ensureTourSummaryToggleBindings();
+  setTourSummaryCollapsed(true);
+});
+"""
+    if helper not in template:
+        template = template.replace('</script>', helper + '\n</script>', 1)
+
+    return template
+
+
+SUCHE_HTML_TEMPLATE = _patch_suche_template_tour_summary_collapsible_fix(SUCHE_HTML_TEMPLATE)
+
 DRUCK_HTML_TEMPLATE: str = base64.b64decode(_DRUCK_B64).decode("utf-8")
 
 
