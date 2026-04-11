@@ -488,6 +488,169 @@ def _patch_suche_template_aufklappbare_hinweise(template: str) -> str:
 
 SUCHE_HTML_TEMPLATE = _patch_suche_template_aufklappbare_hinweise(SUCHE_HTML_TEMPLATE)
 
+
+def _patch_suche_template_tour_summary_collapsible(template: str) -> str:
+    template = template.replace(""".tour-summary-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:6px 8px;
+  border-bottom:1px solid var(--grid);
+  background:linear-gradient(180deg,#ffffff 0%, #f7f9fe 100%);
+}""", """.tour-summary-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:6px 8px;
+  border-bottom:1px solid var(--grid);
+  background:linear-gradient(180deg,#ffffff 0%, #f7f9fe 100%);
+}
+.tour-summary-head-main{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+  flex:1 1 auto;
+  cursor:pointer;
+}
+.tour-summary-head-main:hover .tour-summary-title{
+  color:#1d4ed8;
+}
+.tour-summary.collapsed .tour-summary-head{
+  border-bottom:none;
+}
+.tour-summary.collapsed .tour-summary-tablewrap{
+  display:none;
+}
+.tour-summary.collapsed #btnCopyTour,
+.tour-summary.collapsed #btnPrintTour{
+  display:none;
+}""")
+
+    template = template.replace(""".tour-summary-actions{ display:flex; align-items:center; gap:6px; }
+.print-btn{""", """.tour-summary-actions{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+.summary-toggle-btn{
+  min-width:128px;
+}
+.print-btn{""")
+
+    template = template.replace("""  .tour-summary-head{
+    border:none !important;
+    background:#fff !important;
+    padding:0 0 6mm 0 !important;
+  }
+
+  .print-btn{ display:none !important; }
+""", """  .tour-summary-head{
+    border:none !important;
+    background:#fff !important;
+    padding:0 0 6mm 0 !important;
+  }
+  .tour-summary-head-main{
+    cursor:default !important;
+  }
+  #tourSummary.collapsed .tour-summary-tablewrap{
+    display:block !important;
+  }
+
+  .print-btn{ display:none !important; }
+""")
+
+    template = template.replace("""        <div class="tour-summary-head">
+          <div>
+            <div class="tour-summary-title" id="tourSummaryTitle"></div>
+            <div class="tour-summary-meta" id="tourSummaryMeta"></div>
+          </div>
+          <div class="tour-summary-actions">
+            <button class="print-btn" id="btnCopyTour" title="Tour als Tabelle (Outlook) kopieren">Kopieren</button>
+            <button class="print-btn" id="btnPrintTour" title="Tour-Übersicht drucken (A4)">Drucken</button>
+          </div>
+        </div>
+""", """        <div class="tour-summary-head">
+          <div class="tour-summary-head-main" id="tourSummaryHeadMain" title="Übersicht anzeigen oder ausblenden">
+            <div>
+              <div class="tour-summary-title" id="tourSummaryTitle"></div>
+              <div class="tour-summary-meta" id="tourSummaryMeta"></div>
+            </div>
+          </div>
+          <div class="tour-summary-actions">
+            <button class="print-btn summary-toggle-btn" id="btnToggleTourSummary" type="button" aria-expanded="false" title="Übersicht anzeigen oder ausblenden">Übersicht anzeigen</button>
+            <button class="print-btn" id="btnCopyTour" title="Tour als Tabelle (Outlook) kopieren">Kopieren</button>
+            <button class="print-btn" id="btnPrintTour" title="Tour-Übersicht drucken (A4)">Drucken</button>
+          </div>
+        </div>
+""")
+
+    template = template.replace("""function closeTourSummary(){
+  $('#tourSummary').style.display='none';
+  $('#tourSummaryTitle').textContent='';
+  $('#tourSummaryMeta').textContent='';
+  $('#tourSummaryBody').innerHTML='';
+}
+""", """function setTourSummaryCollapsed(collapsed){
+  const wrap = $('#tourSummary');
+  if(!wrap) return;
+  wrap.classList.toggle('collapsed', !!collapsed);
+  const btn = $('#btnToggleTourSummary');
+  if(btn){
+    btn.textContent = collapsed ? 'Übersicht anzeigen' : 'Übersicht ausblenden';
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  }
+}
+function toggleTourSummary(ev){
+  if(ev){
+    ev.preventDefault();
+    ev.stopPropagation();
+  }
+  const wrap = $('#tourSummary');
+  if(!wrap || wrap.style.display==='none') return;
+  setTourSummaryCollapsed(!wrap.classList.contains('collapsed'));
+}
+function closeTourSummary(){
+  $('#tourSummary').style.display='none';
+  $('#tourSummaryTitle').textContent='';
+  $('#tourSummaryMeta').textContent='';
+  $('#tourSummaryBody').innerHTML='';
+  setTourSummaryCollapsed(true);
+}
+""")
+
+    template = template.replace("""  wrap.style.display='block';
+}
+""", """  wrap.style.display='block';
+  setTourSummaryCollapsed(true);
+}
+""")
+
+    template = template.replace("""$('#btnCopyTour').addEventListener('click', onCopyTour);
+
+$('#btnPrintTour').addEventListener('click', ()=>{
+  if($('#tourSummary').style.display==='none'){ return; }
+  window.print();
+});
+""", """$('#btnCopyTour').addEventListener('click', onCopyTour);
+$('#btnToggleTourSummary').addEventListener('click', toggleTourSummary);
+$('#tourSummaryHeadMain').addEventListener('click', toggleTourSummary);
+$('#tourSummaryHeadMain').addEventListener('keydown', (ev)=>{
+  if(ev.key === 'Enter' || ev.key === ' '){
+    toggleTourSummary(ev);
+  }
+});
+$('#tourSummaryHeadMain').tabIndex = 0;
+
+$('#btnPrintTour').addEventListener('click', ()=>{
+  if($('#tourSummary').style.display==='none'){ return; }
+  setTourSummaryCollapsed(false);
+  window.print();
+});
+""")
+    return template
+
+
+SUCHE_HTML_TEMPLATE = _patch_suche_template_tour_summary_collapsible(SUCHE_HTML_TEMPLATE)
+
 DRUCK_HTML_TEMPLATE: str = base64.b64decode(_DRUCK_B64).decode("utf-8")
 
 
