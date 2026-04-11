@@ -1790,7 +1790,8 @@ html,body{{height:100%;font-family:'Segoe UI',Arial,sans-serif}}
 }}
 .nav-dd-btn:hover{{background:linear-gradient(180deg,#ffffff 0%,#eef3f8 100%);border-color:#aeb9c8}}
 .nav-dd-btn.active{{background:linear-gradient(180deg,#4f87e8 0%,#3d72d4 100%);border-color:#3f73cf;color:#fff;box-shadow:0 3px 10px rgba(61,114,212,.25)}}
-.nav-dd-btn.active .dd-arrow{{filter:brightness(10)}}
+#btn-suche.active{{background:linear-gradient(180deg,#f6dc67 0%,#e6be22 100%);border-color:#d5ac10;color:#5a4200;box-shadow:0 3px 10px rgba(214,172,16,.28)}}
+#btn-suche.active .dd-arrow{{filter:none;opacity:.9}}
 .dd-arrow{{font-size:9px;opacity:.75;transition:transform .15s}}
 .inst-label{{font-size:10px;font-weight:700;opacity:1;background:#dbe5f0;border:1px solid #c0cad8;border-radius:5px;padding:1px 6px;margin:0 4px 0 5px;white-space:nowrap;color:#4b5d73}}
 .nav-dd.open .dd-arrow{{transform:rotate(180deg)}}
