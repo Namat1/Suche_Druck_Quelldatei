@@ -31,7 +31,6 @@ DRUCK_HTML_TEMPLATE: str = base64.b64decode(_DRUCK_B64).decode("utf-8")
 # DRUCK – Konstanten & Hilfsfunktionen
 # =============================================================================
 
-PLAN_TYP = ""
 BEREICH  = "Alle Sortimente Fleischwerk"
 DAYS_DE  = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"]
 TOUR_COLS = {
@@ -108,16 +107,9 @@ def detect_neue_bspalten(columns: list) -> dict:
     Bestelltag steht als Datenwert in der B_Tag-Spalte (nicht im Spaltennamen).
     Gibt dict zurück: {(liefertag, gruppe): {"zeit": col, "sort": col, "tag_col": col}}
     """
-    import re as _re
-    DAY_SHORT = {
-        "Mo":"Montag","Di":"Dienstag","Die":"Dienstag",
-        "Mi":"Mittwoch","Mit":"Mittwoch","Mitt":"Mittwoch",
-        "Do":"Donnerstag","Don":"Donnerstag","Donn":"Donnerstag",
-        "Fr":"Freitag","Sa":"Samstag","Sam":"Samstag",
-    }
-    rx = _re.compile(
+    rx = re.compile(
         r"^(Mo|Die|Di|Mitt|Mit|Mi|Don|Donn|Do|Fr|Sam|Sa)\s+(\d+)\s+B_(Zeit|Sortiment|Sort|Tag)$",
-        _re.IGNORECASE,
+        re.IGNORECASE,
     )
     groups: dict = {}
     order:  list = []
@@ -125,7 +117,7 @@ def detect_neue_bspalten(columns: list) -> dict:
         m = rx.match(str(col).strip())
         if not m:
             continue
-        day = DAY_SHORT.get(m.group(1))
+        day = DAY_SHORT_TO_DE.get(m.group(1))
         grp = m.group(2)
         feld = m.group(3).lower()
         if not day:
@@ -191,13 +183,12 @@ def detect_neue_triplets(columns: list) -> list:
     Gibt eine Liste von Dicts zurueck:
       {"liefertag": "Montag", "zeit_col": "Montag_Zeit", "sort_col": "Montag_Sort", "tag_col": "Montag_Tag"}
     """
-    import re as _re
     TAGE = "Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag"
     FELDER = "Zeit|Sort|Tag"
     # Suffix wie .1 .2 usw. (pandas doppelte Spaltennamen)
-    rx = _re.compile(
-        "^(" + TAGE + ")_(" + FELDER + ")(?:[.](\d+))?$",
-        _re.IGNORECASE,
+    rx = re.compile(
+        r"^(" + TAGE + r")_(" + FELDER + r")(?:[.](\d+))?$",
+        re.IGNORECASE,
     )
     groups: dict = {}
     order:  list = []
@@ -669,7 +660,7 @@ def generate_druck_html(up, logo_up, fcsb_file=None) -> str:
                 bestell.extend(day_items)
 
             data[knr] = {
-                "plan_typ":    PLAN_TYP,
+                "plan_typ":    "",
                 "bereich":     BEREICH,
                 "kunden_nr":   knr,
                 "sap_nummer":  norm_val(r.get("SAP-Nr.", "")),
