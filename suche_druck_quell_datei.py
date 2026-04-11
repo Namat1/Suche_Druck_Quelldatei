@@ -1097,9 +1097,15 @@ html,body{{height:100%;font-family:'Segoe UI',Arial,sans-serif}}
   scrollbar-width:none;
 }}
 .topnav::-webkit-scrollbar{{display:none;}}
-.topnav-title{{
-  color:#ffffff;font-weight:800;font-size:14px;
-  margin-right:4px;letter-spacing:.2px;white-space:nowrap;
+.topnav-logo-wrap{{
+  display:flex;align-items:center;flex-shrink:0;
+  padding-right:4px;
+}}
+.topnav-logo{{
+  height:28px;
+  width:auto;
+  display:block;
+  object-fit:contain;
 }}
 .nav-sep{{
   width:1px;height:20px;background:rgba(255,255,255,.12);flex-shrink:0;margin:0 2px;
@@ -1163,7 +1169,9 @@ iframe.active{{display:block}}
 <body>
 
 <nav class="topnav">
-  <span class="topnav-title">Fuhrpark NFC</span>
+  <div class="topnav-logo-wrap">
+    <img class="topnav-logo" src="{logo_data_url}" alt="Nordfrische Center Logo">
+  </div>
   <div class="nav-sep"></div>
   <div class="nav-dd" id="dd-suche">
     <button class="nav-dd-btn active" id="btn-suche" onclick="ddToggle('suche',event)">
