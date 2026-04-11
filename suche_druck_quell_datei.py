@@ -982,6 +982,12 @@ def parse_fahrer_excel(dateien: list) -> str:
 
 
 def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", last_updated: str = "") -> str:
+    try:
+        _logo_up = st.session_state.get("g_logo")
+    except Exception:
+        _logo_up = None
+    logo_data_url = logo_file_to_data_uri(_logo_up) or load_logo_data_uri()
+
     """
     Bettet beliebig viele Suche+Druck-Paare (Instanzen) in eine HTML ein.
     Instanz-Wechsler im Topnav. BLP Druck ist intern (hidden iframe für FW-Daten).
