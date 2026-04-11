@@ -147,9 +147,342 @@ SUCHE_HTML_TEMPLATE = _patch_suche_template_weniger_luftig(SUCHE_HTML_TEMPLATE)
 
 
 def _patch_suche_template_aufklappbare_hinweise(template: str) -> str:
-    """Macht die Hinweise in der oberen Tour-Übersicht kompakt und bei Bedarf aufklappbar."""
-    template = template.replace('.ts-stack{\n  min-height:46px;\n  display:flex;\n  flex-direction:column;\n  justify-content:flex-start;\n  gap:4px;\n  width:100%;\n}\n.ts-main{\n  font-weight:750;\n  white-space:nowrap;\n  overflow:hidden;\n  text-overflow:ellipsis;\n}\n.ts-main.name{\n  font-weight:850;\n  font-size:10.5px;\n}\n.ts-sub{\n  min-height:21px;\n  font-size:8.5px;\n  font-weight:550;\n  font-style:italic;\n  color:#8b7355;\n  line-height:1.3;\n  white-space:normal;\n  overflow:hidden;\n  display:-webkit-box;\n  -webkit-box-orient:vertical;\n  -webkit-line-clamp:2;\n}\n.ts-sub.empty{\n  visibility:hidden;\n}\n.tour-row{ cursor:pointer; }\n.tour-row:hover td{ background:#eff6ff; }', '.ts-stack{\n  min-height:46px;\n  display:flex;\n  flex-direction:column;\n  justify-content:flex-start;\n  gap:4px;\n  width:100%;\n}\n.ts-main{\n  font-weight:750;\n  white-space:nowrap;\n  overflow:hidden;\n  text-overflow:ellipsis;\n}\n.ts-main.name{\n  font-weight:850;\n  font-size:10.5px;\n}\n.ts-note-wrap{\n  display:flex;\n  flex-direction:column;\n  align-items:flex-start;\n  gap:3px;\n  width:100%;\n  min-width:0;\n}\n.ts-sub{\n  min-height:14px;\n  width:100%;\n  font-size:8.5px;\n  font-weight:550;\n  font-style:italic;\n  color:#8b7355;\n  line-height:1.25;\n  white-space:nowrap;\n  overflow:hidden;\n  text-overflow:ellipsis;\n  display:block;\n}\n.ts-note-wrap.expanded .ts-sub{\n  white-space:normal;\n  overflow:visible;\n  text-overflow:clip;\n}\n.ts-note-toggle{\n  display:inline-flex;\n  align-items:center;\n  justify-content:center;\n  min-height:18px;\n  padding:1px 7px;\n  border:1px solid #cfd7e3;\n  border-radius:999px;\n  background:#ffffff;\n  color:#52627c;\n  font-size:8px;\n  font-weight:800;\n  line-height:1;\n  cursor:pointer;\n}\n.ts-note-toggle:hover{\n  background:#f8fafc;\n}\n.ts-note-wrap.empty .ts-note-toggle{\n  display:none;\n}\n.ts-sub.empty{\n  visibility:hidden;\n}\n.tour-row{ cursor:pointer; }\n.tour-row:hover td{ background:#eff6ff; }\n@media print{\n  .ts-note-toggle{ display:none !important; }\n  .ts-sub{\n    white-space:normal !important;\n    overflow:visible !important;\n    text-overflow:clip !important;\n    display:block !important;\n  }\n}')
-    template = template.replace("    const td3=document.createElement('td');\n    const td3w=document.createElement('div'); td3w.className='ts-stack';\n    const td3m=document.createElement('div'); td3m.className='ts-main name'; td3m.textContent=name;\n    const td3s=document.createElement('div'); td3s.className='ts-sub';\n    const _nz = kundenNotizen[csb];\n    const _parts=[];\n    if(_nz){\n      if(_nz.c) _parts.push(_nz.c);\n      if(_nz.d) _parts.push(_nz.d);\n    }\n    if(_parts.length){\n      td3s.textContent=_parts.join(' · ');\n    } else {\n      td3s.classList.add('empty');\n      td3s.textContent='-';\n    }\n    td3w.append(td3m, td3s);\n    td3.appendChild(td3w);\n\n", "    const td3=document.createElement('td');\n    const td3w=document.createElement('div'); td3w.className='ts-stack';\n    const td3m=document.createElement('div'); td3m.className='ts-main name'; td3m.textContent=name;\n    const td3noteWrap=document.createElement('div'); td3noteWrap.className='ts-note-wrap';\n    const td3s=document.createElement('div'); td3s.className='ts-sub';\n    const td3btn=document.createElement('button'); td3btn.type='button'; td3btn.className='ts-note-toggle'; td3btn.textContent='Mehr';\n    const _nz = kundenNotizen[csb];\n    const _parts=[];\n    if(_nz){\n      if(_nz.c) _parts.push(_nz.c);\n      if(_nz.d) _parts.push(_nz.d);\n    }\n    if(_parts.length){\n      const _noteText = _parts.join(' · ');\n      td3s.textContent = _noteText;\n      td3s.title = _noteText;\n      td3btn.addEventListener('click', (ev)=>{\n        ev.preventDefault();\n        ev.stopPropagation();\n        const expanded = td3noteWrap.classList.toggle('expanded');\n        td3btn.textContent = expanded ? 'Weniger' : 'Mehr';\n      });\n    } else {\n      td3noteWrap.classList.add('empty');\n      td3s.classList.add('empty');\n      td3s.textContent='-';\n    }\n    td3noteWrap.append(td3s, td3btn);\n    td3w.append(td3m, td3noteWrap);\n    td3.appendChild(td3w);\n\n")
+    """Macht die Hinweise in der oberen Tour-Übersicht sichtbar aufklappbar."""
+    original_css = """.ts-stack{
+  min-height:46px;
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-start;
+  gap:4px;
+  width:100%;
+}
+.ts-main{
+  font-weight:750;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.ts-main.name{
+  font-weight:850;
+  font-size:10.5px;
+}
+.ts-sub{
+  min-height:21px;
+  font-size:8.5px;
+  font-weight:550;
+  font-style:italic;
+  color:#8b7355;
+  line-height:1.3;
+  white-space:normal;
+  overflow:hidden;
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+}
+.ts-sub.empty{
+  visibility:hidden;
+}
+.tour-row{ cursor:pointer; }
+.tour-row:hover td{ background:#eff6ff; }"""
+    enhanced_css = """.ts-stack{
+  min-height:46px;
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-start;
+  gap:4px;
+  width:100%;
+}
+.ts-main{
+  font-weight:750;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.ts-main.name{
+  font-weight:850;
+  font-size:10.5px;
+}
+.ts-note-wrap{
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:3px;
+  width:100%;
+  min-width:0;
+  padding-right:58px;
+}
+.ts-sub{
+  min-height:14px;
+  width:100%;
+  font-size:8.5px;
+  font-weight:550;
+  font-style:italic;
+  color:#8b7355;
+  line-height:1.25;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  display:block;
+}
+.ts-sub.toggleable{
+  cursor:pointer;
+}
+.ts-sub.toggleable:hover{
+  color:#6f5633;
+}
+.ts-note-wrap.expanded .ts-sub{
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
+}
+.ts-note-toggle{
+  position:absolute;
+  top:0;
+  right:0;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:17px;
+  padding:0 8px;
+  border:1px solid #cfd7e3;
+  border-radius:999px;
+  background:#ffffff;
+  color:#52627c;
+  font-size:8px;
+  font-weight:800;
+  line-height:1;
+  cursor:pointer;
+  box-shadow:0 1px 2px rgba(15,23,42,.06);
+}
+.ts-note-toggle:hover{
+  background:#f8fafc;
+}
+.ts-note-wrap.empty{
+  padding-right:0;
+}
+.ts-note-wrap.empty .ts-note-toggle{
+  display:none;
+}
+.ts-sub.empty{
+  visibility:hidden;
+}
+.tour-row{ cursor:pointer; }
+.tour-row:hover td{ background:#eff6ff; }
+@media print{
+  .ts-note-toggle{ display:none !important; }
+  .ts-note-wrap{ padding-right:0 !important; }
+  .ts-sub{
+    white-space:normal !important;
+    overflow:visible !important;
+    text-overflow:clip !important;
+    display:block !important;
+  }
+}"""
+
+    template = template.replace(original_css, enhanced_css)
+    template = template.replace(""".ts-note-wrap{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:3px;
+  width:100%;
+  min-width:0;
+}""", """.ts-note-wrap{
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:3px;
+  width:100%;
+  min-width:0;
+  padding-right:58px;
+}""")
+    template = template.replace(""".ts-sub{
+  min-height:14px;
+  width:100%;
+  font-size:8.5px;
+  font-weight:550;
+  font-style:italic;
+  color:#8b7355;
+  line-height:1.25;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  display:block;
+}""", """.ts-sub{
+  min-height:14px;
+  width:100%;
+  font-size:8.5px;
+  font-weight:550;
+  font-style:italic;
+  color:#8b7355;
+  line-height:1.25;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  display:block;
+}
+.ts-sub.toggleable{
+  cursor:pointer;
+}
+.ts-sub.toggleable:hover{
+  color:#6f5633;
+}""")
+    template = template.replace(""".ts-note-toggle{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:18px;
+  padding:1px 7px;
+  border:1px solid #cfd7e3;
+  border-radius:999px;
+  background:#ffffff;
+  color:#52627c;
+  font-size:8px;
+  font-weight:800;
+  line-height:1;
+  cursor:pointer;
+}""", """.ts-note-toggle{
+  position:absolute;
+  top:0;
+  right:0;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:17px;
+  padding:0 8px;
+  border:1px solid #cfd7e3;
+  border-radius:999px;
+  background:#ffffff;
+  color:#52627c;
+  font-size:8px;
+  font-weight:800;
+  line-height:1;
+  cursor:pointer;
+  box-shadow:0 1px 2px rgba(15,23,42,.06);
+}""")
+    template = template.replace(""".ts-note-wrap.empty .ts-note-toggle{
+  display:none;
+}""", """.ts-note-wrap.empty{
+  padding-right:0;
+}
+.ts-note-wrap.empty .ts-note-toggle{
+  display:none;
+}""")
+    template = template.replace("""@media print{
+  .ts-note-toggle{ display:none !important; }
+  .ts-sub{
+    white-space:normal !important;
+    overflow:visible !important;
+    text-overflow:clip !important;
+    display:block !important;
+  }
+}""", """@media print{
+  .ts-note-toggle{ display:none !important; }
+  .ts-note-wrap{ padding-right:0 !important; }
+  .ts-sub{
+    white-space:normal !important;
+    overflow:visible !important;
+    text-overflow:clip !important;
+    display:block !important;
+  }
+}""")
+
+    original_js = """    const td3=document.createElement('td');
+    const td3w=document.createElement('div'); td3w.className='ts-stack';
+    const td3m=document.createElement('div'); td3m.className='ts-main name'; td3m.textContent=name;
+    const td3s=document.createElement('div'); td3s.className='ts-sub';
+    const _nz = kundenNotizen[csb];
+    const _parts=[];
+    if(_nz){
+      if(_nz.c) _parts.push(_nz.c);
+      if(_nz.d) _parts.push(_nz.d);
+    }
+    if(_parts.length){
+      td3s.textContent=_parts.join(' · ');
+    } else {
+      td3s.classList.add('empty');
+      td3s.textContent='-';
+    }
+    td3w.append(td3m, td3s);
+    td3.appendChild(td3w);
+
+"""
+    enhanced_js = """    const td3=document.createElement('td');
+    const td3w=document.createElement('div'); td3w.className='ts-stack';
+    const td3m=document.createElement('div'); td3m.className='ts-main name'; td3m.textContent=name;
+    const td3noteWrap=document.createElement('div'); td3noteWrap.className='ts-note-wrap';
+    const td3s=document.createElement('div'); td3s.className='ts-sub';
+    const td3btn=document.createElement('button'); td3btn.type='button'; td3btn.className='ts-note-toggle'; td3btn.textContent='Mehr';
+    const _nz = kundenNotizen[csb];
+    const _parts=[];
+    if(_nz){
+      if(_nz.c) _parts.push(_nz.c);
+      if(_nz.d) _parts.push(_nz.d);
+    }
+    if(_parts.length){
+      const _noteText = _parts.join(' · ');
+      const toggleNote = (ev)=>{
+        if(ev){
+          ev.preventDefault();
+          ev.stopPropagation();
+        }
+        const expanded = td3noteWrap.classList.toggle('expanded');
+        td3btn.textContent = expanded ? 'Weniger' : 'Mehr';
+        td3s.title = expanded ? 'Klicken zum Zuklappen' : 'Klicken zum Aufklappen';
+      };
+      td3s.textContent = _noteText;
+      td3s.classList.add('toggleable');
+      td3s.title = 'Klicken zum Aufklappen';
+      td3btn.addEventListener('click', toggleNote);
+      td3s.addEventListener('click', toggleNote);
+      td3s.tabIndex = 0;
+      td3s.addEventListener('keydown', (ev)=>{
+        if(ev.key === 'Enter' || ev.key === ' '){
+          toggleNote(ev);
+        }
+      });
+    } else {
+      td3noteWrap.classList.add('empty');
+      td3s.classList.add('empty');
+      td3s.textContent='-';
+    }
+    td3noteWrap.append(td3s, td3btn);
+    td3w.append(td3m, td3noteWrap);
+    td3.appendChild(td3w);
+
+"""
+    template = template.replace(original_js, enhanced_js)
+    template = template.replace("""      td3s.textContent = _noteText;
+      td3s.title = _noteText;
+      td3btn.addEventListener('click', (ev)=>{
+        ev.preventDefault();
+        ev.stopPropagation();
+        const expanded = td3noteWrap.classList.toggle('expanded');
+        td3btn.textContent = expanded ? 'Weniger' : 'Mehr';
+      });
+""", """      const toggleNote = (ev)=>{
+        if(ev){
+          ev.preventDefault();
+          ev.stopPropagation();
+        }
+        const expanded = td3noteWrap.classList.toggle('expanded');
+        td3btn.textContent = expanded ? 'Weniger' : 'Mehr';
+        td3s.title = expanded ? 'Klicken zum Zuklappen' : 'Klicken zum Aufklappen';
+      };
+      td3s.textContent = _noteText;
+      td3s.classList.add('toggleable');
+      td3s.title = 'Klicken zum Aufklappen';
+      td3btn.addEventListener('click', toggleNote);
+      td3s.addEventListener('click', toggleNote);
+      td3s.tabIndex = 0;
+      td3s.addEventListener('keydown', (ev)=>{
+        if(ev.key === 'Enter' || ev.key === ' '){
+          toggleNote(ev);
+        }
+      });
+""")
     return template
 
 
