@@ -819,10 +819,15 @@ def _patch_suche_template_search_all_inputs(template: str) -> str:
 
   const q = normDE(qRaw);
   const n = normalizeDigits(qRaw);
+  const getRahmentour = (tournummer) => normalizeDigits(rahmentourIndex[normalizeDigits(tournummer)] || '');
 
   let r = allCustomers.filter(k=>{
     const fb = k.fachberater || '';
-    const tourText = (k.touren||[]).map(t => ((t.tournummer||'') + ' ' + (t.liefertag||''))).join(' ');
+    const tourText = (k.touren||[]).map(t => {
+      const tourNum = t.tournummer || '';
+      const rahmen = getRahmentour(tourNum);
+      return [tourNum, t.liefertag || '', rahmen].filter(Boolean).join(' ');
+    }).join(' ');
     const text = (
       (k.name||'') + ' ' +
       (k.strasse||'') + ' ' +
@@ -848,16 +853,20 @@ def _patch_suche_template_search_all_inputs(template: str) -> str:
 
     return (k.touren||[]).some(t=>{
       const tourNum = normalizeDigits(t.tournummer);
-      if(!tourNum) return false;
-      return tourNum === n || tourNum.startsWith(n);
+      const rahmen = getRahmentour(t.tournummer);
+      if(tourNum && (tourNum === n || tourNum.startsWith(n))) return true;
+      if(rahmen && (rahmen === n || rahmen.startsWith(n))) return true;
+      return false;
     });
   });
 
   if(n){
     const tr = allCustomers.filter(k => (k.touren||[]).some(t => normalizeDigits(t.tournummer) === n));
-    if(tr.length){
-      renderTourSummary(tr, n);
-      r = dedupByCSB([...tr, ...r]);
+    const rr = allCustomers.filter(k => (k.touren||[]).some(t => getRahmentour(t.tournummer) === n));
+    const summaryMatches = dedupByCSB([...tr, ...rr]);
+    if(summaryMatches.length){
+      renderTourSummary(summaryMatches, n);
+      r = dedupByCSB([...summaryMatches, ...r]);
     }
   }
 
