@@ -1165,7 +1165,7 @@ function renderKundenToolbar(groups, activeGroup){
   parts.push('<button class="mk-filter-btn' + (activeGroup === 'Alle' ? ' active' : '') + '" onclick="setKundenListeGroup('Alle')"><span>Alle</span><span class="mk-filter-count">' + total + '</span></button>');
   KUNDEN_LISTE_GROUP_ORDER.forEach(name => {
     const count = (groups[name]||[]).length;
-    parts.push('<button class="mk-filter-btn' + (activeGroup === name ? ' active' : '') + '" onclick="setKundenListeGroup(' + JSON.stringify(name) + ')"><span>' + escapeHtml(name) + '</span><span class="mk-filter-count">' + count + '</span></button>');
+    parts.push("<button class='mk-filter-btn" + (activeGroup === name ? " active" : "") + "' onclick='setKundenListeGroup(" + JSON.stringify(name) + ")'><span>" + escapeHtml(name) + "</span><span class='mk-filter-count'>" + count + "</span></button>");
   });
   parts.push('</div>');
   return parts.join('');
