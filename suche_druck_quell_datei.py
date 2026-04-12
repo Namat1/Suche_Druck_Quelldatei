@@ -12,8 +12,84 @@ import base64
 import unicodedata
 import re
 import datetime
+import hashlib
+import io
 from pathlib import Path
 from typing import List
+
+EXCLUDED_DRIVER_NAMES = (
+    "Ch.Holtz", "Paasch", "Meyer", "Ihde", "Spedition M+S Express 4", "Spedition M+S Express 3",
+    "Spedition M+S Express 2", "Spedition M+S Express 1", "Spedition Meyer 1", "Spedition Meyer 2",
+    "Spedition Meyer 3", "Spedition Meyer 4", "Spedition Meyer 5", "Spedition Meyer 6",
+    "Spedition Meyer 7 (36er)", "Spedition Meyer 8", "Spedition Meyer Sz.", "Paasch & Reinke 1",
+    "Paasch & Reinke 2", "Paasch & Reinke 3", "deVries", "Spedition Ihde", "Insellogistik 1",
+    "Insellogistik 2", "Zippel Logistik T1", "Zippel Logistik T2", "Zippel Logistik T3",
+    "Ch. Holtz T1", "Ch. Holtz T2", "Ch. Holtz T3", "T&D Spedition", "Kudex 1", "Kudex 2",
+)
+
+
+def read_upload_bytes(uploaded_file) -> bytes:
+    if uploaded_file is None:
+        return b""
+    try:
+        uploaded_file.seek(0)
+    except Exception:
+        pass
+    data = uploaded_file.read()
+    if data is None:
+        return b""
+    if isinstance(data, str):
+        return data.encode("utf-8")
+    return data
+
+
+def to_bytes_buffer(uploaded_file) -> io.BytesIO:
+    return io.BytesIO(read_upload_bytes(uploaded_file))
+
+
+def upload_signature(uploaded_file) -> str:
+    if uploaded_file is None:
+        return ""
+    payload = read_upload_bytes(uploaded_file)
+    digest = hashlib.sha1()
+    digest.update(getattr(uploaded_file, "name", "").encode("utf-8", errors="ignore"))
+    digest.update(b"|")
+    digest.update(payload)
+    return digest.hexdigest()
+
+
+def uploads_signature(uploaded_files) -> str:
+    digest = hashlib.sha1()
+    for uploaded_file in uploaded_files or []:
+        digest.update(upload_signature(uploaded_file).encode("ascii"))
+        digest.update(b"|")
+    return digest.hexdigest()
+
+
+def combine_signatures(*parts: str) -> str:
+    digest = hashlib.sha1()
+    for part in parts:
+        digest.update((part or "").encode("utf-8", errors="ignore"))
+        digest.update(b"|")
+    return digest.hexdigest()
+
+
+def is_excluded_driver(name: str) -> bool:
+    name = str(name)
+    return any(excluded in name for excluded in EXCLUDED_DRIVER_NAMES)
+
+
+def get_cached_export_b64(cache_key: str, source_value: str, builder) -> str:
+    cache = st.session_state.setdefault("_export_b64_cache", {})
+    cached = cache.get(cache_key)
+    if cached and cached.get("source") == source_value:
+        return cached.get("b64", "")
+
+    payload = builder(source_value) or b""
+    encoded = base64.b64encode(payload).decode("ascii") if payload else ""
+    cache[cache_key] = {"source": source_value, "b64": encoded}
+    return encoded
+
 
 
 # =============================================================================
@@ -1001,9 +1077,9 @@ def build_key_map(df: pd.DataFrame) -> dict:
     csb_col = 0
     key_col = 5 if df.shape[1] > 5 else df.shape[1] - 1
     out = {}
-    for _, row in df.iterrows():
-        csb = normalize_digits_py(row.iloc[csb_col])
-        key = normalize_digits_py(row.iloc[key_col])
+    for row in df.itertuples(index=False, name=None):
+        csb = normalize_digits_py(row[csb_col] if len(row) > csb_col else "")
+        key = normalize_digits_py(row[key_col] if len(row) > key_col else "")
         if csb:
             out[csb] = key
     return out
@@ -1011,11 +1087,12 @@ def build_key_map(df: pd.DataFrame) -> dict:
 
 def build_berater_map(df: pd.DataFrame) -> dict:
     out = {}
-    for _, row in df.iterrows():
-        v = ("" if df.shape[1] < 1 or pd.isna(row.iloc[0]) else str(row.iloc[0])).strip()
-        n = ("" if df.shape[1] < 2 or pd.isna(row.iloc[1]) else str(row.iloc[1])).strip()
-        t = ("" if df.shape[1] < 3 or pd.isna(row.iloc[2]) else str(row.iloc[2])).strip()
-        if not t: continue
+    for row in df.itertuples(index=False, name=None):
+        v = ("" if len(row) < 1 or pd.isna(row[0]) else str(row[0])).strip()
+        n = ("" if len(row) < 2 or pd.isna(row[1]) else str(row[1])).strip()
+        t = ("" if len(row) < 3 or pd.isna(row[2]) else str(row[2])).strip()
+        if not t:
+            continue
         for k in {norm_de_py(f"{v} {n}"), norm_de_py(f"{n} {v}")}:
             if k and k not in out:
                 out[k] = t
@@ -1024,11 +1101,11 @@ def build_berater_map(df: pd.DataFrame) -> dict:
 
 def build_berater_csb_map(df: pd.DataFrame) -> dict:
     out = {}
-    for _, row in df.iterrows():
-        fach = str(row.iloc[0]).strip()  if df.shape[1] > 0  and not pd.isna(row.iloc[0])  else ""
-        csb  = normalize_digits_py(row.iloc[8])  if df.shape[1] > 8  and not pd.isna(row.iloc[8])  else ""
-        tel  = str(row.iloc[14]).strip() if df.shape[1] > 14 and not pd.isna(row.iloc[14]) else ""
-        mail = str(row.iloc[23]).strip() if df.shape[1] > 23 and not pd.isna(row.iloc[23]) else ""
+    for row in df.itertuples(index=False, name=None):
+        fach = str(row[0]).strip() if len(row) > 0 and not pd.isna(row[0]) else ""
+        csb = normalize_digits_py(row[8]) if len(row) > 8 and not pd.isna(row[8]) else ""
+        tel = str(row[14]).strip() if len(row) > 14 and not pd.isna(row[14]) else ""
+        mail = str(row[23]).strip() if len(row) > 23 and not pd.isna(row[23]) else ""
         if csb:
             out[csb] = {"name": fach, "telefon": tel, "email": mail}
     return out
@@ -1049,10 +1126,10 @@ def build_winter_map(excel_file_obj) -> dict:
         dfw = pd.read_excel(excel_file_obj, sheet_name="Mo-Sa Winter")
     except Exception:
         return out
-    for _, row in dfw.iterrows():
-        kd   = normalize_digits_py(row.iloc[3] if len(row) > 3 else "")
-        tour = normalize_digits_py(row.iloc[1] if len(row) > 1 else "")
-        lf   = format_lf(row.iloc[2]           if len(row) > 2 else "")
+    for row in dfw.itertuples(index=False, name=None):
+        kd = normalize_digits_py(row[3] if len(row) > 3 else "")
+        tour = normalize_digits_py(row[1] if len(row) > 1 else "")
+        lf = format_lf(row[2] if len(row) > 2 else "")
         if kd and tour and lf:
             out.setdefault(kd, {})[tour] = lf
     return out
@@ -1060,7 +1137,7 @@ def build_winter_map(excel_file_obj) -> dict:
 
 def to_data_url_suche(f) -> str:
     mime = f.type or ("image/png" if f.name.lower().endswith(".png") else "image/jpeg")
-    return f"data:{mime};base64," + base64.b64encode(f.read()).decode("utf-8")
+    return f"data:{mime};base64," + base64.b64encode(read_upload_bytes(f)).decode("utf-8")
 
 
 # =============================================================================
@@ -1142,84 +1219,95 @@ def generate_suche_html(excel_file, key_file, logo_file,
         raise ValueError("Bitte Logo hochladen.")
 
     logo_data_url = to_data_url_suche(logo_file)
+    excel_bytes = read_upload_bytes(excel_file)
 
     with st.spinner("Lese Schluesseldatei ..."):
-        key_file.seek(0)
-        key_df = pd.read_excel(key_file, sheet_name=0, header=0)
+        key_df = pd.read_excel(io.BytesIO(read_upload_bytes(key_file)), sheet_name=0, header=0)
         if key_df.shape[1] < 2:
-            key_file.seek(0)
-            key_df = pd.read_excel(key_file, sheet_name=0, header=None)
+            key_df = pd.read_excel(io.BytesIO(read_upload_bytes(key_file)), sheet_name=0, header=None)
         key_map = build_key_map(key_df)
 
     berater_map: dict = {}
     if berater_file is not None:
         with st.spinner("Lese Fachberater-Telefonliste ..."):
-            berater_file.seek(0)
-            bf = pd.read_excel(berater_file, sheet_name=0, header=None)
+            bf = pd.read_excel(io.BytesIO(read_upload_bytes(berater_file)), sheet_name=0, header=None)
             bf = bf.rename(columns={0:"Vorname",1:"Nachname",2:"Nummer"}).dropna(how="all")
             berater_map = build_berater_map(bf)
 
     berater_csb_map: dict = {}
     if berater_csb_file is not None:
         with st.spinner("Lese Fachberater-CSB-Zuordnung ..."):
-            berater_csb_file.seek(0)
             try:
-                bcf = pd.read_excel(berater_csb_file, sheet_name=0, header=0)
+                bcf = pd.read_excel(io.BytesIO(read_upload_bytes(berater_csb_file)), sheet_name=0, header=0)
             except Exception:
-                berater_csb_file.seek(0)
-                bcf = pd.read_excel(berater_csb_file, sheet_name=0, header=None)
+                bcf = pd.read_excel(io.BytesIO(read_upload_bytes(berater_csb_file)), sheet_name=0, header=None)
             berater_csb_map = build_berater_csb_map(bcf)
 
     with st.spinner("Lese Ladefolgen (Mo-Sa Winter) ..."):
-        excel_file.seek(0)
-        winter_map = build_winter_map(excel_file)
+        winter_map = build_winter_map(io.BytesIO(excel_bytes))
 
     tour_dict: dict = {}
 
     def kunden_sammeln(df: pd.DataFrame):
-        for _, row in df.iterrows():
-            for tag, spaltenname in LIEFERTAGE_MAPPING.items():
-                if spaltenname not in df.columns:
+        column_index = {str(col): idx for idx, col in enumerate(df.columns)}
+        if not column_index:
+            return
+
+        day_columns = [
+            (tag, spaltenname, column_index.get(spaltenname))
+            for tag, spaltenname in LIEFERTAGE_MAPPING.items()
+            if spaltenname in column_index
+        ]
+        field_columns = {field: column_index.get(spalte) for field, spalte in SPALTEN_MAPPING.items()}
+        csb_idx = field_columns.get("csb_nummer")
+
+        for row in df.itertuples(index=False, name=None):
+            for tag, _, day_idx in day_columns:
+                if day_idx is None or day_idx >= len(row):
                     continue
-                tournr_raw = str(row[spaltenname]).strip()
+                tournr_raw = str(row[day_idx]).strip()
                 if not tournr_raw or not tournr_raw.replace(".", "", 1).isdigit():
                     continue
-                tournr  = normalize_digits_py(tournr_raw)
-                entry   = {k: str(row.get(v, "")).strip() for k, v in SPALTEN_MAPPING.items()}
-                csb     = normalize_digits_py(row.get(SPALTEN_MAPPING["csb_nummer"], ""))
-                entry["csb_nummer"]   = csb
-                entry["sap_nummer"]   = normalize_digits_py(entry.get("sap_nummer", ""))
+
+                tournr = normalize_digits_py(tournr_raw)
+                entry = {}
+                for field, idx in field_columns.items():
+                    value = row[idx] if idx is not None and idx < len(row) else ""
+                    entry[field] = str(value).strip()
+
+                csb = normalize_digits_py(row[csb_idx] if csb_idx is not None and csb_idx < len(row) else "")
+                entry["csb_nummer"] = csb
+                entry["sap_nummer"] = normalize_digits_py(entry.get("sap_nummer", ""))
                 entry["postleitzahl"] = normalize_digits_py(entry.get("postleitzahl", ""))
-                entry["schluessel"]   = key_map.get(csb, "")
-                entry["liefertag"]    = tag
+                entry["schluessel"] = key_map.get(csb, "")
+                entry["liefertag"] = tag
                 if csb and csb in berater_csb_map and berater_csb_map[csb].get("name"):
                     entry["fachberater"] = berater_csb_map[csb]["name"]
                 tour_dict.setdefault(tournr, []).append(entry)
 
     with st.spinner("Verarbeite Kundendatei ..."):
-        # Blattnamen der Datei ermitteln (openpyxl)
-        excel_file.seek(0)
-        alle_blaetter: list = []
         try:
-            import openpyxl as _opx
-            _wb = _opx.load_workbook(excel_file, read_only=True, data_only=True)
-            alle_blaetter = list(_wb.sheetnames)
-            _wb.close()
+            excel_book = pd.ExcelFile(io.BytesIO(excel_bytes), engine="openpyxl")
+            alle_blaetter = list(excel_book.sheet_names)
         except Exception:
-            pass
-        excel_file.seek(0)
+            excel_book = None
+            alle_blaetter = []
 
-        # Vordefinierte Blattnamen die wirklich vorhanden sind
-        vorhandene  = [b for b in BLATTNAMEN if b in alle_blaetter]
-        # Fallback: alle Blätter probieren, oder wenn openpyxl fehlschlug: BLATTNAMEN
-        zu_lesen    = vorhandene or alle_blaetter or BLATTNAMEN
+        vorhandene = [blatt for blatt in BLATTNAMEN if blatt in alle_blaetter]
+        zu_lesen = vorhandene or alle_blaetter or BLATTNAMEN
 
-        for blatt in zu_lesen:
-            try:
-                excel_file.seek(0)
-                kunden_sammeln(pd.read_excel(excel_file, sheet_name=blatt))
-            except (ValueError, KeyError, Exception):
-                pass
+        if excel_book is not None:
+            for blatt in zu_lesen:
+                try:
+                    kunden_sammeln(pd.read_excel(excel_book, sheet_name=blatt))
+                except (ValueError, KeyError):
+                    continue
+        else:
+            for blatt in zu_lesen:
+                try:
+                    kunden_sammeln(pd.read_excel(io.BytesIO(excel_bytes), sheet_name=blatt))
+                except (ValueError, KeyError):
+                    continue
 
     if not tour_dict:
         blaetter_info = ", ".join(alle_blaetter) if alle_blaetter else "unbekannt"
@@ -1234,9 +1322,8 @@ def generate_suche_html(excel_file, key_file, logo_file,
         key=lambda kv: int(kv[0]) if str(kv[0]).isdigit() else 0,
     ))
 
-    # Notizen aus Lieferhinweis-CSV
-    notizen_map:   dict = build_lieferhinweis_csv(lieferhinweis_csv)
-    rahmen_map:    dict = build_rahmentour_map(rahmentour_csv)
+    notizen_map: dict = build_lieferhinweis_csv(lieferhinweis_csv)
+    rahmen_map: dict = build_rahmentour_map(rahmentour_csv)
 
     return (
         SUCHE_HTML_TEMPLATE
@@ -1425,18 +1512,8 @@ def parse_samstag_excel(dateien: list) -> str:
     from datetime import datetime
     from openpyxl import load_workbook
 
-    AUSGESCHLOSSEN = [
-        "Ch.Holtz","Paasch","Meyer","Ihde","Spedition M+S Express 4","Spedition M+S Express 3",
-        "Spedition M+S Express 2","Spedition M+S Express 1","Spedition Meyer 1","Spedition Meyer 2",
-        "Spedition Meyer 3","Spedition Meyer 4","Spedition Meyer 5","Spedition Meyer 6",
-        "Spedition Meyer 7 (36er)","Spedition Meyer 8","Spedition Meyer Sz.","Paasch & Reinke 1",
-        "Paasch & Reinke 2","Paasch & Reinke 3","deVries","Spedition Ihde","Insellogistik 1",
-        "Insellogistik 2","Zippel Logistik T1","Zippel Logistik T2","Zippel Logistik T3",
-        "Ch. Holtz T1","Ch. Holtz T2","Ch. Holtz T3","T&D Spedition","Kudex 1","Kudex 2",
-    ]
-
     def ist_ausgeschlossen(nachname):
-        return any(a in str(nachname) for a in AUSGESCHLOSSEN)
+        return is_excluded_driver(nachname)
 
     gearbeitete_daten = {}  # (nachname, vorname) → [einsätze]
     alle_fahrer = set()     # alle bekannten Fahrer aus Touren-Sheet
@@ -1464,11 +1541,13 @@ def parse_samstag_excel(dateien: list) -> str:
 
             # Collect all drivers from the full Touren sheet (rows 5+)
             df_all = df.iloc[5:].reset_index(drop=True)
-            for _, row in df_all.iterrows():
-                for nc, vc in [("Spalte_3","Spalte_4"), ("Spalte_6","Spalte_7")]:
-                    n = str(row.get(nc,"")).strip() if pd.notna(row.get(nc)) else ""
-                    v = str(row.get(vc,"")).strip() if pd.notna(row.get(vc)) else ""
-                    if n and v and n not in ("0","nan") and v not in ("0","nan") and not ist_ausgeschlossen(n):
+            for row in df_all.itertuples(index=False, name=None):
+                for name_idx, first_idx in ((3, 4), (6, 7)):
+                    n_raw = row[name_idx] if len(row) > name_idx else ""
+                    v_raw = row[first_idx] if len(row) > first_idx else ""
+                    n = str(n_raw).strip() if pd.notna(n_raw) else ""
+                    v = str(v_raw).strip() if pd.notna(v_raw) else ""
+                    if n and v and n not in ("0", "nan") and v not in ("0", "nan") and not ist_ausgeschlossen(n):
                         alle_fahrer.add((n, v))
 
             # Samstag oder Sonntag (Sonntag nur bis 15:00 Uhr)
@@ -1502,24 +1581,25 @@ def parse_samstag_excel(dateien: list) -> str:
                         except: pass
                 return None
 
-            for _, row in df_sat.iterrows():
+            for row in df_sat.itertuples(index=False, name=None):
                 # Sonntagsfilter: nur Touren mit Startzeit < 15:00
                 if is_sunday:
-                    zeit_raw = row.get("Spalte_8")
+                    zeit_raw = row[8] if len(row) > 8 else None
                     mins = parse_time_minutes(zeit_raw)
                     if mins is None or mins >= 15 * 60:
                         continue
 
                 paare = []
-                if pd.notna(row.get("Spalte_3")) and pd.notna(row.get("Spalte_4")):
-                    paare.append((str(row["Spalte_3"]).strip(), str(row["Spalte_4"]).strip()))
-                if pd.notna(row.get("Spalte_6")) and pd.notna(row.get("Spalte_7")):
-                    paare.append((str(row["Spalte_6"]).strip(), str(row["Spalte_7"]).strip()))
+                if len(row) > 4 and pd.notna(row[3]) and pd.notna(row[4]):
+                    paare.append((str(row[3]).strip(), str(row[4]).strip()))
+                if len(row) > 7 and pd.notna(row[6]) and pd.notna(row[7]):
+                    paare.append((str(row[6]).strip(), str(row[7]).strip()))
                 for nachname, vorname in paare:
-                    if ist_ausgeschlossen(nachname) or nachname=="0" or vorname=="0":
+                    if ist_ausgeschlossen(nachname) or nachname == "0" or vorname == "0":
                         continue
-                    tour = row.get("Spalte_0","zbv")
-                    if pd.isna(tour): tour = "zbv"
+                    tour = row[0] if len(row) > 0 else "zbv"
+                    if pd.isna(tour):
+                        tour = "zbv"
                     tag_label = "So" if is_sunday else "Sa"
                     key = (nachname, vorname)
                     if key not in gearbeitete_daten:
@@ -1554,20 +1634,10 @@ def parse_fahrer_excel(dateien: list) -> str:
     import datetime as _dt
     import pandas as _pd
 
-    AUSGESCHLOSSEN = [
-        "Ch.Holtz","Paasch","Meyer","Ihde","Spedition M+S Express 4","Spedition M+S Express 3",
-        "Spedition M+S Express 2","Spedition M+S Express 1","Spedition Meyer 1","Spedition Meyer 2",
-        "Spedition Meyer 3","Spedition Meyer 4","Spedition Meyer 5","Spedition Meyer 6",
-        "Spedition Meyer 7 (36er)","Spedition Meyer 8","Spedition Meyer Sz.","Paasch & Reinke 1",
-        "Paasch & Reinke 2","Paasch & Reinke 3","deVries","Spedition Ihde","Insellogistik 1",
-        "Insellogistik 2","Zippel Logistik T1","Zippel Logistik T2","Zippel Logistik T3",
-        "Ch. Holtz T1","Ch. Holtz T2","Ch. Holtz T3","T&D Spedition","Kudex 1","Kudex 2",
-    ]
-
     WOCHENTAGE = ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"]
 
     def ist_ausgeschlossen(name):
-        return any(a in str(name) for a in AUSGESCHLOSSEN)
+        return is_excluded_driver(name)
 
     def fmt_zeit(val):
         try:
@@ -1601,50 +1671,53 @@ def parse_fahrer_excel(dateien: list) -> str:
         except Exception:
             continue
 
-        for _, row in df.iterrows():
-            datum_raw = row.iloc[14] if len(row) > 14 else None
+        current_year = _dt.datetime.now().year
+        for row in df.itertuples(index=False, name=None):
+            datum_raw = row[14] if len(row) > 14 else None
             datum = _pd.to_datetime(datum_raw, errors="coerce")
             if _pd.isna(datum):
                 continue
 
-            kw    = int(datum.strftime("%W")) + 1  # Sonntag-Start wie original
-            jahr  = datum.year
+            kw = int(datum.strftime("%W")) + 1  # Sonntag-Start wie original
+            jahr = datum.year
             if datum.month == 1 and kw >= 52:
                 jahr -= 1
-            # Nur aktuelles Kalenderjahr (strikt nach Datum)
-            if datum.year != _dt.datetime.now().year:
+            if datum.year != current_year:
                 continue
-            wd    = WOCHENTAGE[datum.weekday()]     # 0=Mo…6=So
-            datum_str = f"{wd}, {datum.strftime('%d.%m.%Y')}"
-            uhrzeit   = fmt_zeit(row.iloc[8] if len(row) > 8 else None)
-            tour      = str(row.iloc[15]).strip() if len(row) > 15 and _pd.notna(row.iloc[15]) else ""
-            lkw_raw   = row.iloc[11] if len(row) > 11 and _pd.notna(row.iloc[11]) else ""
-            lkw_str   = str(lkw_raw).strip()
-            lkw       = str(int(float(lkw_str))) if lkw_str.replace(".", "").replace("-","").isdigit() else (lkw_str if lkw_str not in ("nan","None","") else "")
 
-            # Beide Seiten extrahieren
+            wd = WOCHENTAGE[datum.weekday()]
+            datum_str = f"{wd}, {datum.strftime('%d.%m.%Y')}"
+            uhrzeit = fmt_zeit(row[8] if len(row) > 8 else None)
+            tour = str(row[15]).strip() if len(row) > 15 and _pd.notna(row[15]) else ""
+            lkw_raw = row[11] if len(row) > 11 and _pd.notna(row[11]) else ""
+            lkw_str = str(lkw_raw).strip()
+            lkw = str(int(float(lkw_str))) if lkw_str.replace(".", "").replace("-", "").isdigit() else (lkw_str if lkw_str not in ("nan", "None", "") else "")
+
             paare = []
-            if len(row) > 4 and _pd.notna(row.iloc[3]) and _pd.notna(row.iloc[4]):
-                paare.append((str(row.iloc[3]).strip(), str(row.iloc[4]).strip()))
-            if len(row) > 7 and _pd.notna(row.iloc[6]) and _pd.notna(row.iloc[7]):
-                paare.append((str(row.iloc[6]).strip(), str(row.iloc[7]).strip()))
+            if len(row) > 4 and _pd.notna(row[3]) and _pd.notna(row[4]):
+                paare.append((str(row[3]).strip(), str(row[4]).strip()))
+            if len(row) > 7 and _pd.notna(row[6]) and _pd.notna(row[7]):
+                paare.append((str(row[6]).strip(), str(row[7]).strip()))
 
             for nachname, vorname in paare:
-                if not nachname or not vorname: continue
-                if ist_ausgeschlossen(nachname): continue
-                if nachname in ("0","nan") or vorname in ("0","nan"): continue
+                if not nachname or not vorname:
+                    continue
+                if ist_ausgeschlossen(nachname):
+                    continue
+                if nachname in ("0", "nan") or vorname in ("0", "nan"):
+                    continue
                 name = f"{nachname}, {vorname}"
-                yr   = str(jahr)
+                yr = str(jahr)
                 if name not in fahrer_map:
                     fahrer_map[name] = {}
                 if yr not in fahrer_map[name]:
                     fahrer_map[name][yr] = {"eintraege": []}
                 fahrer_map[name][yr]["eintraege"].append({
-                    "kw":    kw,
+                    "kw": kw,
                     "datum": datum_str,
-                    "tour":  tour,
-                    "zeit":  uhrzeit,
-                    "lkw":   lkw,
+                    "tour": tour,
+                    "zeit": uhrzeit,
+                    "lkw": lkw,
                     "samstag": wd == "Samstag",
                 })
 
@@ -3340,7 +3413,7 @@ st.divider()
 
 # ── Instanzen initialisieren ──────────────────────────────────────────────────
 def _empty_inst(name="Normalwochen"):
-    return {"name": name, "suche_html": None, "druck_html": None}
+    return {"name": name, "suche_html": None, "druck_html": None, "source_sig": None}
 
 if "instances" not in st.session_state:
     st.session_state.instances = [_empty_inst("Normalwochen")]
@@ -3377,25 +3450,33 @@ for i, inst in enumerate(st.session_state.instances):
         _rahmen_csv = st.session_state.get("g_rahmen_csv")
 
         if excel and _logo and _key:
-            try:
-                with st.spinner("Generiere Suche + Druck …"):
-                    for f_ in [excel, _key, _logo] + ([_fach] if _fach else []) + ([_fcsb] if _fcsb else []):
-                        try: f_.seek(0)
-                        except: pass
-                    st.session_state.instances[i]["suche_html"] = generate_suche_html(
-                        excel, _key, _logo, _fach, _fcsb,
-                        lieferhinweis_csv=_lh_csv, rahmentour_csv=_rahmen_csv
-                    )
-                    try: excel.seek(0)
-                    except: pass
-                    try: _logo.seek(0)
-                    except: pass
-                    st.session_state.instances[i]["druck_html"] = generate_druck_html(excel, _logo, _fcsb, lieferhinweis_csv=_lh_csv)
-                kb_s = len(st.session_state.instances[i]["suche_html"]) // 1024
-                kb_d = len(st.session_state.instances[i]["druck_html"]) // 1024
-                st.success(f"✅ Suche ({kb_s} KB) + Druck ({kb_d} KB) bereit")
-            except Exception as e:
-                st.error(f"Fehler: {e}")
+            current_source_sig = combine_signatures(
+                upload_signature(excel),
+                upload_signature(_logo),
+                upload_signature(_key),
+                upload_signature(_fach),
+                upload_signature(_fcsb),
+                upload_signature(_lh_csv),
+                upload_signature(_rahmen_csv),
+            )
+            if inst.get("source_sig") != current_source_sig or not inst.get("suche_html") or not inst.get("druck_html"):
+                try:
+                    with st.spinner("Generiere Suche + Druck …"):
+                        st.session_state.instances[i]["suche_html"] = generate_suche_html(
+                            excel, _key, _logo, _fach, _fcsb,
+                            lieferhinweis_csv=_lh_csv, rahmentour_csv=_rahmen_csv
+                        )
+                        st.session_state.instances[i]["druck_html"] = generate_druck_html(excel, _logo, _fcsb, lieferhinweis_csv=_lh_csv)
+                        st.session_state.instances[i]["source_sig"] = current_source_sig
+                    kb_s = len(st.session_state.instances[i]["suche_html"]) // 1024
+                    kb_d = len(st.session_state.instances[i]["druck_html"]) // 1024
+                    st.success(f"✅ Suche ({kb_s} KB) + Druck ({kb_d} KB) bereit")
+                except Exception as e:
+                    st.error(f"Fehler: {e}")
+            else:
+                kb_s = len(inst["suche_html"]) // 1024
+                kb_d = len(inst["druck_html"]) // 1024
+                st.caption(f"✅ Bereits generiert — Suche {kb_s} KB · Druck {kb_d} KB")
         elif inst["suche_html"] and inst["druck_html"]:
             kb_s = len(inst["suche_html"]) // 1024
             kb_d = len(inst["druck_html"]) // 1024
@@ -3417,8 +3498,11 @@ st.divider()
 # ── Telefonliste + Samstags Fahrer (global) ──────────────────────────────────
 tel_up = st.file_uploader("📞 Telefonliste (Excel, optional)", type=["xlsx"], key="tel_upload")
 if tel_up:
-    st.session_state.tel_json = parse_telefon_excel(tel_up)
-    n = len(__import__("json").loads(st.session_state.tel_json))
+    tel_sig = upload_signature(tel_up)
+    if st.session_state.get("tel_sig") != tel_sig:
+        st.session_state.tel_json = parse_telefon_excel(tel_up)
+        st.session_state.tel_sig = tel_sig
+    n = len(json.loads(st.session_state.tel_json))
     st.caption(f"✅ Telefonliste: {n} Gruppen")
 elif st.session_state.get("tel_json"):
     st.caption("✅ Telefonliste bereits geladen")
@@ -3431,18 +3515,20 @@ touren_ups = st.file_uploader(
     key="touren_upload"
 )
 if touren_ups:
-    with st.spinner("Verarbeite Dateien …"):
-        st.session_state.sam_json        = parse_samstag_excel(touren_ups)
-        st.session_state.zulage_json     = parse_zulage_excel(touren_ups)
-        st.session_state.drittkunden_json = parse_drittkunden_excel(touren_ups)
-        st.session_state.fa_json         = parse_fahrer_excel(touren_ups)
-    import json as _tj
-    _sn  = len(_tj.loads(st.session_state.sam_json))
-    _zd  = _tj.loads(st.session_state.zulage_json)
+    touren_sig = uploads_signature(touren_ups)
+    if st.session_state.get("touren_sig") != touren_sig:
+        with st.spinner("Verarbeite Dateien …"):
+            st.session_state.sam_json = parse_samstag_excel(touren_ups)
+            st.session_state.zulage_json = parse_zulage_excel(touren_ups)
+            st.session_state.drittkunden_json = parse_drittkunden_excel(touren_ups)
+            st.session_state.fa_json = parse_fahrer_excel(touren_ups)
+            st.session_state.touren_sig = touren_sig
+    _sn = len(json.loads(st.session_state.sam_json))
+    _zd = json.loads(st.session_state.zulage_json)
     _zns = sum(len(m["fahrer"]) for m in _zd.get("sonder", []))
     _znf = sum(len(m["fahrer"]) for m in _zd.get("fuengers", []))
-    _dkd = _tj.loads(st.session_state.drittkunden_json)
-    _fan = len(_tj.loads(st.session_state.fa_json))
+    _dkd = json.loads(st.session_state.drittkunden_json)
+    _fan = len(json.loads(st.session_state.fa_json))
     st.caption(
         f"✅ {len(touren_ups)} Datei(en) verarbeitet – "
         f"Samstag: {_sn} Fahrer · "
@@ -3458,23 +3544,31 @@ elif any(st.session_state.get(k) for k in ("sam_json","zulage_json","drittkunden
 st.divider()
 ready = [inst for inst in st.session_state.instances if inst["suche_html"] and inst["druck_html"]]
 if ready:
+    zulage_json_state = st.session_state.get("zulage_json", "{}")
+    drittkunden_json_state = st.session_state.get("drittkunden_json", "[]")
+    zulage_xlsx_sonder = (
+        get_cached_export_b64("zulage_sonder", zulage_json_state, lambda value: generate_zulage_excel(value, tab="sonder"))
+        if zulage_json_state not in ("{}", "") else ""
+    )
+    zulage_xlsx_fuengers = (
+        get_cached_export_b64("zulage_fuengers", zulage_json_state, lambda value: generate_zulage_excel(value, tab="fuengers"))
+        if zulage_json_state not in ("{}", "") else ""
+    )
+    zulage_xlsx_drittkunden = (
+        get_cached_export_b64("drittkunden", drittkunden_json_state, generate_drittkunden_excel)
+        if drittkunden_json_state not in ("[]", "") else ""
+    )
     with st.spinner("Kombiniere …"):
         app_html = combine_html(
             instances=ready,
             tel_json=st.session_state.get("tel_json", "[]"),
             sam_json=st.session_state.get("sam_json", "[]"),
             fa_json=st.session_state.get("fa_json", "[]"),
-            zulage_json=st.session_state.get("zulage_json", "{}"),
-            zulage_xlsx_sonder=(__import__("base64").b64encode(
-                generate_zulage_excel(st.session_state.get("zulage_json","{}"), tab="sonder") or b""
-            ).decode() if st.session_state.get("zulage_json","{}") not in ("{}","") else ""),
-            zulage_xlsx_fuengers=(__import__("base64").b64encode(
-                generate_zulage_excel(st.session_state.get("zulage_json","{}"), tab="fuengers") or b""
-            ).decode() if st.session_state.get("zulage_json","{}") not in ("{}","") else ""),
-            drittkunden_json=st.session_state.get("drittkunden_json", "[]"),
-            zulage_xlsx_drittkunden=(__import__("base64").b64encode(
-                generate_drittkunden_excel(st.session_state.get("drittkunden_json","[]")) or b""
-            ).decode() if st.session_state.get("drittkunden_json","[]") not in ("[]","") else ""),
+            zulage_json=zulage_json_state,
+            zulage_xlsx_sonder=zulage_xlsx_sonder,
+            zulage_xlsx_fuengers=zulage_xlsx_fuengers,
+            drittkunden_json=drittkunden_json_state,
+            zulage_xlsx_drittkunden=zulage_xlsx_drittkunden,
             last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
         )
     st.download_button(
