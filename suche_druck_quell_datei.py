@@ -1337,24 +1337,149 @@ def normalize_wochentag_py(value: str) -> str:
     return mapping.get(key, raw)
 
 
+
+def rahmentour_standort_py(sap_value: str):
+    sap = str(sap_value or "").upper()
+    if "M" in sap:
+        return "M", "Malchow"
+    if "N" in sap:
+        return "N", "Neumünster"
+    if "Z" in sap:
+        return "Z", "Zarrentin"
+    return "", ""
+
+
+def build_tourkunden_data(excel_file, key_file=None, berater_csb_file=None) -> dict:
+    """Baut eine einfache Tour -> Kunden-Struktur für die Rahmentouransicht."""
+    if excel_file is None:
+        return {}
+
+    excel_bytes = read_upload_bytes(excel_file)
+
+    key_map: dict = {}
+    if key_file is not None:
+        try:
+            key_df = pd.read_excel(io.BytesIO(read_upload_bytes(key_file)), sheet_name=0, header=0)
+            if key_df.shape[1] < 2:
+                key_df = pd.read_excel(io.BytesIO(read_upload_bytes(key_file)), sheet_name=0, header=None)
+            key_map = build_key_map(key_df)
+        except Exception:
+            key_map = {}
+
+    berater_csb_map: dict = {}
+    if berater_csb_file is not None:
+        try:
+            bcf = pd.read_excel(io.BytesIO(read_upload_bytes(berater_csb_file)), sheet_name=0, header=0)
+        except Exception:
+            try:
+                bcf = pd.read_excel(io.BytesIO(read_upload_bytes(berater_csb_file)), sheet_name=0, header=None)
+            except Exception:
+                bcf = None
+        if bcf is not None:
+            try:
+                berater_csb_map = build_berater_csb_map(bcf)
+            except Exception:
+                berater_csb_map = {}
+
+    tour_dict: dict = {}
+
+    def kunden_sammeln(df: pd.DataFrame):
+        column_index = {str(col): idx for idx, col in enumerate(df.columns)}
+        if not column_index:
+            return
+
+        day_columns = [
+            (tag, spaltenname, column_index.get(spaltenname))
+            for tag, spaltenname in LIEFERTAGE_MAPPING.items()
+            if spaltenname in column_index
+        ]
+        field_columns = {field: column_index.get(spalte) for field, spalte in SPALTEN_MAPPING.items()}
+        csb_idx = field_columns.get("csb_nummer")
+
+        for row in df.itertuples(index=False, name=None):
+            for tag, _, day_idx in day_columns:
+                if day_idx is None or day_idx >= len(row):
+                    continue
+                tournr_raw = str(row[day_idx]).strip()
+                if not tournr_raw or not tournr_raw.replace(".", "", 1).isdigit():
+                    continue
+
+                tournr = normalize_digits_py(tournr_raw)
+                entry = {}
+                for field, idx in field_columns.items():
+                    value = row[idx] if idx is not None and idx < len(row) else ""
+                    entry[field] = str(value).strip()
+
+                csb = normalize_digits_py(row[csb_idx] if csb_idx is not None and csb_idx < len(row) else "")
+                entry["csb_nummer"] = csb
+                entry["sap_nummer"] = normalize_digits_py(entry.get("sap_nummer", ""))
+                entry["postleitzahl"] = normalize_digits_py(entry.get("postleitzahl", ""))
+                entry["schluessel"] = key_map.get(csb, "")
+                entry["liefertag"] = tag
+                if csb and csb in berater_csb_map and berater_csb_map[csb].get("name"):
+                    entry["fachberater"] = berater_csb_map[csb]["name"]
+
+                tour_dict.setdefault(tournr, []).append(entry)
+
+    try:
+        excel_book = pd.ExcelFile(io.BytesIO(excel_bytes), engine="openpyxl")
+        alle_blaetter = list(excel_book.sheet_names)
+    except Exception:
+        excel_book = None
+        alle_blaetter = []
+
+    vorhandene = [blatt for blatt in BLATTNAMEN if blatt in alle_blaetter]
+    zu_lesen = vorhandene or alle_blaetter or BLATTNAMEN
+
+    if excel_book is not None:
+        for blatt in zu_lesen:
+            try:
+                kunden_sammeln(pd.read_excel(excel_book, sheet_name=blatt))
+            except (ValueError, KeyError):
+                continue
+    else:
+        for blatt in zu_lesen:
+            try:
+                kunden_sammeln(pd.read_excel(io.BytesIO(excel_bytes), sheet_name=blatt))
+            except (ValueError, KeyError):
+                continue
+
+    tage = ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"]
+    tage_index = {tag: idx for idx, tag in enumerate(tage)}
+
+    sorted_tours = {}
+    for tournr, entries in sorted(tour_dict.items(), key=lambda kv: int(kv[0]) if str(kv[0]).isdigit() else 0):
+        dedup = {}
+        for entry in entries:
+            dkey = (
+                entry.get("csb_nummer", ""),
+                entry.get("sap_nummer", ""),
+                entry.get("name", ""),
+                entry.get("strasse", ""),
+                entry.get("postleitzahl", ""),
+                entry.get("ort", ""),
+                entry.get("liefertag", ""),
+            )
+            if dkey not in dedup:
+                dedup[dkey] = entry
+        cleaned = list(dedup.values())
+        cleaned.sort(key=lambda e: (
+            tage_index.get(e.get("liefertag", ""), 999),
+            e.get("name", ""),
+            e.get("csb_nummer", "")
+        ))
+        sorted_tours[tournr] = cleaned
+
+    return sorted_tours
+
+
+
 def build_rahmentour_week_data(csv_file) -> dict:
-    """Bereitet die Rahmentourprofil-CSV für eine interaktive Wochenansicht auf."""
+    """Bereitet die Rahmentourprofil-CSV für die kompakte Rahmentour/Kunden-Ansicht auf."""
     tage = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
     by_day = {tag: {"rahmentouren": 0, "touren": 0} for tag in tage}
     if csv_file is None:
-        return {
-            "days": tage,
-            "rows": [],
-            "by_day": by_day,
-            "summary": {
-                "rahmentouren": 0,
-                "touren": 0,
-                "tage_mit_eintraegen": 0,
-                "mehrfach_touren": 0,
-                "mehrtages_touren": 0,
-            },
-            "top_tours": [],
-        }
+        return {"days": tage, "rows": [], "by_day": by_day}
 
     import csv as _csv
     import io as _io
@@ -1368,7 +1493,6 @@ def build_rahmentour_week_data(csv_file) -> dict:
         raw = ""
 
     rows = []
-    tour_groups = {}
     day_unique_tours = {tag: set() for tag in tage}
     reader = _csv.reader(_io.StringIO(raw), delimiter=";", quotechar='"')
     header_skipped = False
@@ -1388,57 +1512,30 @@ def build_rahmentour_week_data(csv_file) -> dict:
         if not csb or not sap_raw or tag not in by_day:
             continue
 
+        standort_code, standort_name = rahmentour_standort_py(sap_raw)
+
         entry = {
             "sap": sap_raw,
             "sap_norm": sap_norm,
             "csb": csb,
             "wochentag": tag,
+            "standort_code": standort_code,
+            "standort_name": standort_name,
         }
         rows.append(entry)
         by_day[tag]["rahmentouren"] += 1
         day_unique_tours[tag].add(csb)
 
-        grp = tour_groups.setdefault(csb, {
-            "csb": csb,
-            "count": 0,
-            "wochentage": set(),
-            "sap_list": [],
-        })
-        grp["count"] += 1
-        grp["wochentage"].add(tag)
-        grp["sap_list"].append(sap_raw)
-
     for tag in tage:
         by_day[tag]["touren"] = len(day_unique_tours[tag])
 
     day_order = {tag: idx for idx, tag in enumerate(tage)}
-    rows.sort(key=lambda r: (day_order.get(r["wochentag"], 999), int(r["csb"]) if str(r["csb"]).isdigit() else 999999, r["sap_norm"]))
-
-    top_tours = []
-    for csb, grp in sorted(
-        tour_groups.items(),
-        key=lambda item: (-item[1]["count"], int(item[0]) if str(item[0]).isdigit() else 999999)
-    )[:20]:
-        top_tours.append({
-            "csb": csb,
-            "count": grp["count"],
-            "wochentage": sorted(grp["wochentage"], key=lambda tag: day_order.get(tag, 999)),
-            "sap_list": grp["sap_list"],
-        })
-
-    return {
-        "days": tage,
-        "rows": rows,
-        "by_day": by_day,
-        "summary": {
-            "rahmentouren": len(rows),
-            "touren": len(tour_groups),
-            "tage_mit_eintraegen": sum(1 for tag in tage if by_day[tag]["rahmentouren"] > 0),
-            "mehrfach_touren": sum(1 for grp in tour_groups.values() if grp["count"] > 1),
-            "mehrtages_touren": sum(1 for grp in tour_groups.values() if len(grp["wochentage"]) > 1),
-        },
-        "top_tours": top_tours,
-    }
+    rows.sort(key=lambda r: (
+        int(r["csb"]) if str(r["csb"]).isdigit() else 999999,
+        day_order.get(r["wochentag"], 999),
+        r["sap_norm"],
+    ))
+    return {"days": tage, "rows": rows, "by_day": by_day}
 
 
 def generate_suche_html(excel_file, key_file, logo_file,
@@ -2012,10 +2109,12 @@ def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa
         s_js  = to_js_array(s_b64)
         d_js  = to_js_array(d_b64)
         name_escaped = inst["name"].replace('"', '&quot;').replace("'", "&#39;")
+        inst_tour_data = json.dumps(inst.get("tourkunden_data", {}), ensure_ascii=False)
         inst_js_parts.append(
             f'{{name:"{name_escaped}",'
             f's:[{s_js}],'
-            f'd:[{d_js}]}}'
+            f'd:[{d_js}],'
+            f't:{inst_tour_data}}}'
         )
     instances_js = ",\n".join(inst_js_parts)
 
@@ -2084,8 +2183,8 @@ def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa
         pass
 
     rahmen_js_code = """
-// ── Rahmentour Woche ──────────────────────────────────────────────────────
-var rahmenState = { search: "", day: "Alle" };
+// ── Rahmentour / Kunden ───────────────────────────────────────────────────
+var rahmenState = { search: "" };
 
 function rahmenEsc(v) {
   return String(v == null ? "" : v)
@@ -2100,10 +2199,14 @@ function rahmenRows() {
   return (RAHMEN_DATA && Array.isArray(RAHMEN_DATA.rows)) ? RAHMEN_DATA.rows : [];
 }
 
-function rahmenDays() {
-  return (RAHMEN_DATA && Array.isArray(RAHMEN_DATA.days) && RAHMEN_DATA.days.length)
-    ? RAHMEN_DATA.days
-    : ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"];
+function rahmenCurrentWeekName() {
+  var inst = (typeof INSTANCES !== "undefined" && INSTANCES && INSTANCES[currentInst]) ? INSTANCES[currentInst] : null;
+  return inst && inst.name ? String(inst.name) : "";
+}
+
+function rahmenCurrentTourkunden() {
+  var inst = (typeof INSTANCES !== "undefined" && INSTANCES && INSTANCES[currentInst]) ? INSTANCES[currentInst] : null;
+  return inst && inst.t && typeof inst.t === "object" ? inst.t : {};
 }
 
 function rahmenNormalizeDigits(v) {
@@ -2112,117 +2215,205 @@ function rahmenNormalizeDigits(v) {
   return s || "0";
 }
 
-function rahmenMatchesQuery(r, qRaw) {
+function rahmenCustomerSortIndex(day) {
+  var tage = ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"];
+  var idx = tage.indexOf(String(day || ""));
+  return idx === -1 ? 999 : idx;
+}
+
+function rahmenDepotBadgeHtml(code, name) {
+  if(!code) return '<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;border:1px solid #cbd5e1;background:#fff;color:#475569;font-size:11px;font-weight:800;">ohne Kennung</span>';
+  var bg = "#eff6ff", bd = "#93c5fd", tx = "#1d4ed8";
+  if(code === "M") { bg = "#ecfdf5"; bd = "#86efac"; tx = "#166534"; }
+  else if(code === "N") { bg = "#eef2ff"; bd = "#a5b4fc"; tx = "#4338ca"; }
+  else if(code === "Z") { bg = "#fff7ed"; bd = "#fdba74"; tx = "#c2410c"; }
+  return '<span style="display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:999px;border:1px solid '+bd+';background:'+bg+';color:'+tx+';font-size:11px;font-weight:900;">'+rahmenEsc(code)+'<span style="font-weight:800;">'+rahmenEsc(name || "")+'</span></span>';
+}
+
+function rahmenGroupRows() {
+  var grouped = {};
+  rahmenRows().forEach(function(r) {
+    var csb = String(r.csb || "");
+    if(!csb) return;
+    if(!grouped[csb]) grouped[csb] = { csb: csb, mappings: [], customers: [] };
+    grouped[csb].mappings.push({
+      csb: csb,
+      sap: String(r.sap || ""),
+      sap_norm: String(r.sap_norm || ""),
+      wochentag: String(r.wochentag || ""),
+      standort_code: String(r.standort_code || ""),
+      standort_name: String(r.standort_name || "")
+    });
+  });
+
+  var tourkunden = rahmenCurrentTourkunden();
+  Object.keys(grouped).forEach(function(csb) {
+    var raw = Array.isArray(tourkunden[csb]) ? tourkunden[csb] : [];
+    var dedup = {};
+    raw.forEach(function(c) {
+      var key = [
+        c.csb_nummer || "",
+        c.sap_nummer || "",
+        c.name || "",
+        c.strasse || "",
+        c.postleitzahl || "",
+        c.ort || "",
+        c.liefertag || ""
+      ].join("|");
+      if(!dedup[key]) dedup[key] = c;
+    });
+    grouped[csb].customers = Object.keys(dedup).map(function(k){ return dedup[k]; }).sort(function(a, b) {
+      var d = rahmenCustomerSortIndex(a.liefertag) - rahmenCustomerSortIndex(b.liefertag);
+      if(d !== 0) return d;
+      var n = String(a.name || "").localeCompare(String(b.name || ""), "de", {numeric:true});
+      if(n !== 0) return n;
+      return String(a.csb_nummer || "").localeCompare(String(b.csb_nummer || ""), "de", {numeric:true});
+    });
+    grouped[csb].mappings.sort(function(a, b) {
+      var d = rahmenCustomerSortIndex(a.wochentag) - rahmenCustomerSortIndex(b.wochentag);
+      if(d !== 0) return d;
+      return String(a.sap_norm || a.sap || "").localeCompare(String(b.sap_norm || b.sap || ""), "de", {numeric:true});
+    });
+  });
+
+  return Object.keys(grouped).sort(function(a, b) {
+    return String(a).localeCompare(String(b), "de", {numeric:true});
+  }).map(function(csb){ return grouped[csb]; });
+}
+
+function rahmenSearchBlob(group) {
+  var parts = [group.csb || ""];
+  (group.mappings || []).forEach(function(m) {
+    parts.push(m.sap || "", m.sap_norm || "", m.wochentag || "", m.standort_code || "", m.standort_name || "");
+  });
+  (group.customers || []).forEach(function(c) {
+    parts.push(c.csb_nummer || "", c.sap_nummer || "", c.name || "", c.strasse || "", c.postleitzahl || "", c.ort || "", c.liefertag || "", c.fachberater || "");
+  });
+  return parts.join(" ").toLowerCase();
+}
+
+function rahmenMatchesGroup(group, qRaw) {
   if(!qRaw) return true;
-  var q = String(qRaw).toLowerCase();
-  var hasDigits = /\d/.test(qRaw);
-  var n = rahmenNormalizeDigits(qRaw);
-  var csb = String(r.csb || "");
-  var sap = String(r.sap || "");
-  var sapNorm = String(r.sap_norm || "");
-  var tag = String(r.wochentag || "");
-  var blob = (csb + " " + sap + " " + sapNorm + " " + tag).toLowerCase();
+  var q = String(qRaw || "").toLowerCase().trim();
+  var blob = rahmenSearchBlob(group);
   if(blob.indexOf(q) !== -1) return true;
-  if(!hasDigits) return false;
-  var csbN = rahmenNormalizeDigits(csb);
-  var sapN = rahmenNormalizeDigits(sapNorm || sap);
-  return !!(
-    (csbN && (csbN === n || csbN.startsWith(n))) ||
-    (sapN && (sapN === n || sapN.startsWith(n)))
-  );
+
+  if(!/\d/.test(qRaw)) return false;
+  var n = rahmenNormalizeDigits(qRaw);
+
+  var tourNr = rahmenNormalizeDigits(group.csb || "");
+  if(tourNr && (tourNr === n || tourNr.indexOf(n) === 0)) return true;
+
+  var hit = false;
+  (group.mappings || []).forEach(function(m) {
+    if(hit) return;
+    var sap = rahmenNormalizeDigits(m.sap_norm || m.sap || "");
+    if(sap && (sap === n || sap.indexOf(n) === 0)) hit = true;
+  });
+  (group.customers || []).forEach(function(c) {
+    if(hit) return;
+    var csbK = rahmenNormalizeDigits(c.csb_nummer || "");
+    var sapK = rahmenNormalizeDigits(c.sap_nummer || "");
+    if((csbK && (csbK === n || csbK.indexOf(n) === 0)) || (sapK && (sapK === n || sapK.indexOf(n) === 0))) hit = true;
+  });
+  return hit;
 }
 
-function rahmenFilterRows() {
-  var qRaw = String(rahmenState.search || "").trim();
-  var day = rahmenState.day || "Alle";
-  var dayOrder = {};
-  rahmenDays().forEach(function(label, idx){ dayOrder[label] = idx; });
-
-  return rahmenRows().filter(function(r) {
-    if(day !== "Alle" && String(r.wochentag || "") !== day) return false;
-    return rahmenMatchesQuery(r, qRaw);
-  }).sort(function(a, b) {
-    var d = (dayOrder[a.wochentag] ?? 999) - (dayOrder[b.wochentag] ?? 999);
-    if(d !== 0) return d;
-    var c = String(a.csb || "").localeCompare(String(b.csb || ""), "de", {numeric:true});
-    if(c !== 0) return c;
-    return String(a.sap_norm || a.sap || "").localeCompare(String(b.sap_norm || b.sap || ""), "de", {numeric:true});
-  });
-}
-
-function rahmenRenderDayButtons() {
-  var el = document.getElementById("rahmen-day-buttons");
-  if(!el) return;
-  var qRaw = String(rahmenState.search || "").trim();
-  var sourceRows = rahmenRows().filter(function(r){ return rahmenMatchesQuery(r, qRaw); });
-  var counts = { Alle: sourceRows.length };
-  rahmenDays().forEach(function(day){ counts[day] = 0; });
-  sourceRows.forEach(function(r) {
-    var day = String(r.wochentag || "");
-    if(counts[day] == null) counts[day] = 0;
-    counts[day] += 1;
-  });
-  var html = ["Alle"].concat(rahmenDays()).map(function(day) {
-    var active = rahmenState.day === day;
-    return '<button type="button" data-rahmen-day="'+rahmenEsc(day)+'" style="padding:6px 10px;border:1px solid '+(active ? '#1b66b3' : '#cbd5e1')+';background:'+(active ? '#eff6ff' : '#fff')+';color:'+(active ? '#1b66b3' : '#334155')+';border-radius:4px;cursor:pointer;font-size:12px;font-weight:800;">'+rahmenEsc(day)+' <span style="color:#64748b;">('+counts[day]+')</span></button>';
-  }).join(' ');
-  el.innerHTML = html;
-  el.querySelectorAll('[data-rahmen-day]').forEach(function(btn){
-    btn.onclick = function(){ rahmenState.day = this.getAttribute('data-rahmen-day') || 'Alle'; rahmenRender(); };
-  });
-}
-
-function rahmenRenderSummary(rows) {
+function rahmenRenderSummary(groups) {
   var el = document.getElementById("rahmen-summary");
   if(!el) return;
-  var csbSet = {};
-  rows.forEach(function(r){ if(r.csb) csbSet[r.csb] = true; });
-  var csbCount = Object.keys(csbSet).length;
-  var queryText = String(rahmenState.search || "").trim();
+  var kundenCount = 0;
+  groups.forEach(function(g){ kundenCount += (g.customers || []).length; });
+  var weekName = rahmenCurrentWeekName();
+  var q = String(rahmenState.search || "").trim();
   el.innerHTML =
     '<div style="background:#fff;border:1px solid #dbe3ec;border-radius:5px;padding:10px 12px;font-size:13px;color:#334155;">' +
-      '<span style="font-weight:900;color:#0f172a;">'+rows.length+'</span> Rahmentouren' +
-      ' · <span style="font-weight:900;color:#0f172a;">'+csbCount+'</span> CSB Tournummern' +
-      (queryText ? ' · Suche: <span style="font-weight:900;color:#1b66b3;">'+rahmenEsc(queryText)+'</span>' : '') +
-      (rahmenState.day !== 'Alle' ? ' · Tag: <span style="font-weight:900;color:#166534;">'+rahmenEsc(rahmenState.day)+'</span>' : '') +
+      (weekName ? '<span style="font-weight:900;color:#0f172a;">'+rahmenEsc(weekName)+'</span> · ' : '') +
+      '<span style="font-weight:900;color:#0f172a;">'+groups.length+'</span> Touren' +
+      ' · <span style="font-weight:900;color:#0f172a;">'+kundenCount+'</span> Kunden' +
+      (q ? ' · Suche: <span style="font-weight:900;color:#1b66b3;">'+rahmenEsc(q)+'</span>' : '') +
     '</div>';
 }
 
-function rahmenRenderTable(rows) {
+function rahmenBuildMappingsHtml(mappings) {
+  if(!mappings || !mappings.length) {
+    return '<div style="color:#94a3b8;font-size:12px;">Keine Rahmentour-Zuordnung.</div>';
+  }
+  return mappings.map(function(m) {
+    return '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 9px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;">' +
+      '<span style="font-size:11px;font-weight:900;color:#0f172a;min-width:78px;">'+rahmenEsc(m.wochentag || "")+'</span>' +
+      '<span style="font-size:12px;font-weight:900;color:#1d4ed8;">'+rahmenEsc(m.sap || "")+'</span>' +
+      rahmenDepotBadgeHtml(m.standort_code, m.standort_name) +
+    '</div>';
+  }).join("");
+}
+
+function rahmenBuildCustomersHtml(customers) {
+  if(!customers || !customers.length) {
+    return '<div style="padding:10px 12px;border:1px dashed #cbd5e1;border-radius:5px;color:#64748b;background:#fff;">Keine Kunden in der aktuell ausgewählten Woche für diese Tour.</div>';
+  }
+  var rows = customers.map(function(c, idx) {
+    var bg = idx % 2 ? '#f8fafc' : '#ffffff';
+    var ort = [c.postleitzahl || "", c.ort || ""].filter(Boolean).join(" ");
+    return '<tr style="background:'+bg+';">' +
+      '<td style="padding:7px 8px;border-bottom:1px solid #e2e8f0;white-space:nowrap;color:#334155;">'+rahmenEsc(c.liefertag || "")+'</td>' +
+      '<td style="padding:7px 8px;border-bottom:1px solid #e2e8f0;white-space:nowrap;font-weight:800;color:#0f172a;">'+rahmenEsc(c.csb_nummer || "")+'</td>' +
+      '<td style="padding:7px 8px;border-bottom:1px solid #e2e8f0;white-space:nowrap;color:#334155;">'+rahmenEsc(c.sap_nummer || "")+'</td>' +
+      '<td style="padding:7px 8px;border-bottom:1px solid #e2e8f0;font-weight:700;color:#0f172a;">'+rahmenEsc(c.name || "")+'</td>' +
+      '<td style="padding:7px 8px;border-bottom:1px solid #e2e8f0;color:#475569;">'+rahmenEsc(ort)+'</td>' +
+    '</tr>';
+  }).join("");
+  return '<div style="overflow:auto;border:1px solid #dbe3ec;border-radius:5px;background:#fff;">' +
+    '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
+    '<thead><tr>' +
+      '<th style="text-align:left;padding:8px;background:#eff6ff;border-bottom:1px solid #dbe3ec;white-space:nowrap;">Tag</th>' +
+      '<th style="text-align:left;padding:8px;background:#eff6ff;border-bottom:1px solid #dbe3ec;white-space:nowrap;">Kunden-Nr.</th>' +
+      '<th style="text-align:left;padding:8px;background:#eff6ff;border-bottom:1px solid #dbe3ec;white-space:nowrap;">SAP</th>' +
+      '<th style="text-align:left;padding:8px;background:#eff6ff;border-bottom:1px solid #dbe3ec;white-space:nowrap;">Kunde</th>' +
+      '<th style="text-align:left;padding:8px;background:#eff6ff;border-bottom:1px solid #dbe3ec;white-space:nowrap;">Ort</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+function rahmenRenderResults(groups) {
   var el = document.getElementById("rahmen-results");
   if(!el) return;
+
   if(!rahmenRows().length) {
     el.innerHTML = '<div style="background:#fff;border:1px solid #dbe3ec;border-radius:5px;padding:22px;color:#64748b;">Keine Rahmentourprofil CSV geladen.</div>';
     return;
   }
-  if(!rows.length) {
+  if(!groups.length) {
     el.innerHTML = '<div style="background:#fff;border:1px solid #dbe3ec;border-radius:5px;padding:22px;color:#64748b;">Keine Treffer.</div>';
     return;
   }
-  var html = '<div style="background:#fff;border:1px solid #dbe3ec;border-radius:5px;overflow:auto;">' +
-    '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
-    '<thead><tr>' +
-      '<th style="text-align:left;padding:10px 12px;background:#eff6ff;border-bottom:1px solid #dbe3ec;white-space:nowrap;">CSB Tournummer</th>' +
-      '<th style="text-align:left;padding:10px 12px;background:#eff6ff;border-bottom:1px solid #dbe3ec;white-space:nowrap;">SAP Rahmentour</th>' +
-      '<th style="text-align:left;padding:10px 12px;background:#eff6ff;border-bottom:1px solid #dbe3ec;white-space:nowrap;">Wochentag</th>' +
-    '</tr></thead><tbody>';
-  rows.forEach(function(r, idx) {
-    var bg = idx % 2 ? '#f8fafc' : '#ffffff';
-    html += '<tr style="background:'+bg+';">' +
-      '<td style="padding:9px 12px;border-bottom:1px solid #e2e8f0;font-weight:800;color:#0f172a;">'+rahmenEsc(r.csb)+'</td>' +
-      '<td style="padding:9px 12px;border-bottom:1px solid #e2e8f0;font-weight:800;color:#1d4ed8;">'+rahmenEsc(r.sap)+'</td>' +
-      '<td style="padding:9px 12px;border-bottom:1px solid #e2e8f0;color:#334155;">'+rahmenEsc(r.wochentag)+'</td>' +
-    '</tr>';
-  });
-  html += '</tbody></table></div>';
+
+  var html = groups.map(function(group) {
+    return '<div style="background:#fff;border:1px solid #dbe3ec;border-radius:6px;padding:14px 16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(15,23,42,.04);">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;">' +
+        '<div>' +
+          '<div style="font-size:18px;font-weight:900;color:#0f172a;">Tour '+rahmenEsc(group.csb)+'</div>' +
+          '<div style="font-size:12px;color:#64748b;margin-top:2px;">'+(group.customers && group.customers.length ? group.customers.length+' Kunden in der aktuellen Woche' : 'Keine Kunden in der aktuellen Woche')+'</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="margin-bottom:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;">' +
+        rahmenBuildMappingsHtml(group.mappings || []) +
+      '</div>' +
+      rahmenBuildCustomersHtml(group.customers || []) +
+    '</div>';
+  }).join("");
+
   el.innerHTML = html;
 }
 
 function rahmenRender() {
-  var rows = rahmenFilterRows();
-  rahmenRenderDayButtons();
-  rahmenRenderSummary(rows);
-  rahmenRenderTable(rows);
+  var q = String(rahmenState.search || "").trim();
+  var groups = rahmenGroupRows().filter(function(group) {
+    return rahmenMatchesGroup(group, q);
+  });
+  var dayBtns = document.getElementById("rahmen-day-buttons");
+  if(dayBtns) dayBtns.style.display = "none";
+  rahmenRenderSummary(groups);
+  rahmenRenderResults(groups);
 }
 
 function rahmenSetSearch(v) {
@@ -2232,9 +2423,8 @@ function rahmenSetSearch(v) {
 
 function rahmenReset() {
   rahmenState.search = "";
-  rahmenState.day = "Alle";
-  var inp = document.getElementById('rahmen-search');
-  if(inp) inp.value = '';
+  var inp = document.getElementById("rahmen-search");
+  if(inp) inp.value = "";
   rahmenRender();
 }
 """
@@ -2354,7 +2544,7 @@ iframe.active{{display:block}}
     </button>
     <div class="dd-menu" id="ddmenu-vz"></div>
   </div>
-  <button class="nav-btn" id="btn-rahmen" onclick="showArea('rahmen')">&#128197; Rahmentour Woche</button>
+  <button class="nav-btn" id="btn-rahmen" onclick="showArea('rahmen')">&#128197; Rahmentour / Kunden</button>
   <button class="nav-btn" id="btn-tel" onclick="showArea('tel')">&#128222; Telefonliste</button>
   <button class="nav-btn" id="btn-sam" onclick="showArea('sam')">&#128664; Sa + So Einstätze</button>
   <button class="nav-btn" id="btn-fa" onclick="showArea('fa')">&#128101; Fahrerauswertung</button>
@@ -2395,9 +2585,9 @@ iframe.active{{display:block}}
   <div id="panel-rahmen" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#e8ecf1;font-family:'Segoe UI',Arial,sans-serif">
     <div id="rahmen-main" style="max-width:980px;margin:0 auto">
       <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128197; Rahmentour Suche</h2>
-      <p style="color:#64748b;font-size:13px;margin:0 0 16px 0">Einfach Nummer eingeben. Sofort sichtbar: CSB Tournummer, SAP Rahmentour und Wochentag.</p>
+      <p style="color:#64748b;font-size:13px;margin:0 0 16px 0">Nummer oder Kunde eingeben. Pro Tour siehst du sofort Rahmentour, Wochentag, Standort M, N, Z und alle Kunden der aktuellen Woche.</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
-        <input id="rahmen-search" placeholder="CSB Tournummer oder SAP Rahmentour eingeben..." oninput="rahmenSetSearch(this.value)"
+        <input id="rahmen-search" placeholder="Tournummer, Rahmentour, Kundennummer, SAP oder Kunde eingeben..." oninput="rahmenSetSearch(this.value)"
           style="flex:1;min-width:260px;max-width:420px;padding:8px 14px;border:2px solid #1b66b3;border-radius:5px;font-size:13px;font-family:inherit;outline:none;background:#fff">
         <button onclick="rahmenReset()" style="padding:8px 12px;border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:5px;font-weight:800;font-size:12px;cursor:pointer;">Zurücksetzen</button>
       </div>
@@ -2534,6 +2724,7 @@ function loadInst(i) {{
     var menu = document.getElementById("ddmenu-"+area);
     if(menu) buildDdMenu(area);
   }});
+  if(currentArea === "rahmen") {{ rahmenRender(); }}
 }}
 
 function buildDdMenu(area) {{
@@ -3825,7 +4016,7 @@ st.divider()
 
 # ── Instanzen initialisieren ──────────────────────────────────────────────────
 def _empty_inst(name="Normalwochen"):
-    return {"name": name, "suche_html": None, "druck_html": None, "source_sig": None}
+    return {"name": name, "suche_html": None, "druck_html": None, "source_sig": None, "tourkunden_data": {}}
 
 if "instances" not in st.session_state:
     st.session_state.instances = [_empty_inst("Normalwochen")]
@@ -3874,6 +4065,9 @@ for i, inst in enumerate(st.session_state.instances):
             if inst.get("source_sig") != current_source_sig or not inst.get("suche_html") or not inst.get("druck_html"):
                 try:
                     with st.spinner("Generiere Suche + Druck …"):
+                        st.session_state.instances[i]["tourkunden_data"] = build_tourkunden_data(
+                            excel, key_file=_key, berater_csb_file=_fcsb
+                        )
                         st.session_state.instances[i]["suche_html"] = generate_suche_html(
                             excel, _key, _logo, _fach, _fcsb,
                             lieferhinweis_csv=_lh_csv, rahmentour_csv=_rahmen_csv
