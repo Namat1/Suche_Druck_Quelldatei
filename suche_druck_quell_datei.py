@@ -1146,6 +1146,7 @@ function hideKundenListe(){
   const wrap = $('#mkListeWrap');
   const content = $('#mkListeContent');
   const meta = $('#mkListeMeta');
+  window.__kundenListeState = null;
   if(content) content.innerHTML = '';
   if(meta) meta.textContent = '';
   if(wrap) wrap.style.display = 'none';
@@ -1158,16 +1159,13 @@ function escapeHtml(value){
     .replace(/"/g,'&quot;')
     .replace(/'/g,'&#39;');
 }
-function renderKundenStatCards(groups){
+function renderKundenToolbar(groups, activeGroup){
   const total = KUNDEN_LISTE_GROUP_ORDER.reduce((sum, name) => sum + ((groups[name]||[]).length), 0);
-  const parts = ['<div class="mk-stats">'];
+  const parts = ['<div class="mk-toolbar">'];
+  parts.push('<button class="mk-filter-btn' + (activeGroup === 'Alle' ? ' active' : '') + '" onclick="setKundenListeGroup('Alle')"><span>Alle</span><span class="mk-filter-count">' + total + '</span></button>');
   KUNDEN_LISTE_GROUP_ORDER.forEach(name => {
     const count = (groups[name]||[]).length;
-    parts.push('<div class="mk-stat">');
-    parts.push('<div class="mk-stat-label">' + escapeHtml(name) + '</div>');
-    parts.push('<div class="mk-stat-value">' + count + '</div>');
-    parts.push('<div class="mk-stat-sub">von ' + total + ' Kunden</div>');
-    parts.push('</div>');
+    parts.push('<button class="mk-filter-btn' + (activeGroup === name ? ' active' : '') + '" onclick="setKundenListeGroup(' + JSON.stringify(name) + ')"><span>' + escapeHtml(name) + '</span><span class="mk-filter-count">' + count + '</span></button>');
   });
   parts.push('</div>');
   return parts.join('');
@@ -1189,6 +1187,37 @@ function renderKundenGroupRows(rows){
   html += '</tbody></table>';
   return html;
 }
+function renderKundenListeContent(){
+  const state = window.__kundenListeState;
+  if(!state) return;
+  const groups = state.groups || {};
+  const activeGroup = state.activeGroup || 'Alle';
+  let rows = [];
+  let title = 'Alle Kategorien';
+  if(activeGroup === 'Alle'){
+    KUNDEN_LISTE_GROUP_ORDER.forEach(name => {
+      rows = rows.concat(groups[name] || []);
+    });
+  } else {
+    rows = groups[activeGroup] || [];
+    title = activeGroup;
+  }
+  const html = [renderKundenToolbar(groups, activeGroup)];
+  html.push('<div class="mk-panel">');
+  html.push('<div class="mk-panel-head"><span>' + escapeHtml(title) + '</span><span class="mk-panel-sub">' + rows.length + ' Kunden</span></div>');
+  html.push(renderKundenGroupRows(rows));
+  html.push('</div>');
+  $('#mkListeContent').innerHTML = html.join('');
+  const total = KUNDEN_LISTE_GROUP_ORDER.reduce((sum, name) => sum + ((groups[name]||[]).length), 0);
+  $('#mkListeMeta').textContent = total + ' Kunden nach Rahmentour-Bereich';
+  setResultsMeta(rows.length + ' Treffer · ' + title);
+}
+function setKundenListeGroup(name){
+  if(!window.__kundenListeState) return;
+  window.__kundenListeState.activeGroup = name || 'Alle';
+  renderKundenListeContent();
+}
+window.setKundenListeGroup = setKundenListeGroup;
 function onKundenListe(){
   closeTourSummary();
   hideKundenListe();
@@ -1231,23 +1260,15 @@ function onKundenListe(){
     });
   });
 
-  const html = [renderKundenStatCards(groups), '<div class="mk-groups">'];
-  KUNDEN_LISTE_GROUP_ORDER.forEach(name => {
-    const rows = groups[name] || [];
-    html.push('<div class="mk-group">');
-    html.push('<div class="mk-group-head">' + escapeHtml(name) + '<span class="mk-group-count">' + rows.length + '</span></div>');
-    html.push(renderKundenGroupRows(rows));
-    html.push('</div>');
-  });
-  html.push('</div>');
+  window.__kundenListeState = {
+    groups: groups,
+    activeGroup: 'Alle'
+  };
 
   $('#mkListeTitle').textContent = 'Kunden Liste';
-  $('#mkListeMeta').textContent = orderedCustomers.length + ' Kunden nach Rahmentour-Bereich';
-  $('#mkListeContent').innerHTML = html.join('');
   $('#mkListeWrap').style.display = 'block';
-
+  renderKundenListeContent();
   renderTable(orderedCustomers);
-  setResultsMeta(orderedCustomers.length + ' Treffer · Kunden Liste');
 }
 window.onKundenListe = onKundenListe;
 window.onMkListe = onKundenListe;
