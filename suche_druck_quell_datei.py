@@ -3263,11 +3263,11 @@ function kundenRenderCats() {{
   var h = "";
   // "Alle" button
   var aA = _kundenActiveGroup === "Alle";
-  h += "<button onclick='kundenSetGroup(\"Alle\")' style='padding:6px 14px;border-radius:8px;border:1.5px solid "+(aA?"#1e3a5f":"#cbd5e1")+";background:"+(aA?"#1e3a5f":"#fff")+";color:"+(aA?"#fff":"#475569")+";font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;'>Alle <b style=\"margin-left:4px;\">" + total + "</b></button>";
+  h += "<button onclick='kundenSetGroup(&#34;Alle&#34;)' style='padding:6px 14px;border-radius:8px;border:1.5px solid "+(aA?"#1e3a5f":"#cbd5e1")+";background:"+(aA?"#1e3a5f":"#fff")+";color:"+(aA?"#fff":"#475569")+";font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;'>Alle <b style=\'margin-left:4px;\'>" + total + "</b></button>";
   _kundenOrder.forEach(function(name) {{
     var cnt = (_kundenGroups[name]||[]).length;
     var isActive = _kundenActiveGroup === name;
-    h += "<button onclick='kundenSetGroup(" + JSON.stringify(name) + ")' style='padding:6px 14px;border-radius:8px;border:1.5px solid "+(isActive?"#1e3a5f":"#cbd5e1")+";background:"+(isActive?"#1e3a5f":"#fff")+";color:"+(isActive?"#fff":"#475569")+";font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;'>" + kundenEsc(name) + " <b style=\"margin-left:4px;\">" + cnt + "</b></button>";
+    h += "<button onclick='kundenSetGroup(" + JSON.stringify(name) + ")' style='padding:6px 14px;border-radius:8px;border:1.5px solid "+(isActive?"#1e3a5f":"#cbd5e1")+";background:"+(isActive?"#1e3a5f":"#fff")+";color:"+(isActive?"#fff":"#475569")+";font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;'>" + kundenEsc(name) + " <b style=\'margin-left:4px;\'>" + cnt + "</b></button>";
   }});
   el.innerHTML = h;
 }}
