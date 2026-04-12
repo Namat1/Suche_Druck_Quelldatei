@@ -1027,7 +1027,7 @@ def _patch_suche_template_rahmentour_list_in_rows(template: str) -> str:
     }
 """
     new = """    const _rhRaw = rahmentourIndex[tnum];
-    const _day = String(entry.liefertag || '').trim();
+    const _day = String(t.liefertag || '').trim();
     const _rhRows = Array.isArray(_rhRaw) ? _rhRaw : (_rhRaw ? [_rhRaw] : []);
     const _rhExact = _rhRows
       .filter(item => item && typeof item === 'object' && String(item.day || '').trim() === _day)
