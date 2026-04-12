@@ -1370,7 +1370,8 @@ def build_lieferhinweis_csv(csv_file) -> dict:
 def build_rahmentour_map(csv_file) -> dict:
     """Liest Rahmentourprofil-CSV: ';'-getrennt, gequotet.
     Felder: [0]=SAP Rahmentour, [1]=CSB Tournummer, [2]=Wochentag, ...
-    Gibt {csb_tournr: sap_rahmentour} zurück (führende Nullen bleiben erhalten)."""
+    Gibt {csb_tournr: sap_rahmentour} zurück.
+    Die Kisoft-Rahmentour wird für die Anzeige immer auf 10 Stellen mit führenden Nullen formatiert."""
     if csv_file is None:
         return {}
     import csv as _csv
@@ -1389,10 +1390,14 @@ def build_rahmentour_map(csv_file) -> dict:
         if not header_skipped:
             header_skipped = True
             if len(row) > 0 and not row[0].strip().lstrip("0").isdigit():
-                continue  # skip header row
+                continue
         if len(row) < 2:
             continue
-        sap = "".join(ch for ch in str(row[0]).strip() if ch.isdigit())
+
+        sap_raw = str(row[0]).strip().replace(".0", "")
+        sap_digits = "".join(ch for ch in sap_raw if ch.isdigit())
+        sap = sap_digits.zfill(10) if sap_digits else ""
+
         csb = normalize_digits_py(row[1])
         if csb and sap:
             result[csb] = sap
