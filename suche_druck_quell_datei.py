@@ -1037,13 +1037,6 @@ def _patch_suche_template_rahmentour_list_in_rows(template: str) -> str:
       .map(item => item && typeof item === 'object' ? String(item.sap || '').trim() : String(item || '').trim())
       .filter(Boolean);
     const _rhList = (_rhExact.length ? _rhExact : _rhFallback).filter((v, i, a) => a.indexOf(v) === i);
-    if(_rhList.length){
-      const rhSpan = document.createElement('span');
-      rhSpan.className = 'rahmen';
-      rhSpan.textContent = _rhList.join(', ');
-      rhSpan.title = _rhList.join(', ');
-      b.appendChild(rhSpan);
-    }
 """
     if old in template:
         return template.replace(old, new, 1)
