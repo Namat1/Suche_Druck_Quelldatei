@@ -1162,7 +1162,7 @@ function escapeHtml(value){
 function renderKundenToolbar(groups, activeGroup){
   const total = KUNDEN_LISTE_GROUP_ORDER.reduce((sum, name) => sum + ((groups[name]||[]).length), 0);
   const parts = ['<div class="mk-toolbar">'];
-  parts.push('<button class="mk-filter-btn' + (activeGroup === 'Alle' ? ' active' : '') + '" onclick="setKundenListeGroup('Alle')"><span>Alle</span><span class="mk-filter-count">' + total + '</span></button>');
+  parts.push('<button class="mk-filter-btn' + (activeGroup === 'Alle' ? ' active' : '') + '" onclick="setKundenListeGroup(&#39;Alle&#39;)"><span>Alle</span><span class="mk-filter-count">' + total + '</span></button>');
   KUNDEN_LISTE_GROUP_ORDER.forEach(name => {
     const count = (groups[name]||[]).length;
     parts.push("<button class='mk-filter-btn" + (activeGroup === name ? " active" : "") + "' onclick='setKundenListeGroup(" + JSON.stringify(name) + ")'><span>" + escapeHtml(name) + "</span><span class='mk-filter-count'>" + count + "</span></button>");
