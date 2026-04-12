@@ -819,14 +819,20 @@ def _patch_suche_template_search_all_inputs(template: str) -> str:
 
   const q = normDE(qRaw);
   const n = normalizeDigits(qRaw);
-  const getRahmentour = (tournummer) => normalizeDigits(rahmentourIndex[normalizeDigits(tournummer)] || '');
+  const getRahmentourList = (tournummer) => {
+    const key = normalizeDigits(tournummer);
+    const raw = rahmentourIndex[key];
+    if(Array.isArray(raw)) return raw.map(v => normalizeDigits(v)).filter(Boolean);
+    const one = normalizeDigits(raw || '');
+    return one ? [one] : [];
+  };
 
   let r = allCustomers.filter(k=>{
     const fb = k.fachberater || '';
     const tourText = (k.touren||[]).map(t => {
       const tourNum = t.tournummer || '';
-      const rahmen = getRahmentour(tourNum);
-      return [tourNum, t.liefertag || '', rahmen].filter(Boolean).join(' ');
+      const rahmenListe = getRahmentourList(tourNum);
+      return [tourNum, t.liefertag || '', ...rahmenListe].filter(Boolean).join(' ');
     }).join(' ');
     const text = (
       (k.name||'') + ' ' +
@@ -853,16 +859,16 @@ def _patch_suche_template_search_all_inputs(template: str) -> str:
 
     return (k.touren||[]).some(t=>{
       const tourNum = normalizeDigits(t.tournummer);
-      const rahmen = getRahmentour(t.tournummer);
+      const rahmenListe = getRahmentourList(t.tournummer);
       if(tourNum && (tourNum === n || tourNum.startsWith(n))) return true;
-      if(rahmen && (rahmen === n || rahmen.startsWith(n))) return true;
+      if(rahmenListe.some(rahmen => rahmen === n || rahmen.startsWith(n))) return true;
       return false;
     });
   });
 
   if(n){
     const tr = allCustomers.filter(k => (k.touren||[]).some(t => normalizeDigits(t.tournummer) === n));
-    const rr = allCustomers.filter(k => (k.touren||[]).some(t => getRahmentour(t.tournummer) === n));
+    const rr = allCustomers.filter(k => (k.touren||[]).some(t => getRahmentourList(t.tournummer).some(rahmen => rahmen === n)));
     const summaryMatches = dedupByCSB([...tr, ...rr]);
     if(summaryMatches.length){
       renderTourSummary(summaryMatches, n);
@@ -905,10 +911,17 @@ def _patch_suche_template_kisoft_rahmentour(template: str) -> str:
   $('#tourSummaryMeta').textContent  = "";
 """,
         """  const queryTour = normalizeDigits(tour);
+  const getRahmentourList = (tournummer) => {
+    const tourNum = normalizeDigits(tournummer);
+    const raw = rahmentourIndex[tourNum];
+    if(Array.isArray(raw)) return raw.map(v => normalizeDigits(v)).filter(Boolean);
+    const one = normalizeDigits(raw || '');
+    return one ? [one] : [];
+  };
   const matchesTour = (t) => {
     const tourNum = normalizeDigits(t && t.tournummer);
-    const rahmen = normalizeDigits(rahmentourIndex[tourNum] || '');
-    return !!tourNum && (tourNum === queryTour || rahmen === queryTour);
+    const rahmenListe = getRahmentourList(tourNum);
+    return !!tourNum && (tourNum === queryTour || rahmenListe.includes(queryTour));
   };
   const extractTournummer = (k) => {
     for(const t of (k.touren||[])){
@@ -918,7 +931,8 @@ def _patch_suche_template_kisoft_rahmentour(template: str) -> str:
   };
 
   const summaryTournummer = list.map(extractTournummer).find(Boolean) || normalizeDigits(tour) || String(tour||'').trim();
-  const summaryRahmentour = String(rahmentourIndex[summaryTournummer] || '').trim();
+  const summaryRahmentourListe = getRahmentourList(summaryTournummer);
+  const summaryRahmentour = summaryRahmentourListe.join(', ');
 
   // Wochentag(e) für diese Tour oder Rahmentour
   const daySet = new Set();
@@ -934,7 +948,7 @@ def _patch_suche_template_kisoft_rahmentour(template: str) -> str:
   const dayLabel = days.length ? days.join("/") : "";
 
   $('#tourSummaryTitle').textContent = dayLabel ? `${summaryTournummer} – ${dayLabel}` : `${summaryTournummer}`;
-  $('#tourSummaryMeta').textContent  = summaryRahmentour ? `Kisoft Rahmentour: ${summaryRahmentour}` : "";
+  $('#tourSummaryMeta').textContent  = summaryRahmentour ? `Kisoft Rahmentouren: ${summaryRahmentour}` : "";
 """,
         1,
     )
@@ -958,6 +972,36 @@ def _patch_suche_template_kisoft_rahmentour(template: str) -> str:
 
 
 SUCHE_HTML_TEMPLATE = _patch_suche_template_kisoft_rahmentour(SUCHE_HTML_TEMPLATE)
+
+
+def _patch_suche_template_rahmentour_list_in_rows(template: str) -> str:
+    """Zeigt in der Ergebnisliste alle Kisoft-Rahmentouren je Tour an."""
+    old = """    const _rh = rahmentourIndex[tnum];
+    if(_rh){
+      const rhSpan = document.createElement('span');
+      rhSpan.className = 'rahmen';
+      rhSpan.textContent = _rh;
+      b.appendChild(rhSpan);
+    }
+"""
+    new = """    const _rhRaw = rahmentourIndex[tnum];
+    const _rhList = Array.isArray(_rhRaw)
+      ? _rhRaw.map(v => String(v||'').trim()).filter(Boolean)
+      : (String(_rhRaw||'').trim() ? [String(_rhRaw).trim()] : []);
+    if(_rhList.length){
+      const rhSpan = document.createElement('span');
+      rhSpan.className = 'rahmen';
+      rhSpan.textContent = _rhList.join(', ');
+      rhSpan.title = _rhList.join(', ');
+      b.appendChild(rhSpan);
+    }
+"""
+    if old in template:
+        return template.replace(old, new, 1)
+    return template
+
+
+SUCHE_HTML_TEMPLATE = _patch_suche_template_rahmentour_list_in_rows(SUCHE_HTML_TEMPLATE)
 
 DRUCK_HTML_TEMPLATE: str = base64.b64decode(_DRUCK_B64).decode("utf-8")
 
@@ -1369,9 +1413,10 @@ def build_lieferhinweis_csv(csv_file) -> dict:
 
 def build_rahmentour_map(csv_file) -> dict:
     """Liest Rahmentourprofil-CSV: ';'-getrennt, gequotet.
-    Felder: [0]=SAP Rahmentour, [1]=CSB Tournummer, [2]=Wochentag, ...
-    Gibt {csb_tournr: sap_rahmentour} zurück.
-    Die Kisoft-Rahmentour wird für die Anzeige immer auf 10 Stellen mit führenden Nullen formatiert."""
+    Erwartet bevorzugt die Kopfzeilen "SAP Rahmentour" und "CSB Tournummer".
+    Gibt {csb_tournr: [sap_rahmentour_1, sap_rahmentour_2, ...]} zurück.
+    Mehrfachzuordnungen bleiben erhalten; doppelte Werte werden je Tour nur einmal übernommen.
+    Die Kisoft-Rahmentouren werden für die Anzeige immer auf 10 Stellen mit führenden Nullen formatiert."""
     if csv_file is None:
         return {}
     import csv as _csv
@@ -1383,24 +1428,34 @@ def build_rahmentour_map(csv_file) -> dict:
             raw = raw.decode("utf-8-sig", errors="replace")
     except Exception:
         return {}
+
+    def _norm_header(value: str) -> str:
+        return re.sub(r"\s+", " ", str(value or "").strip().lower())
+
     result = {}
     reader = _csv.reader(_io.StringIO(raw), delimiter=";", quotechar='"')
-    header_skipped = False
-    for row in reader:
-        if not header_skipped:
-            header_skipped = True
-            if len(row) > 0 and not row[0].strip().lstrip("0").isdigit():
-                continue
-        if len(row) < 2:
-            continue
 
-        sap_raw = str(row[0]).strip().replace(".0", "")
+    try:
+        header = next(reader)
+    except StopIteration:
+        return result
+
+    header_norm = [_norm_header(col) for col in header]
+    sap_idx = header_norm.index("sap rahmentour") if "sap rahmentour" in header_norm else 0
+    csb_idx = header_norm.index("csb tournummer") if "csb tournummer" in header_norm else 1
+
+    for row in reader:
+        if not row:
+            continue
+        sap_raw = str(row[sap_idx]).strip().replace(".0", "") if len(row) > sap_idx else ""
         sap_digits = "".join(ch for ch in sap_raw if ch.isdigit())
         sap = sap_digits.zfill(10) if sap_digits else ""
-
-        csb = normalize_digits_py(row[1])
-        if csb and sap:
-            result[csb] = sap
+        csb = normalize_digits_py(row[csb_idx]) if len(row) > csb_idx else ""
+        if not (csb and sap):
+            continue
+        result.setdefault(csb, [])
+        if sap not in result[csb]:
+            result[csb].append(sap)
     return result
 
 
