@@ -773,6 +773,7 @@ document.addEventListener('DOMContentLoaded', function(){
 SUCHE_HTML_TEMPLATE = _patch_suche_template_tour_summary_collapsible_fix(SUCHE_HTML_TEMPLATE)
 
 
+
 def _patch_suche_template_search_all_inputs(template: str) -> str:
     """Die Suche soll bei jeder Eingabe alle Felder durchsuchen,
     auch bei kurzen oder rein numerischen Werten wie 3-, 4- oder 5-stelligen Eingaben."""
@@ -819,19 +820,31 @@ def _patch_suche_template_search_all_inputs(template: str) -> str:
 
   const q = normDE(qRaw);
   const n = normalizeDigits(qRaw);
-  const getRahmentourList = (tournummer) => {
+  const normalizeRahmentourCode = (value) => String(value||'').toUpperCase().replace(/\\s+/g,'');
+  const getRahmentourList = (tournummer, dayLabel) => {
     const key = normalizeDigits(tournummer);
     const raw = rahmentourIndex[key];
-    if(Array.isArray(raw)) return raw.map(v => normalizeDigits(v)).filter(Boolean);
-    const one = normalizeDigits(raw || '');
-    return one ? [one] : [];
+    const day = String(dayLabel||'').trim();
+    const rows = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    const exact = rows
+      .filter(item => item && typeof item === 'object' && String(item.day||'').trim() === day)
+      .map(item => normalizeRahmentourCode(item.sap))
+      .filter(Boolean);
+    const fallback = rows
+      .map(item => {
+        if(item && typeof item === 'object') return normalizeRahmentourCode(item.sap);
+        return normalizeRahmentourCode(item);
+      })
+      .filter(Boolean);
+    return (exact.length ? exact : fallback).filter((v, i, a) => a.indexOf(v) === i);
   };
+  const rahmenQuery = normalizeRahmentourCode(qRaw);
 
   let r = allCustomers.filter(k=>{
     const fb = k.fachberater || '';
     const tourText = (k.touren||[]).map(t => {
       const tourNum = t.tournummer || '';
-      const rahmenListe = getRahmentourList(tourNum);
+      const rahmenListe = getRahmentourList(tourNum, t.liefertag);
       return [tourNum, t.liefertag || '', ...rahmenListe].filter(Boolean).join(' ');
     }).join(' ');
     const text = (
@@ -851,27 +864,29 @@ def _patch_suche_template_search_all_inputs(template: str) -> str:
     );
 
     if(normDE(text).includes(q)) return true;
-    if(!n) return false;
+    if(!n && !rahmenQuery) return false;
 
-    if(normalizeDigits(k.csb_nummer) === n) return true;
-    if(normalizeDigits(k.sap_nummer) === n) return true;
-    if(normalizeDigits(k.schluessel) === n) return true;
+    if(n){
+      if(normalizeDigits(k.csb_nummer) === n) return true;
+      if(normalizeDigits(k.sap_nummer) === n) return true;
+      if(normalizeDigits(k.schluessel) === n) return true;
+    }
 
     return (k.touren||[]).some(t=>{
       const tourNum = normalizeDigits(t.tournummer);
-      const rahmenListe = getRahmentourList(t.tournummer);
-      if(tourNum && (tourNum === n || tourNum.startsWith(n))) return true;
-      if(rahmenListe.some(rahmen => rahmen === n || rahmen.startsWith(n))) return true;
+      const rahmenListe = getRahmentourList(t.tournummer, t.liefertag);
+      if(n && tourNum && (tourNum === n || tourNum.startsWith(n))) return true;
+      if(rahmenQuery && rahmenListe.some(rahmen => rahmen === rahmenQuery || rahmen.startsWith(rahmenQuery))) return true;
       return false;
     });
   });
 
-  if(n){
-    const tr = allCustomers.filter(k => (k.touren||[]).some(t => normalizeDigits(t.tournummer) === n));
-    const rr = allCustomers.filter(k => (k.touren||[]).some(t => getRahmentourList(t.tournummer).some(rahmen => rahmen === n)));
+  if(n || rahmenQuery){
+    const tr = n ? allCustomers.filter(k => (k.touren||[]).some(t => normalizeDigits(t.tournummer) === n)) : [];
+    const rr = rahmenQuery ? allCustomers.filter(k => (k.touren||[]).some(t => getRahmentourList(t.tournummer, t.liefertag).some(rahmen => rahmen === rahmenQuery))) : [];
     const summaryMatches = dedupByCSB([...tr, ...rr]);
     if(summaryMatches.length){
-      renderTourSummary(summaryMatches, n);
+      renderTourSummary(summaryMatches, n || rahmenQuery);
       r = dedupByCSB([...summaryMatches, ...r]);
     }
   }
@@ -885,6 +900,7 @@ def _patch_suche_template_search_all_inputs(template: str) -> str:
 
 
 SUCHE_HTML_TEMPLATE = _patch_suche_template_search_all_inputs(SUCHE_HTML_TEMPLATE)
+
 
 def _patch_suche_template_kisoft_rahmentour(template: str) -> str:
     """Blendet die Kisoft-Rahmentour in der Tour-Uebersicht sichtbar ein."""
@@ -910,18 +926,32 @@ def _patch_suche_template_kisoft_rahmentour(template: str) -> str:
   $('#tourSummaryTitle').textContent = dayLabel ? `${tour} – ${dayLabel}` : `${tour}`;
   $('#tourSummaryMeta').textContent  = "";
 """,
-        """  const queryTour = normalizeDigits(tour);
-  const getRahmentourList = (tournummer) => {
+        """  const normalizeRahmentourCode = (value) => String(value||'').toUpperCase().replace(/\\s+/g,'');
+  const queryTourDigits = normalizeDigits(tour);
+  const queryRahmen = normalizeRahmentourCode(tour);
+  const getRahmentourList = (tournummer, dayLabel) => {
     const tourNum = normalizeDigits(tournummer);
     const raw = rahmentourIndex[tourNum];
-    if(Array.isArray(raw)) return raw.map(v => normalizeDigits(v)).filter(Boolean);
-    const one = normalizeDigits(raw || '');
-    return one ? [one] : [];
+    const day = String(dayLabel||'').trim();
+    const rows = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    const exact = rows
+      .filter(item => item && typeof item === 'object' && String(item.day||'').trim() === day)
+      .map(item => normalizeRahmentourCode(item.sap))
+      .filter(Boolean);
+    const fallback = rows
+      .map(item => {
+        if(item && typeof item === 'object') return normalizeRahmentourCode(item.sap);
+        return normalizeRahmentourCode(item);
+      })
+      .filter(Boolean);
+    return (exact.length ? exact : fallback).filter((v, i, a) => a.indexOf(v) === i);
   };
   const matchesTour = (t) => {
     const tourNum = normalizeDigits(t && t.tournummer);
-    const rahmenListe = getRahmentourList(tourNum);
-    return !!tourNum && (tourNum === queryTour || rahmenListe.includes(queryTour));
+    const rahmenListe = getRahmentourList(t && t.tournummer, t && t.liefertag);
+    if(queryTourDigits && tourNum === queryTourDigits) return true;
+    if(queryRahmen && rahmenListe.includes(queryRahmen)) return true;
+    return false;
   };
   const extractTournummer = (k) => {
     for(const t of (k.touren||[])){
@@ -931,8 +961,6 @@ def _patch_suche_template_kisoft_rahmentour(template: str) -> str:
   };
 
   const summaryTournummer = list.map(extractTournummer).find(Boolean) || normalizeDigits(tour) || String(tour||'').trim();
-  const summaryRahmentourListe = getRahmentourList(summaryTournummer);
-  const summaryRahmentour = summaryRahmentourListe.join(', ');
 
   // Wochentag(e) für diese Tour oder Rahmentour
   const daySet = new Set();
@@ -946,6 +974,19 @@ def _patch_suche_template_kisoft_rahmentour(template: str) -> str:
   const dayOrder = ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"];
   const days = Array.from(daySet).sort((a,b)=>dayOrder.indexOf(a)-dayOrder.indexOf(b));
   const dayLabel = days.length ? days.join("/") : "";
+
+  const summaryRahmentourSet = new Set();
+  for(const k of list){
+    for(const t of (k.touren||[])){
+      if(matchesTour(t)){
+        getRahmentourList(t.tournummer, t.liefertag).forEach(v => summaryRahmentourSet.add(v));
+      }
+    }
+  }
+  if(!summaryRahmentourSet.size){
+    getRahmentourList(summaryTournummer, dayLabel).forEach(v => summaryRahmentourSet.add(v));
+  }
+  const summaryRahmentour = Array.from(summaryRahmentourSet).join(', ');
 
   $('#tourSummaryTitle').textContent = dayLabel ? `${summaryTournummer} – ${dayLabel}` : `${summaryTournummer}`;
   $('#tourSummaryMeta').textContent  = summaryRahmentour ? `Kisoft Rahmentouren: ${summaryRahmentour}` : "";
@@ -974,6 +1015,7 @@ def _patch_suche_template_kisoft_rahmentour(template: str) -> str:
 SUCHE_HTML_TEMPLATE = _patch_suche_template_kisoft_rahmentour(SUCHE_HTML_TEMPLATE)
 
 
+
 def _patch_suche_template_rahmentour_list_in_rows(template: str) -> str:
     """Zeigt in der Ergebnisliste alle Kisoft-Rahmentouren je Tour an."""
     old = """    const _rh = rahmentourIndex[tnum];
@@ -985,9 +1027,16 @@ def _patch_suche_template_rahmentour_list_in_rows(template: str) -> str:
     }
 """
     new = """    const _rhRaw = rahmentourIndex[tnum];
-    const _rhList = Array.isArray(_rhRaw)
-      ? _rhRaw.map(v => String(v||'').trim()).filter(Boolean)
-      : (String(_rhRaw||'').trim() ? [String(_rhRaw).trim()] : []);
+    const _day = String(entry.liefertag || '').trim();
+    const _rhRows = Array.isArray(_rhRaw) ? _rhRaw : (_rhRaw ? [_rhRaw] : []);
+    const _rhExact = _rhRows
+      .filter(item => item && typeof item === 'object' && String(item.day || '').trim() === _day)
+      .map(item => String(item.sap || '').trim())
+      .filter(Boolean);
+    const _rhFallback = _rhRows
+      .map(item => item && typeof item === 'object' ? String(item.sap || '').trim() : String(item || '').trim())
+      .filter(Boolean);
+    const _rhList = (_rhExact.length ? _rhExact : _rhFallback).filter((v, i, a) => a.indexOf(v) === i);
     if(_rhList.length){
       const rhSpan = document.createElement('span');
       rhSpan.className = 'rahmen';
@@ -1411,12 +1460,12 @@ def build_lieferhinweis_csv(csv_file) -> dict:
             result[csb] = entry
     return result
 
+
 def build_rahmentour_map(csv_file) -> dict:
     """Liest Rahmentourprofil-CSV: ';'-getrennt, gequotet.
-    Erwartet bevorzugt die Kopfzeilen "SAP Rahmentour" und "CSB Tournummer".
-    Gibt {csb_tournr: [sap_rahmentour_1, sap_rahmentour_2, ...]} zurück.
-    Mehrfachzuordnungen bleiben erhalten; doppelte Werte werden je Tour nur einmal übernommen.
-    Die Kisoft-Rahmentouren werden für die Anzeige immer auf 10 Stellen mit führenden Nullen formatiert."""
+    Erwartet bevorzugt die Kopfzeilen "SAP Rahmentour", "CSB Tournummer" und "Wochentag".
+    Gibt {csb_tournr: [{"sap": "...", "day": "Montag"}, ...]} zurück.
+    Buchstaben wie M/N/Z bleiben erhalten; Mehrfachzuordnungen bleiben erhalten."""
     if csv_file is None:
         return {}
     import csv as _csv
@@ -1432,6 +1481,11 @@ def build_rahmentour_map(csv_file) -> dict:
     def _norm_header(value: str) -> str:
         return re.sub(r"\s+", " ", str(value or "").strip().lower())
 
+    def _norm_sap(value) -> str:
+        s = str(value or "").strip().replace(".0", "")
+        s = re.sub(r"\s+", "", s).upper()
+        return s
+
     result = {}
     reader = _csv.reader(_io.StringIO(raw), delimiter=";", quotechar='"')
 
@@ -1443,19 +1497,20 @@ def build_rahmentour_map(csv_file) -> dict:
     header_norm = [_norm_header(col) for col in header]
     sap_idx = header_norm.index("sap rahmentour") if "sap rahmentour" in header_norm else 0
     csb_idx = header_norm.index("csb tournummer") if "csb tournummer" in header_norm else 1
+    day_idx = header_norm.index("wochentag") if "wochentag" in header_norm else 2
 
     for row in reader:
         if not row:
             continue
-        sap_raw = str(row[sap_idx]).strip().replace(".0", "") if len(row) > sap_idx else ""
-        sap_digits = "".join(ch for ch in sap_raw if ch.isdigit())
-        sap = sap_digits.zfill(10) if sap_digits else ""
+        sap = _norm_sap(row[sap_idx] if len(row) > sap_idx else "")
         csb = normalize_digits_py(row[csb_idx]) if len(row) > csb_idx else ""
+        day = str(row[day_idx]).strip() if len(row) > day_idx else ""
         if not (csb and sap):
             continue
         result.setdefault(csb, [])
-        if sap not in result[csb]:
-            result[csb].append(sap)
+        entry = {"sap": sap, "day": day}
+        if entry not in result[csb]:
+            result[csb].append(entry)
     return result
 
 
