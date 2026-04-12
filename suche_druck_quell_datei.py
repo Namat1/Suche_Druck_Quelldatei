@@ -3306,13 +3306,13 @@ function kundenGetRows() {{
     }});
     if(exact.length) return exact;
     if(isNumeric) {{
-      // Numeric: match SAP/CSB start-with, or individual tour numbers exactly
+      var qLen = _kundenSearchQ.length;
+      // Numeric: match SAP/CSB/tour numbers with same digit count
       rows = rows.filter(function(r) {{
-        if((r.sap||"").indexOf(_kundenSearchQ) === 0) return true;
-        if((r.csb||"").indexOf(_kundenSearchQ) === 0) return true;
-        // Extract individual tour numbers and check exact match
+        if((r.sap||"").length === qLen && (r.sap||"") === _kundenSearchQ) return true;
+        if((r.csb||"").length === qLen && (r.csb||"") === _kundenSearchQ) return true;
         var tourNums = (r.touren||"").match(/\d+/g) || [];
-        return tourNums.some(function(tn){{ return tn === _kundenSearchQ; }});
+        return tourNums.some(function(tn){{ return tn.length === qLen && tn === _kundenSearchQ; }});
       }});
     }} else {{
       // Text: partial match on name, ort, touren
