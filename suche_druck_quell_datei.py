@@ -2516,7 +2516,7 @@ iframe.active{{display:block}}
         <button onclick="kundenExportExcel()" style="margin-left:auto;padding:6px 14px;background:#1d6f42;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;">&#128196; Excel</button>
       </div>
       <div id="kunden-cats" style="display:flex;gap:6px;padding:0 0 10px 0;flex-wrap:wrap;flex-shrink:0;"></div>
-      <div id="kunden-body" style="flex:1;overflow-y:auto;padding:0;border-radius:8px;border:1.5px solid #e2e8f0;background:#fff;">
+      <div id="kunden-body" style="flex:1;overflow-y:auto;padding:0 0 30px 0;border-radius:8px;border:1.5px solid #e2e8f0;background:#fff;margin-bottom:30px;">
         <div style="color:#94a3b8;padding:60px;text-align:center;font-size:14px;">Daten werden geladen &hellip;</div>
       </div>
     </div>
