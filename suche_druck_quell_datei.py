@@ -1052,6 +1052,219 @@ def _patch_suche_template_rahmentour_list_in_rows(template: str) -> str:
 
 SUCHE_HTML_TEMPLATE = _patch_suche_template_rahmentour_list_in_rows(SUCHE_HTML_TEMPLATE)
 
+
+
+def _patch_suche_template_sonderliste_marktkauf(template: str) -> str:
+    """Fuegt einen Button mit Sonderliste fuer definierte SAP-Nummern hinzu."""
+    template = template.replace(
+        "grid-template-columns:1fr 220px auto auto auto;",
+        "grid-template-columns:1fr 220px auto auto auto auto;",
+        1,
+    )
+
+    template = template.replace(
+        "<button class=\"btn btn-danger\" id=\"btnReset\">Zurücksetzen</button>",
+        "<button class=\"btn\" id=\"btnMKListe\">MK-Liste</button>\n        <button class=\"btn btn-danger\" id=\"btnReset\">Zurücksetzen</button>",
+        1,
+    )
+
+    template = template.replace(
+        "      </div>\n\n      <!-- Tour-Übersicht -->",
+        "      </div>\n\n      <div class=\"tour-summary\" id=\"mkListeWrap\" style=\"display:none;\">\n        <div class=\"tour-summary-head\">\n          <div>\n            <div class=\"tour-summary-title\" id=\"mkListeTitle\">MK-Liste</div>\n            <div class=\"tour-summary-meta\" id=\"mkListeMeta\"></div>\n          </div>\n        </div>\n        <div class=\"tour-summary-tablewrap\" id=\"mkListeContent\"></div>\n      </div>\n\n      <!-- Tour-Übersicht -->",
+        1,
+    )
+
+    template = template.replace(
+        "</style>",
+        """
+.mk-groups{display:grid;gap:12px}
+.mk-group{border:1px solid var(--grid);border-radius:5px;overflow:hidden;background:#fff}
+.mk-group-head{padding:8px 10px;background:linear-gradient(180deg,#f8fafc 0%,#eef2f7 100%);border-bottom:1px solid var(--grid);font-size:12px;font-weight:900;color:#0f172a}
+.mk-group-count{color:var(--muted-2);font-weight:800;margin-left:6px}
+.mk-table{width:100%;border-collapse:separate;border-spacing:0;table-layout:auto;font-size:11px}
+.mk-table th{padding:7px 8px;text-align:left;background:#e6eaf1;color:#0f172a;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.2px;border-bottom:1px solid var(--grid);white-space:nowrap}
+.mk-table td{padding:8px;border-bottom:1px solid var(--grid);vertical-align:top;background:#fff}
+.mk-table tbody tr:nth-child(odd) td{background:#fbfcfe}
+.mk-table tbody tr:last-child td{border-bottom:none}
+.mk-empty{padding:14px 10px;color:var(--muted-2);font-weight:700}
+.mk-badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:999px;border:1px solid var(--grid-2);background:#edf0f5;color:#334155;font-size:10px;font-weight:900;white-space:nowrap}
+</style>""",
+        1,
+    )
+
+    template = template.replace(
+        "  allCustomers = Array.from(map.values());\n}",
+        """  allCustomers = Array.from(map.values());
+}
+
+const MK_LIST_SAPS = [
+  '111588','112047','112048','210485','210905','211294','213055','213308','213387','213636','213841','213843','214270','214286','214374','216585','216641','216658','216678','216858','216912','217560','217750','218632'
+];
+
+function normalizeRahmentourCodeGlobal(value){
+  return String(value||'').toUpperCase().replace(/\s+/g,'').trim();
+}
+function getRahmentourListGlobal(tournummer, dayLabel){
+  const key = normalizeDigits(tournummer);
+  const raw = rahmentourIndex[key];
+  const day = String(dayLabel||'').trim();
+  const rows = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+  const exact = rows
+    .filter(item => item && typeof item === 'object' && String(item.day||'').trim() === day)
+    .map(item => normalizeRahmentourCodeGlobal(item.sap))
+    .filter(Boolean);
+  const fallback = rows
+    .map(item => item && typeof item === 'object' ? normalizeRahmentourCodeGlobal(item.sap) : normalizeRahmentourCodeGlobal(item))
+    .filter(Boolean);
+  return (exact.length ? exact : fallback).filter((v, i, a) => a.indexOf(v) === i);
+}
+function getCustomerRahmentourCodes(k){
+  const out = [];
+  (k.touren||[]).forEach(t => {
+    getRahmentourListGlobal(t.tournummer, t.liefertag).forEach(code => {
+      if(code && out.indexOf(code) === -1) out.push(code);
+    });
+  });
+  return out;
+}
+function classifyMkCodes(codes){
+  const hasZ = codes.some(code => code.includes('Z'));
+  const hasM = codes.some(code => code.includes('M'));
+  const hasN = codes.some(code => code.includes('N'));
+  const count = (hasZ?1:0) + (hasM?1:0) + (hasN?1:0);
+  if(count > 1) return 'Gemischt';
+  if(hasZ) return 'SuL';
+  if(hasM) return 'Malchow';
+  if(hasN) return 'Neumünster';
+  return 'Direkt / Marktkauf';
+}
+function hideMkListe(){
+  const wrap = $('#mkListeWrap');
+  const content = $('#mkListeContent');
+  const meta = $('#mkListeMeta');
+  if(content) content.innerHTML = '';
+  if(meta) meta.textContent = '';
+  if(wrap) wrap.style.display = 'none';
+}
+function renderMkGroupRows(rows){
+  if(!rows.length) return '<div class="mk-empty">Keine Kunden.</div>';
+  let html = '<table class="mk-table"><thead><tr><th>SAP</th><th>CSB</th><th>Kunde</th><th>Ort</th><th>Touren</th><th>Rahmentouren</th></tr></thead><tbody>';
+  rows.forEach(row => {
+    html += '<tr>' +
+      '<td><span class="mk-badge">' + row.sap + '</span></td>' +
+      '<td>' + (row.csb || '-') + '</td>' +
+      '<td>' + (row.name || '-') + '</td>' +
+      '<td>' + (row.ort || '-') + '</td>' +
+      '<td>' + (row.touren || '-') + '</td>' +
+      '<td>' + (row.rahmentouren || '-') + '</td>' +
+      '</tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+function onMkListe(){
+  closeTourSummary();
+  hideMkListe();
+
+  const wanted = MK_LIST_SAPS.map(normalizeDigits);
+  const wantedSet = new Set(wanted);
+  const bySap = new Map();
+  allCustomers.forEach(k => {
+    const sap = normalizeDigits(k.sap_nummer);
+    if(!sap || !wantedSet.has(sap) || bySap.has(sap)) return;
+    bySap.set(sap, k);
+  });
+
+  const groups = {
+    'SuL': [],
+    'Malchow': [],
+    'Neumünster': [],
+    'Direkt / Marktkauf': [],
+    'Gemischt': [],
+    'Nicht gefunden': []
+  };
+
+  const orderedCustomers = [];
+  wanted.forEach(sap => {
+    const k = bySap.get(sap);
+    if(!k){
+      groups['Nicht gefunden'].push({sap:sap, csb:'', name:'Nicht gefunden', ort:'', touren:'', rahmentouren:''});
+      return;
+    }
+    orderedCustomers.push(k);
+    const codes = getCustomerRahmentourCodes(k);
+    const group = classifyMkCodes(codes);
+    const touren = (k.touren||[])
+      .map(t => {
+        const num = normalizeDigits(t.tournummer) || String(t.tournummer||'').trim();
+        const day = String(t.liefertag||'').trim();
+        return day ? (num + ' (' + day + ')') : num;
+      })
+      .filter(Boolean)
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .join(', ');
+    groups[group].push({
+      sap: normalizeDigits(k.sap_nummer) || sap,
+      csb: normalizeDigits(k.csb_nummer) || '',
+      name: k.name || '-',
+      ort: [k.postleitzahl||'', k.ort||''].filter(Boolean).join(' '),
+      touren: touren || '-',
+      rahmentouren: codes.length ? codes.join(', ') : '-'
+    });
+  });
+
+  const order = ['SuL','Malchow','Neumünster','Direkt / Marktkauf','Gemischt','Nicht gefunden'];
+  const html = ['<div class="mk-groups">'];
+  order.forEach(name => {
+    const rows = groups[name] || [];
+    if(!rows.length) return;
+    html.push('<div class="mk-group">');
+    html.push('<div class="mk-group-head">' + name + '<span class="mk-group-count">' + rows.length + '</span></div>');
+    html.push(renderMkGroupRows(rows));
+    html.push('</div>');
+  });
+  html.push('</div>');
+
+  $('#mkListeTitle').textContent = 'MK-Liste';
+  $('#mkListeMeta').textContent = orderedCustomers.length + ' Kunden aus der Vorgabeliste';
+  $('#mkListeContent').innerHTML = html.join('');
+  $('#mkListeWrap').style.display = 'block';
+
+  renderTable(orderedCustomers);
+  setResultsMeta(orderedCustomers.length + ' Treffer · MK-Liste');
+}
+""",
+        1,
+    )
+
+    template = template.replace(
+        "  const qRaw=$('#smartSearch').value.trim();\n  closeTourSummary();",
+        "  const qRaw=$('#smartSearch').value.trim();\n  closeTourSummary();\n  hideMkListe();",
+        1,
+    )
+    template = template.replace(
+        "  const q=$('#keySearch').value.trim();\n  closeTourSummary();",
+        "  const q=$('#keySearch').value.trim();\n  closeTourSummary();\n  hideMkListe();",
+        1,
+    )
+
+    template = template.replace(
+        "  $('#keySearch').addEventListener('input', debounce(onKey,140));",
+        "  $('#keySearch').addEventListener('input', debounce(onKey,140));\n  $('#btnMKListe').addEventListener('click', onMkListe);",
+        1,
+    )
+
+    template = template.replace(
+        "    closeTourSummary();\n    renderTable([]);",
+        "    closeTourSummary();\n    hideMkListe();\n    renderTable([]);",
+        1,
+    )
+
+    return template
+
+
+SUCHE_HTML_TEMPLATE = _patch_suche_template_sonderliste_marktkauf(SUCHE_HTML_TEMPLATE)
+
 DRUCK_HTML_TEMPLATE: str = base64.b64decode(_DRUCK_B64).decode("utf-8")
 
 
