@@ -1067,33 +1067,45 @@ def to_data_url_suche(f) -> str:
 # HTML-ERZEUGUNG: SUCHE
 # =============================================================================
 
-def build_kunden_notizen(kundenliste_file) -> dict:
-    """Liest Blatt 'q' aus der Kundenliste: Spalte A = CSB, C+D = Notiz-Texte."""
-    if kundenliste_file is None:
+def build_lieferhinweis_csv(csv_file) -> dict:
+    """Liest Lieferhinweis-CSV: ';'-getrennt, gequotet.
+    Felder: [0]=SAP-Nr, [1]=CSB-Nr, [2]=Name, [3]=Strasse, [4]=PLZ,
+            [5]=Ort, [6]=Art/Rollcontainer, [7]=Lieferhinweis, ...
+    Key im Ergebnis: CSB-Nr (normalisiert, führende Nullen entfernt).
+    Gibt {csb: {'c': art, 'd': lieferhinweis}} zurück."""
+    if csv_file is None:
         return {}
+    import csv as _csv
+    import io as _io
     try:
-        kundenliste_file.seek(0)
-        df = pd.read_excel(kundenliste_file, sheet_name="q", header=None)
+        csv_file.seek(0)
+        raw = csv_file.read()
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", errors="replace")
     except Exception:
         return {}
     result = {}
-    for _, row in df.iterrows():
-        csb_raw = row.iloc[0] if len(row) > 0 else None
-        csb = normalize_digits_py(csb_raw)
+    reader = _csv.reader(_io.StringIO(raw), delimiter=";", quotechar='"')
+    for row in reader:
+        if len(row) < 2:
+            continue
+        csb = normalize_digits_py(row[1]) if len(row) > 1 else ""
         if not csb:
             continue
-        c_val = norm_val(row.iloc[2]) if len(row) > 2 else ""
-        d_val = norm_val(row.iloc[3]) if len(row) > 3 else ""
-        if c_val or d_val:
-            result[csb] = {}
-            if c_val:
-                result[csb]["c"] = c_val
-            if d_val:
-                result[csb]["d"] = d_val
+        art      = row[6].strip() if len(row) > 6 else ""
+        hinweis  = row[7].strip() if len(row) > 7 else ""
+        if art or hinweis:
+            entry = {}
+            if art:
+                entry["c"] = art
+            if hinweis:
+                entry["d"] = hinweis
+            result[csb] = entry
     return result
 
 def generate_suche_html(excel_file, key_file, logo_file,
-                         berater_file, berater_csb_file) -> str:
+                         berater_file, berater_csb_file,
+                         lieferhinweis_csv=None) -> str:
     if logo_file is None:
         raise ValueError("Bitte Logo hochladen.")
 
@@ -1190,14 +1202,8 @@ def generate_suche_html(excel_file, key_file, logo_file,
         key=lambda kv: int(kv[0]) if str(kv[0]).isdigit() else 0,
     ))
 
-    # Notizen aus Blatt "q" der Kundenliste lesen
-    notizen_map: dict = {}
-    if berater_csb_file is not None:
-        try:
-            berater_csb_file.seek(0)
-        except Exception:
-            pass
-        notizen_map = build_kunden_notizen(berater_csb_file)
+    # Notizen aus Lieferhinweis-CSV
+    notizen_map: dict = build_lieferhinweis_csv(lieferhinweis_csv)
 
     return (
         SUCHE_HTML_TEMPLATE
@@ -1230,7 +1236,7 @@ SHEETS_DRUCK = {
 }
 
 
-def generate_druck_html(up, logo_up, fcsb_file=None) -> str:
+def generate_druck_html(up, logo_up, fcsb_file=None, lieferhinweis_csv=None) -> str:
     logo_uri = logo_file_to_data_uri(logo_up) or load_logo_data_uri()
     all_data: dict = {}
 
@@ -1360,14 +1366,8 @@ def generate_druck_html(up, logo_up, fcsb_file=None) -> str:
     json_data      = json.dumps(all_data,      ensure_ascii=False, separators=(",", ":"))
     ladefolge_json = json.dumps(ladefolge_map, ensure_ascii=False, separators=(",", ":"))
 
-    # Notizen aus Blatt "q" der Kundenliste
-    notizen_map: dict = {}
-    if fcsb_file is not None:
-        try:
-            fcsb_file.seek(0)
-        except Exception:
-            pass
-        notizen_map = build_kunden_notizen(fcsb_file)
+    # Notizen aus Lieferhinweis-CSV
+    notizen_map: dict = build_lieferhinweis_csv(lieferhinweis_csv)
     notizen_json = json.dumps(notizen_map, ensure_ascii=False, separators=(",", ":"))
 
     return (
@@ -3276,7 +3276,7 @@ st.caption("Globale Dateien einmalig hochladen. Pro Instanz (Woche) nur die Woch
 
 # ── Globale Dateien (einmalig für alle Wochen) ────────────────────────────────
 st.markdown("**Globale Dateien** – einmalig hochladen, gelten für alle Wochen")
-gc1, gc2, gc3, gc4 = st.columns(4)
+gc1, gc2, gc3, gc4, gc5 = st.columns(5)
 with gc1:
     _up = st.file_uploader("🖼️ Logo", type=["png","jpg","jpeg","svg"], key="up_logo")
     if _up: st.session_state.g_logo = _up
@@ -3289,9 +3289,12 @@ with gc3:
 with gc4:
     _up = st.file_uploader("🔗 Kundenliste Original", type=["xlsx"], key="up_fcsb")
     if _up: st.session_state.g_fcsb = _up
+with gc5:
+    _up = st.file_uploader("📋 Lieferhinweise CSV", type=["csv"], key="up_lh_csv")
+    if _up: st.session_state.g_lh_csv = _up
 
 _glob_status = []
-for _k, _lbl in [("g_logo","Logo"),("g_key","Marktschlüssel"),("g_fach","Tel. Fachberater"),("g_fcsb","Kundenliste")]:
+for _k, _lbl in [("g_logo","Logo"),("g_key","Marktschlüssel"),("g_fach","Tel. Fachberater"),("g_fcsb","Kundenliste"),("g_lh_csv","Lieferhinweise CSV")]:
     _glob_status.append("✅ "+_lbl if st.session_state.get(_k) else "❌ "+_lbl)
 st.caption(" · ".join(_glob_status))
 
@@ -3332,6 +3335,7 @@ for i, inst in enumerate(st.session_state.instances):
         _key  = st.session_state.get("g_key")
         _fach = st.session_state.get("g_fach")
         _fcsb = st.session_state.get("g_fcsb")
+        _lh_csv = st.session_state.get("g_lh_csv")
 
         if excel and _logo and _key:
             try:
@@ -3340,13 +3344,13 @@ for i, inst in enumerate(st.session_state.instances):
                         try: f_.seek(0)
                         except: pass
                     st.session_state.instances[i]["suche_html"] = generate_suche_html(
-                        excel, _key, _logo, _fach, _fcsb
+                        excel, _key, _logo, _fach, _fcsb, lieferhinweis_csv=_lh_csv
                     )
                     try: excel.seek(0)
                     except: pass
                     try: _logo.seek(0)
                     except: pass
-                    st.session_state.instances[i]["druck_html"] = generate_druck_html(excel, _logo, _fcsb)
+                    st.session_state.instances[i]["druck_html"] = generate_druck_html(excel, _logo, _fcsb, lieferhinweis_csv=_lh_csv)
                 kb_s = len(st.session_state.instances[i]["suche_html"]) // 1024
                 kb_d = len(st.session_state.instances[i]["druck_html"]) // 1024
                 st.success(f"✅ Suche ({kb_s} KB) + Druck ({kb_d} KB) bereit")
