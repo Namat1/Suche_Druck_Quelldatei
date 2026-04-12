@@ -1361,7 +1361,7 @@ def build_lieferhinweis_csv(csv_file) -> dict:
         if art or hinweis:
             entry = {}
             if art:
-                entry["c"] = art
+                entry["c"] = f"Ladehilfsmittel: {art}"
             if hinweis:
                 entry["d"] = hinweis
             result[csb] = entry
