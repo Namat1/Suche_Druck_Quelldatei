@@ -3299,20 +3299,31 @@ function kundenGetRows() {{
     rows = _kundenGroups[_kundenActiveGroup] || [];
   }}
   if(_kundenSearchQ) {{
+    var isNumeric = /^\d+$/.test(_kundenSearchQ);
     // Exact match on SAP or CSB → show only those
     var exact = rows.filter(function(r) {{
       return (r.sap||"") === _kundenSearchQ || (r.csb||"") === _kundenSearchQ;
     }});
     if(exact.length) return exact;
-    // Otherwise partial match across all fields
-    rows = rows.filter(function(r) {{
-      return (r.name||"").toLowerCase().indexOf(_kundenSearchQ) !== -1
-        || (r.sap||"").indexOf(_kundenSearchQ) !== -1
-        || (r.csb||"").indexOf(_kundenSearchQ) !== -1
-        || (r.ort||"").toLowerCase().indexOf(_kundenSearchQ) !== -1
-        || (r.touren||"").toLowerCase().indexOf(_kundenSearchQ) !== -1
-        || (r.rahmentouren||"").toLowerCase().indexOf(_kundenSearchQ) !== -1;
-    }});
+    if(isNumeric) {{
+      // Numeric: match SAP/CSB start-with, or individual tour numbers exactly
+      rows = rows.filter(function(r) {{
+        if((r.sap||"").indexOf(_kundenSearchQ) === 0) return true;
+        if((r.csb||"").indexOf(_kundenSearchQ) === 0) return true;
+        // Extract individual tour numbers and check exact match
+        var tourNums = (r.touren||"").match(/\d+/g) || [];
+        return tourNums.some(function(tn){{ return tn === _kundenSearchQ; }});
+      }});
+    }} else {{
+      // Text: partial match on name, ort, touren
+      rows = rows.filter(function(r) {{
+        return (r.name||"").toLowerCase().indexOf(_kundenSearchQ) !== -1
+          || (r.sap||"").indexOf(_kundenSearchQ) !== -1
+          || (r.csb||"").indexOf(_kundenSearchQ) !== -1
+          || (r.ort||"").toLowerCase().indexOf(_kundenSearchQ) !== -1
+          || (r.touren||"").toLowerCase().indexOf(_kundenSearchQ) !== -1;
+      }});
+    }}
   }}
   return rows;
 }}
