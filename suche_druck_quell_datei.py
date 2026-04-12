@@ -2225,10 +2225,10 @@ function rahmenRenderDayButtons(counts) {
   var totalTours = Object.keys(rahmenGetTourMeta()).length;
   var totalRows = rahmenRows().length;
   var html = "";
-  html += "<button onclick="rahmenSetDay('Alle')" style="padding:10px 12px;border:2px solid "+(rahmenState.day==='Alle'?'#1b66b3':'#d4dbe5')+";background:"+(rahmenState.day==='Alle'?'#eff6ff':'#fff')+";color:"+(rahmenState.day==='Alle'?'#1b66b3':'#334155')+";border-radius:6px;cursor:pointer;font-weight:800;font-size:12px;min-width:120px;text-align:left;">Alle<br><span style='font-size:10px;font-weight:700;color:#64748b;'>"+totalRows+" Rahmentouren · "+totalTours+" Touren</span></button>";
+  html += "<button onclick=\"rahmenSetDay(\'Alle\')\" style=\"padding:10px 12px;border:2px solid "+(rahmenState.day==='Alle'?'#1b66b3':'#d4dbe5')+";background:"+(rahmenState.day==='Alle'?'#eff6ff':'#fff')+";color:"+(rahmenState.day==='Alle'?'#1b66b3':'#334155')+";border-radius:6px;cursor:pointer;font-weight:800;font-size:12px;min-width:120px;text-align:left;\">Alle<br><span style='font-size:10px;font-weight:700;color:#64748b;'>"+totalRows+" Rahmentouren · "+totalTours+" Touren</span></button>";
   rahmenDays().forEach(function(day) {
     var c = counts[day] || {rahmentouren:0,touren:0};
-    html += "<button onclick="rahmenSetDay('"+day+"')" style="padding:10px 12px;border:2px solid "+(rahmenState.day===day?'#1b66b3':'#d4dbe5')+";background:"+(rahmenState.day===day?'#eff6ff':'#fff')+";color:"+(rahmenState.day===day?'#1b66b3':'#334155')+";border-radius:6px;cursor:pointer;font-weight:800;font-size:12px;min-width:120px;text-align:left;">"+day+"<br><span style='font-size:10px;font-weight:700;color:#64748b;'>"+c.rahmentouren+" Rahmentouren · "+c.touren+" Touren</span></button>";
+    html += "<button onclick=\"rahmenSetDay(\'"+day+"\')\" style=\"padding:10px 12px;border:2px solid "+(rahmenState.day===day?'#1b66b3':'#d4dbe5')+";background:"+(rahmenState.day===day?'#eff6ff':'#fff')+";color:"+(rahmenState.day===day?'#1b66b3':'#334155')+";border-radius:6px;cursor:pointer;font-weight:800;font-size:12px;min-width:120px;text-align:left;\">"+day+"<br><span style='font-size:10px;font-weight:700;color:#64748b;'>"+c.rahmentouren+" Rahmentouren · "+c.touren+" Touren</span></button>";
   });
   wrap.innerHTML = html;
 }
@@ -2303,7 +2303,7 @@ function rahmenRenderList(tourList) {
     var preview = item.sapList.slice(0, 6).map(function(sap){
       return "<span style='display:inline-block;background:#f8fafc;border:1px solid #dbe3ec;border-radius:4px;padding:2px 6px;font-size:10px;font-weight:700;color:#334155;'>"+rahmenEsc(sap)+"</span>";
     }).join(" ");
-    html += "<button onclick="rahmenSelectTour('"+item.csb+"')" style="width:100%;text-align:left;background:"+(active?'#eff6ff':'#fff')+";border:2px solid "+(active?'#1b66b3':'#dbe3ec')+";border-radius:6px;padding:12px;cursor:pointer;box-shadow:0 1px 2px rgba(15,23,42,.04);">";
+    html += "<button onclick=\"rahmenSelectTour(\'"+item.csb+"\')\" style=\"width:100%;text-align:left;background:"+(active?'#eff6ff':'#fff')+";border:2px solid "+(active?'#1b66b3':'#dbe3ec')+";border-radius:6px;padding:12px;cursor:pointer;box-shadow:0 1px 2px rgba(15,23,42,.04);\">";
     html += "<div style='display:flex;justify-content:space-between;gap:10px;align-items:flex-start;'>";
     html += "<div><div style='font-size:18px;font-weight:900;color:#0f172a;'>"+rahmenEsc(item.csb)+"</div><div style='font-size:11px;font-weight:800;color:#64748b;margin-top:2px;'>"+item.days.map(rahmenEsc).join(" · ")+"</div></div>";
     html += "<div style='text-align:right;white-space:nowrap;'><div style='font-size:24px;font-weight:900;color:#1b66b3;line-height:1;'>"+item.count+"</div><div style='font-size:10px;font-weight:800;color:#64748b;'>Rahmentouren</div></div>";
