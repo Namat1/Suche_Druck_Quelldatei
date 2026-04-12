@@ -1336,7 +1336,7 @@ def build_lieferhinweis_csv(csv_file) -> dict:
     Felder: [0]=SAP-Nr, [1]=CSB-Nr, [2]=Name, [3]=Strasse, [4]=PLZ,
             [5]=Ort, [6]=Art/Rollcontainer, [7]=Lieferhinweis, ...
     Key im Ergebnis: CSB-Nr (normalisiert, führende Nullen entfernt).
-    Gibt {csb: {'c': art, 'd': lieferhinweis}} zurück."""
+    Gibt {csb: {'d': lieferhinweis}} zurück; Ladehilfsmittel wird nicht angezeigt."""
     if csv_file is None:
         return {}
     import csv as _csv
@@ -1361,7 +1361,7 @@ def build_lieferhinweis_csv(csv_file) -> dict:
         if art or hinweis:
             entry = {}
             if art:
-                entry["c"] = f"Ladehilfsmittel: {art}"
+                pass
             if hinweis:
                 entry["d"] = hinweis
             result[csb] = entry
