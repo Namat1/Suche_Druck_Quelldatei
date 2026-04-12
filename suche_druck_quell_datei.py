@@ -1058,25 +1058,30 @@ def _patch_suche_template_sonderliste_marktkauf(template: str) -> str:
     """Fuegt einen Button mit Sonderliste fuer definierte SAP-Nummern hinzu."""
     template = template.replace(
         "grid-template-columns:1fr 220px auto auto auto;",
-        "grid-template-columns:1fr 220px auto auto auto auto;",
+        "grid-template-columns:1fr 220px auto auto auto;",
         1,
     )
 
     template = template.replace(
         "<button class=\"btn btn-danger\" id=\"btnReset\">Zurücksetzen</button>",
-        "<button class=\"btn\" id=\"btnMKListe\">MK-Liste</button>\n        <button class=\"btn btn-danger\" id=\"btnReset\">Zurücksetzen</button>",
+        "<button class=\"btn btn-danger\" id=\"btnReset\">Zurücksetzen</button>",
         1,
     )
 
     template = template.replace(
         "      </div>\n\n      <!-- Tour-Übersicht -->",
-        "      </div>\n\n      <div class=\"tour-summary\" id=\"mkListeWrap\" style=\"display:none;\">\n        <div class=\"tour-summary-head\">\n          <div>\n            <div class=\"tour-summary-title\" id=\"mkListeTitle\">MK-Liste</div>\n            <div class=\"tour-summary-meta\" id=\"mkListeMeta\"></div>\n          </div>\n        </div>\n        <div class=\"tour-summary-tablewrap\" id=\"mkListeContent\"></div>\n      </div>\n\n      <!-- Tour-Übersicht -->",
+        "      </div>\n\n      <div class=\"tour-summary\" id=\"mkListeWrap\" style=\"display:none;\">\n        <div class=\"tour-summary-head\">\n          <div>\n            <div class=\"tour-summary-title\" id=\"mkListeTitle\">Kunden Liste</div>\n            <div class=\"tour-summary-meta\" id=\"mkListeMeta\"></div>\n          </div>\n        </div>\n        <div class=\"tour-summary-tablewrap\" id=\"mkListeContent\"></div>\n      </div>\n\n      <!-- Tour-Übersicht -->",
         1,
     )
 
     template = template.replace(
         "</style>",
         """
+.mk-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.mk-stat{border:1px solid var(--grid);border-radius:5px;background:linear-gradient(180deg,#fff 0%,#f7f9fc 100%);padding:10px 12px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.mk-stat-label{font-size:10px;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.22px}
+.mk-stat-value{margin-top:4px;font-size:20px;font-weight:950;color:#0f172a;line-height:1}
+.mk-stat-sub{margin-top:4px;font-size:10px;font-weight:700;color:var(--muted-2)}
 .mk-groups{display:grid;gap:12px}
 .mk-group{border:1px solid var(--grid);border-radius:5px;overflow:hidden;background:#fff}
 .mk-group-head{padding:8px 10px;background:linear-gradient(180deg,#f8fafc 0%,#eef2f7 100%);border-bottom:1px solid var(--grid);font-size:12px;font-weight:900;color:#0f172a}
@@ -1097,9 +1102,7 @@ def _patch_suche_template_sonderliste_marktkauf(template: str) -> str:
         """  allCustomers = Array.from(map.values());
 }
 
-const MK_LIST_SAPS = [
-  '111588','112047','112048','210485','210905','211294','213055','213308','213387','213636','213841','213843','214270','214286','214374','216585','216641','216658','216678','216858','216912','217560','217750','218632'
-];
+const KUNDEN_LISTE_GROUP_ORDER = ['SuL','Malchow','Neumünster','Direkt / Marktkauf','Gemischt','Ohne Rahmentour'];
 
 function normalizeRahmentourCodeGlobal(value){
   return String(value||'').toUpperCase().replace(/\s+/g,'').trim();
@@ -1127,7 +1130,8 @@ function getCustomerRahmentourCodes(k){
   });
   return out;
 }
-function classifyMkCodes(codes){
+function classifyKundenCodes(codes){
+  if(!codes.length) return 'Ohne Rahmentour';
   const hasZ = codes.some(code => code.includes('Z'));
   const hasM = codes.some(code => code.includes('M'));
   const hasN = codes.some(code => code.includes('N'));
@@ -1138,7 +1142,7 @@ function classifyMkCodes(codes){
   if(hasN) return 'Neumünster';
   return 'Direkt / Marktkauf';
 }
-function hideMkListe(){
+function hideKundenListe(){
   const wrap = $('#mkListeWrap');
   const content = $('#mkListeContent');
   const meta = $('#mkListeMeta');
@@ -1146,34 +1150,48 @@ function hideMkListe(){
   if(meta) meta.textContent = '';
   if(wrap) wrap.style.display = 'none';
 }
-function renderMkGroupRows(rows){
+function escapeHtml(value){
+  return String(value == null ? '' : value)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+function renderKundenStatCards(groups){
+  const total = KUNDEN_LISTE_GROUP_ORDER.reduce((sum, name) => sum + ((groups[name]||[]).length), 0);
+  const parts = ['<div class="mk-stats">'];
+  KUNDEN_LISTE_GROUP_ORDER.forEach(name => {
+    const count = (groups[name]||[]).length;
+    parts.push('<div class="mk-stat">');
+    parts.push('<div class="mk-stat-label">' + escapeHtml(name) + '</div>');
+    parts.push('<div class="mk-stat-value">' + count + '</div>');
+    parts.push('<div class="mk-stat-sub">von ' + total + ' Kunden</div>');
+    parts.push('</div>');
+  });
+  parts.push('</div>');
+  return parts.join('');
+}
+function renderKundenGroupRows(rows){
   if(!rows.length) return '<div class="mk-empty">Keine Kunden.</div>';
-  let html = '<table class="mk-table"><thead><tr><th>SAP</th><th>CSB</th><th>Kunde</th><th>Ort</th><th>Touren</th><th>Rahmentouren</th></tr></thead><tbody>';
+  let html = '<table class="mk-table"><thead><tr><th>SAP</th><th>CSB</th><th>Kunde</th><th>Ort</th><th>Bereich</th><th>Touren</th><th>Rahmentouren</th></tr></thead><tbody>';
   rows.forEach(row => {
     html += '<tr>' +
-      '<td><span class="mk-badge">' + row.sap + '</span></td>' +
-      '<td>' + (row.csb || '-') + '</td>' +
-      '<td>' + (row.name || '-') + '</td>' +
-      '<td>' + (row.ort || '-') + '</td>' +
-      '<td>' + (row.touren || '-') + '</td>' +
-      '<td>' + (row.rahmentouren || '-') + '</td>' +
+      '<td><span class="mk-badge">' + escapeHtml(row.sap) + '</span></td>' +
+      '<td>' + escapeHtml(row.csb || '-') + '</td>' +
+      '<td>' + escapeHtml(row.name || '-') + '</td>' +
+      '<td>' + escapeHtml(row.ort || '-') + '</td>' +
+      '<td>' + escapeHtml(row.bereich || '-') + '</td>' +
+      '<td>' + escapeHtml(row.touren || '-') + '</td>' +
+      '<td>' + escapeHtml(row.rahmentouren || '-') + '</td>' +
       '</tr>';
   });
   html += '</tbody></table>';
   return html;
 }
-function onMkListe(){
+function onKundenListe(){
   closeTourSummary();
-  hideMkListe();
-
-  const wanted = MK_LIST_SAPS.map(normalizeDigits);
-  const wantedSet = new Set(wanted);
-  const bySap = new Map();
-  allCustomers.forEach(k => {
-    const sap = normalizeDigits(k.sap_nummer);
-    if(!sap || !wantedSet.has(sap) || bySap.has(sap)) return;
-    bySap.set(sap, k);
-  });
+  hideKundenListe();
 
   const groups = {
     'SuL': [],
@@ -1181,19 +1199,18 @@ function onMkListe(){
     'Neumünster': [],
     'Direkt / Marktkauf': [],
     'Gemischt': [],
-    'Nicht gefunden': []
+    'Ohne Rahmentour': []
   };
 
-  const orderedCustomers = [];
-  wanted.forEach(sap => {
-    const k = bySap.get(sap);
-    if(!k){
-      groups['Nicht gefunden'].push({sap:sap, csb:'', name:'Nicht gefunden', ort:'', touren:'', rahmentouren:''});
-      return;
-    }
-    orderedCustomers.push(k);
+  const orderedCustomers = [...allCustomers].sort((a, b) => {
+    const nameA = String(a.name||'').localeCompare(String(b.name||''), 'de');
+    if(nameA !== 0) return nameA;
+    return String(a.sap_nummer||'').localeCompare(String(b.sap_nummer||''), 'de');
+  });
+
+  orderedCustomers.forEach(k => {
     const codes = getCustomerRahmentourCodes(k);
-    const group = classifyMkCodes(codes);
+    const group = classifyKundenCodes(codes);
     const touren = (k.touren||[])
       .map(t => {
         const num = normalizeDigits(t.tournummer) || String(t.tournummer||'').trim();
@@ -1204,59 +1221,60 @@ function onMkListe(){
       .filter((v, i, a) => a.indexOf(v) === i)
       .join(', ');
     groups[group].push({
-      sap: normalizeDigits(k.sap_nummer) || sap,
+      sap: normalizeDigits(k.sap_nummer) || '',
       csb: normalizeDigits(k.csb_nummer) || '',
       name: k.name || '-',
       ort: [k.postleitzahl||'', k.ort||''].filter(Boolean).join(' '),
+      bereich: k.bereich || '-',
       touren: touren || '-',
       rahmentouren: codes.length ? codes.join(', ') : '-'
     });
   });
 
-  const order = ['SuL','Malchow','Neumünster','Direkt / Marktkauf','Gemischt','Nicht gefunden'];
-  const html = ['<div class="mk-groups">'];
-  order.forEach(name => {
+  const html = [renderKundenStatCards(groups), '<div class="mk-groups">'];
+  KUNDEN_LISTE_GROUP_ORDER.forEach(name => {
     const rows = groups[name] || [];
-    if(!rows.length) return;
     html.push('<div class="mk-group">');
-    html.push('<div class="mk-group-head">' + name + '<span class="mk-group-count">' + rows.length + '</span></div>');
-    html.push(renderMkGroupRows(rows));
+    html.push('<div class="mk-group-head">' + escapeHtml(name) + '<span class="mk-group-count">' + rows.length + '</span></div>');
+    html.push(renderKundenGroupRows(rows));
     html.push('</div>');
   });
   html.push('</div>');
 
-  $('#mkListeTitle').textContent = 'MK-Liste';
-  $('#mkListeMeta').textContent = orderedCustomers.length + ' Kunden aus der Vorgabeliste';
+  $('#mkListeTitle').textContent = 'Kunden Liste';
+  $('#mkListeMeta').textContent = orderedCustomers.length + ' Kunden nach Rahmentour-Bereich';
   $('#mkListeContent').innerHTML = html.join('');
   $('#mkListeWrap').style.display = 'block';
 
   renderTable(orderedCustomers);
-  setResultsMeta(orderedCustomers.length + ' Treffer · MK-Liste');
+  setResultsMeta(orderedCustomers.length + ' Treffer · Kunden Liste');
 }
+window.onKundenListe = onKundenListe;
+window.onMkListe = onKundenListe;
 """,
         1,
     )
 
     template = template.replace(
         "  const qRaw=$('#smartSearch').value.trim();\n  closeTourSummary();",
-        "  const qRaw=$('#smartSearch').value.trim();\n  closeTourSummary();\n  hideMkListe();",
+        "  const qRaw=$('#smartSearch').value.trim();\n  closeTourSummary();\n  hideKundenListe();",
         1,
     )
     template = template.replace(
         "  const q=$('#keySearch').value.trim();\n  closeTourSummary();",
-        "  const q=$('#keySearch').value.trim();\n  closeTourSummary();\n  hideMkListe();",
+        "  const q=$('#keySearch').value.trim();\n  closeTourSummary();\n  hideKundenListe();",
         1,
     )
 
     template = template.replace(
         "  $('#keySearch').addEventListener('input', debounce(onKey,140));",
-        "  $('#keySearch').addEventListener('input', debounce(onKey,140));\n  $('#btnMKListe').addEventListener('click', onMkListe);",
+        "  $('#keySearch').addEventListener('input', debounce(onKey,140));",
         1,
     )
 
     template = template.replace(
         "    closeTourSummary();\n    renderTable([]);",
-        "    closeTourSummary();\n    hideMkListe();\n    renderTable([]);",
+        "    closeTourSummary();\n    hideKundenListe();\n    renderTable([]);",
         1,
     )
 
@@ -2479,7 +2497,7 @@ iframe.active{{display:block}}
     </button>
     <div class="dd-menu" id="ddmenu-vz"></div>
   </div>
-  <button class="nav-btn" id="btn-mk" onclick="showMkListeTop()">&#128203; MK-Liste</button>
+  <button class="nav-btn" id="btn-kunden" onclick="showKundenListeTop()">&#128203; Kunden Liste</button>
   <button class="nav-btn" id="btn-tel" onclick="showArea('tel')">&#128222; Telefonliste</button>
   <button class="nav-btn" id="btn-sam" onclick="showArea('sam')">&#128664; Sa + So Einstätze</button>
   <button class="nav-btn" id="btn-fa" onclick="showArea('fa')">&#128101; Fahrerauswertung</button>
@@ -2714,8 +2732,8 @@ function showArea(s) {{
     var btn = document.getElementById("btn-"+id);
     if(btn) btn.className = "nav-dd-btn" + (id===s?" active":"");
   }});
-  var mkBtn = document.getElementById("btn-mk");
-  if(mkBtn) mkBtn.className = "nav-btn";
+  var kundenBtn = document.getElementById("btn-kunden");
+  if(kundenBtn) kundenBtn.className = "nav-btn";
   // Telefonliste-Button
   var telBtn = document.getElementById("btn-tel");
   if(telBtn) telBtn.className = "nav-btn" + (s==="tel"?" active":"");
@@ -2746,14 +2764,16 @@ function showArea(s) {{
   if(s==="fa") {{ if(faPanel) faPanel.scrollTop = 0; if(faPanel && !faPanel.dataset.loaded) {{ faRender(""); faPanel.dataset.loaded="1"; }} }}
 }}
 
-function showMkListeTop() {{
+function showKundenListeTop() {{
   showArea("suche");
   var frame = document.getElementById("frame-suche");
   function trigger(tries) {{
     try {{
       var win = frame && frame.contentWindow;
-      if(win && typeof win.onMkListe === "function") {{
-        win.onMkListe();
+      if(win && typeof win.onKundenListe === "function") {{
+        win.onKundenListe();
+        var kundenBtn = document.getElementById("btn-kunden");
+        if(kundenBtn) kundenBtn.className = "nav-btn active";
         return;
       }}
     }} catch(err) {{}}
