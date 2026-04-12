@@ -820,6 +820,7 @@ def _patch_suche_template_search_all_inputs(template: str) -> str:
 
   const q = normDE(qRaw);
   const n = normalizeDigits(qRaw);
+  const isNumeric = /^\d+$/.test(qRaw);
   const normalizeRahmentourCode = (value) => String(value||'').toUpperCase().replace(/\\s+/g,'');
   const getRahmentourList = (tournummer, dayLabel) => {
     const key = normalizeDigits(tournummer);
@@ -840,54 +841,57 @@ def _patch_suche_template_search_all_inputs(template: str) -> str:
   };
   const rahmenQuery = normalizeRahmentourCode(qRaw);
 
-  let r = allCustomers.filter(k=>{
-    const fb = k.fachberater || '';
-    const tourText = (k.touren||[]).map(t => {
-      const tourNum = t.tournummer || '';
-      const rahmenListe = getRahmentourList(tourNum, t.liefertag);
-      return [tourNum, t.liefertag || '', ...rahmenListe].filter(Boolean).join(' ');
-    }).join(' ');
-    const text = (
-      (k.name||'') + ' ' +
-      (k.strasse||'') + ' ' +
-      (k.ort||'') + ' ' +
-      (k.csb_nummer||'') + ' ' +
-      (k.sap_nummer||'') + ' ' +
-      fb + ' ' +
-      (k.schluessel||'') + ' ' +
-      (k.fb_phone||'') + ' ' +
-      (k.market_phone||'') + ' ' +
-      (k.market_email||'') + ' ' +
-      ((kundenNotizen[k.csb_nummer]||{}).c||'') + ' ' +
-      ((kundenNotizen[k.csb_nummer]||{}).d||'') + ' ' +
-      tourText
-    );
+  let r;
 
-    if(normDE(text).includes(q)) return true;
-    if(!n && !rahmenQuery) return false;
-
-    if(n){
+  if(isNumeric && n){
+    // Strict numeric search: match only numbers with same digit count
+    const nLen = n.length;
+    r = allCustomers.filter(k => {
       if(normalizeDigits(k.csb_nummer) === n) return true;
       if(normalizeDigits(k.sap_nummer) === n) return true;
       if(normalizeDigits(k.schluessel) === n) return true;
-    }
-
-    return (k.touren||[]).some(t=>{
-      const tourNum = normalizeDigits(t.tournummer);
-      const rahmenListe = getRahmentourList(t.tournummer, t.liefertag);
-      if(n && tourNum && (tourNum === n || tourNum.startsWith(n))) return true;
-      if(rahmenQuery && rahmenListe.some(rahmen => rahmen === rahmenQuery || rahmen.startsWith(rahmenQuery))) return true;
-      return false;
+      return (k.touren||[]).some(t => {
+        const tn = normalizeDigits(t.tournummer);
+        return tn && tn.length === nLen && tn === n;
+      });
     });
-  });
 
-  if(n || rahmenQuery){
-    const tr = n ? allCustomers.filter(k => (k.touren||[]).some(t => normalizeDigits(t.tournummer) === n)) : [];
-    const rr = rahmenQuery ? allCustomers.filter(k => (k.touren||[]).some(t => getRahmentourList(t.tournummer, t.liefertag).some(rahmen => rahmen === rahmenQuery))) : [];
-    const summaryMatches = dedupByCSB([...tr, ...rr]);
-    if(summaryMatches.length){
-      renderTourSummary(summaryMatches, n || rahmenQuery);
-      r = dedupByCSB([...summaryMatches, ...r]);
+    // Show tour summary for exact tour matches
+    const tr = allCustomers.filter(k => (k.touren||[]).some(t => normalizeDigits(t.tournummer) === n));
+    if(tr.length) renderTourSummary(tr, n);
+    r = dedupByCSB(tr.length ? [...tr, ...r] : r);
+  } else {
+    // Text search: broad matching
+    r = allCustomers.filter(k=>{
+      const fb = k.fachberater || '';
+      const tourText = (k.touren||[]).map(t => {
+        const tourNum = t.tournummer || '';
+        return [tourNum, t.liefertag || ''].filter(Boolean).join(' ');
+      }).join(' ');
+      const text = (
+        (k.name||'') + ' ' +
+        (k.strasse||'') + ' ' +
+        (k.ort||'') + ' ' +
+        (k.csb_nummer||'') + ' ' +
+        (k.sap_nummer||'') + ' ' +
+        fb + ' ' +
+        (k.schluessel||'') + ' ' +
+        (k.fb_phone||'') + ' ' +
+        (k.market_phone||'') + ' ' +
+        (k.market_email||'') + ' ' +
+        ((kundenNotizen[k.csb_nummer]||{}).c||'') + ' ' +
+        ((kundenNotizen[k.csb_nummer]||{}).d||'') + ' ' +
+        tourText
+      );
+      return normDE(text).includes(q);
+    });
+
+    if(rahmenQuery){
+      const rr = allCustomers.filter(k => (k.touren||[]).some(t => getRahmentourList(t.tournummer, t.liefertag).some(rahmen => rahmen === rahmenQuery)));
+      if(rr.length){
+        renderTourSummary(rr, rahmenQuery);
+        r = dedupByCSB([...rr, ...r]);
+      }
     }
   }
 
