@@ -1052,105 +1052,6 @@ def _patch_suche_template_rahmentour_list_in_rows(template: str) -> str:
 
 SUCHE_HTML_TEMPLATE = _patch_suche_template_rahmentour_list_in_rows(SUCHE_HTML_TEMPLATE)
 
-
-
-def _patch_suche_template_sonderliste_marktkauf(template: str) -> str:
-    """Sends Kunden-Liste data to parent via postMessage for standalone panel."""
-
-    # Add JS helper functions and postMessage sender after allCustomers is built
-    template = template.replace(
-        "  allCustomers = Array.from(map.values());\n}",
-        """  allCustomers = Array.from(map.values());
-}
-
-const KUNDEN_LISTE_GROUP_ORDER = ['SuL','Malchow','Neumünster','Direkt / Marktkauf','Gemischt','Ohne Rahmentour'];
-
-function normalizeRahmentourCodeGlobal(value){
-  return String(value||'').toUpperCase().replace(/\s+/g,'').trim();
-}
-function getRahmentourListGlobal(tournummer, dayLabel){
-  const key = normalizeDigits(tournummer);
-  const raw = rahmentourIndex[key];
-  const day = String(dayLabel||'').trim();
-  const rows = Array.isArray(raw) ? raw : (raw ? [raw] : []);
-  const exact = rows
-    .filter(item => item && typeof item === 'object' && String(item.day||'').trim() === day)
-    .map(item => normalizeRahmentourCodeGlobal(item.sap))
-    .filter(Boolean);
-  const fallback = rows
-    .map(item => item && typeof item === 'object' ? normalizeRahmentourCodeGlobal(item.sap) : normalizeRahmentourCodeGlobal(item))
-    .filter(Boolean);
-  return (exact.length ? exact : fallback).filter((v, i, a) => a.indexOf(v) === i);
-}
-function getCustomerRahmentourCodes(k){
-  const out = [];
-  (k.touren||[]).forEach(t => {
-    getRahmentourListGlobal(t.tournummer, t.liefertag).forEach(code => {
-      if(code && out.indexOf(code) === -1) out.push(code);
-    });
-  });
-  return out;
-}
-function classifyKundenCodes(codes){
-  if(!codes.length) return 'Ohne Rahmentour';
-  const hasZ = codes.some(code => code.includes('Z'));
-  const hasM = codes.some(code => code.includes('M'));
-  const hasN = codes.some(code => code.includes('N'));
-  const count = (hasZ?1:0) + (hasM?1:0) + (hasN?1:0);
-  if(count > 1) return 'Gemischt';
-  if(hasZ) return 'SuL';
-  if(hasM) return 'Malchow';
-  if(hasN) return 'Neumünster';
-  return 'Direkt / Marktkauf';
-}
-
-function sendKundenDataToParent(){
-  if(!allCustomers || !allCustomers.length) return;
-  const groups = {};
-  KUNDEN_LISTE_GROUP_ORDER.forEach(g => { groups[g] = []; });
-  const ordered = [...allCustomers].sort((a, b) => {
-    const c = String(a.name||'').localeCompare(String(b.name||''), 'de');
-    return c !== 0 ? c : String(a.sap_nummer||'').localeCompare(String(b.sap_nummer||''), 'de');
-  });
-  ordered.forEach(k => {
-    const codes = getCustomerRahmentourCodes(k);
-    const group = classifyKundenCodes(codes);
-    const touren = (k.touren||[])
-      .map(t => {
-        const num = normalizeDigits(t.tournummer) || String(t.tournummer||'').trim();
-        const day = String(t.liefertag||'').trim();
-        return day ? (num + ' (' + day + ')') : num;
-      })
-      .filter(Boolean)
-      .filter((v, i, a) => a.indexOf(v) === i)
-      .join(', ');
-    if(!groups[group]) groups[group] = [];
-    groups[group].push({
-      sap: normalizeDigits(k.sap_nummer) || '',
-      csb: normalizeDigits(k.csb_nummer) || '',
-      name: k.name || '-',
-      ort: [k.postleitzahl||'', k.ort||''].filter(Boolean).join(' '),
-      bereich: k.bereich || '-',
-      touren: touren || '-',
-      rahmentouren: codes.length ? codes.join(', ') : '-'
-    });
-  });
-  try {
-    window.parent.postMessage({type:'kunden-liste-data', groups: groups, order: KUNDEN_LISTE_GROUP_ORDER}, '*');
-  } catch(e){}
-}
-// Auto-send after a short delay to let iframe fully initialize
-setTimeout(sendKundenDataToParent, 500);
-window.onKundenListe = function(){ sendKundenDataToParent(); };
-window.onMkListe = window.onKundenListe;
-""",
-        1,
-    )
-
-    return template
-
-SUCHE_HTML_TEMPLATE = _patch_suche_template_sonderliste_marktkauf(SUCHE_HTML_TEMPLATE)
-
 DRUCK_HTML_TEMPLATE: str = base64.b64decode(_DRUCK_B64).decode("utf-8")
 
 
@@ -2365,7 +2266,6 @@ iframe.active{{display:block}}
     </button>
     <div class="dd-menu" id="ddmenu-vz"></div>
   </div>
-  <button class="nav-btn" id="btn-kunden" onclick="showArea('kunden')">&#128203; Kunden Liste</button>
   <button class="nav-btn" id="btn-tel" onclick="showArea('tel')">&#128222; Telefonliste</button>
   <button class="nav-btn" id="btn-sam" onclick="showArea('sam')">&#128664; Sa + So Einstätze</button>
   <button class="nav-btn" id="btn-fa" onclick="showArea('fa')">&#128101; Fahrerauswertung</button>
@@ -2495,22 +2395,6 @@ iframe.active{{display:block}}
 
 
 
-
-  <!-- ── Kunden Liste Panel ───────────────────────────────────── -->
-  <div id="panel-kunden" style="display:none;flex:1;flex-direction:column;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;">
-    <div id="kunden-toolbar" style="display:flex;align-items:center;gap:10px;padding:14px 24px;background:#fff;border-bottom:1.5px solid #e2e8f0;flex-wrap:wrap;flex-shrink:0;">
-      <h2 style="margin:0;font-size:17px;font-weight:900;color:#1e3a5f;">&#128203; Kunden Liste</h2>
-      <input id="kunden-search" placeholder="Suchen..." oninput="kundenFilter(this.value)"
-        style="flex:1;min-width:160px;max-width:300px;padding:8px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#f8fafc;transition:border .15s;color:#0f172a;"
-        onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#cbd5e1'">
-      <span id="kunden-total" style="font-size:12px;font-weight:700;color:#64748b;"></span>
-    </div>
-    <div id="kunden-cats" style="display:flex;gap:6px;padding:10px 24px;background:#fff;border-bottom:1px solid #e2e8f0;flex-wrap:wrap;flex-shrink:0;"></div>
-    <div id="kunden-body" style="flex:1;overflow-y:auto;padding:0;">
-      <div style="color:#94a3b8;padding:60px;text-align:center;font-size:14px;">Daten werden geladen &hellip;</div>
-    </div>
-  </div>
-
 </div>
 </div>
 
@@ -2638,26 +2522,13 @@ function showArea(s) {{
   if(zulagePanel) zulagePanel.style.display = (s==="zulage") ? "flex" : "none";
   var zuBtn = document.getElementById("btn-zulage");
   if(zuBtn) zuBtn.className = "nav-btn" + (s==="zulage" ? " active" : "");
-  var kundenPanel = document.getElementById("panel-kunden");
-  if(kundenPanel) kundenPanel.style.display = (s==="kunden") ? "flex" : "none";
-  var kundenBtn = document.getElementById("btn-kunden");
-  if(kundenBtn) kundenBtn.className = "nav-btn" + (s==="kunden" ? " active" : "");
 
   if(s==="vz") fwInitDatePicker();
   if(s==="tel" && !telPanel.dataset.loaded) {{ telRender(""); telPanel.dataset.loaded="1"; }}
   if(s==="sam" && samPanel && !samPanel.dataset.loaded) {{ samRender(""); samPanel.dataset.loaded="1"; }}
   if(s==="zulage" && zulagePanel && !zulagePanel.dataset.loaded) {{ zulagenInit(); zulagePanel.dataset.loaded="1"; }}
-  if(s==="kunden") {{
-    if(_kundenGroups) kundenRenderBody();
-    else {{
-      // Request data from iframe
-      try {{ var f=document.getElementById("frame-suche"); if(f&&f.contentWindow&&typeof f.contentWindow.onKundenListe==="function") f.contentWindow.onKundenListe(); }} catch(e){{}}
-    }}
-  }}
   if(s==="fa") {{ if(faPanel) faPanel.scrollTop = 0; if(faPanel && !faPanel.dataset.loaded) {{ faRender(""); faPanel.dataset.loaded="1"; }} }}
 }}
-
-// showKundenListeTop removed — Kunden Liste is now a standalone panel
 
 if(INSTANCES.length > 0) {{
   document.getElementById("frame-suche").srcdoc = b64ChunksToString(INSTANCES[0].s);
@@ -2673,15 +2544,6 @@ window.addEventListener("message", function(e) {{
     vzAllData = e.data.data;
     // Erste Instanz = Normalwochen → als Referenz speichern
     if(currentInst === 0) normalInstData = e.data.data;
-  }}
-  if (e.data && e.data.type === "kunden-liste-data") {{
-    _kundenGroups = e.data.groups || {{}};
-    _kundenOrder = e.data.order || [];
-    _kundenActiveGroup = "Alle";
-    _kundenSearchQ = "";
-    var inp = document.getElementById("kunden-search");
-    if(inp) inp.value = "";
-    kundenRenderBody();
   }}
   if (e.data && e.data.type === "request-normal-data") {{
     // Druck-iframe fragt nach Normalwochen-Daten
@@ -3235,105 +3097,6 @@ function samToggle(el) {{
 
 {fa_js_code}
 {zulage_js_code}
-// ── Kunden Liste (Standalone Panel) ──────────────────────────────────────────
-var _kundenGroups = null;
-var _kundenOrder = [];
-var _kundenActiveGroup = "Alle";
-var _kundenSearchQ = "";
-
-function kundenFilter(q) {{
-  _kundenSearchQ = (q||"").toLowerCase().trim();
-  kundenRenderBody();
-}}
-
-function kundenSetGroup(name) {{
-  _kundenActiveGroup = name || "Alle";
-  kundenRenderBody();
-}}
-
-function kundenEsc(v) {{
-  return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-}}
-
-function kundenRenderCats() {{
-  var el = document.getElementById("kunden-cats");
-  if(!el || !_kundenGroups) return;
-  var total = 0;
-  _kundenOrder.forEach(function(n){{ total += (_kundenGroups[n]||[]).length; }});
-  var h = "";
-  // "Alle" button
-  var aA = _kundenActiveGroup === "Alle";
-  h += "<button onclick='kundenSetGroup(&#34;Alle&#34;)' style='padding:6px 14px;border-radius:8px;border:1.5px solid "+(aA?"#1e3a5f":"#cbd5e1")+";background:"+(aA?"#1e3a5f":"#fff")+";color:"+(aA?"#fff":"#475569")+";font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;'>Alle <b style=\'margin-left:4px;\'>" + total + "</b></button>";
-  _kundenOrder.forEach(function(name) {{
-    var cnt = (_kundenGroups[name]||[]).length;
-    var isActive = _kundenActiveGroup === name;
-    h += "<button onclick='kundenSetGroup(" + JSON.stringify(name) + ")' style='padding:6px 14px;border-radius:8px;border:1.5px solid "+(isActive?"#1e3a5f":"#cbd5e1")+";background:"+(isActive?"#1e3a5f":"#fff")+";color:"+(isActive?"#fff":"#475569")+";font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;'>" + kundenEsc(name) + " <b style=\'margin-left:4px;\'>" + cnt + "</b></button>";
-  }});
-  el.innerHTML = h;
-}}
-
-function kundenGetRows() {{
-  var rows = [];
-  if(_kundenActiveGroup === "Alle") {{
-    _kundenOrder.forEach(function(n) {{ rows = rows.concat(_kundenGroups[n]||[]); }});
-  }} else {{
-    rows = _kundenGroups[_kundenActiveGroup] || [];
-  }}
-  if(_kundenSearchQ) {{
-    rows = rows.filter(function(r) {{
-      return (r.name||"").toLowerCase().indexOf(_kundenSearchQ) !== -1
-        || (r.sap||"").indexOf(_kundenSearchQ) !== -1
-        || (r.csb||"").indexOf(_kundenSearchQ) !== -1
-        || (r.ort||"").toLowerCase().indexOf(_kundenSearchQ) !== -1
-        || (r.touren||"").toLowerCase().indexOf(_kundenSearchQ) !== -1
-        || (r.rahmentouren||"").toLowerCase().indexOf(_kundenSearchQ) !== -1;
-    }});
-  }}
-  return rows;
-}}
-
-function kundenRenderBody() {{
-  var body = document.getElementById("kunden-body");
-  var totalEl = document.getElementById("kunden-total");
-  if(!body || !_kundenGroups) return;
-
-  kundenRenderCats();
-
-  var rows = kundenGetRows();
-  if(totalEl) totalEl.textContent = rows.length + " Kunden" + (_kundenSearchQ ? " (gefiltert)" : "");
-
-  if(!rows.length) {{
-    body.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Kunden gefunden.</div>";
-    return;
-  }}
-
-  var h = "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
-  h += "<thead><tr style='background:#1e3a5f;position:sticky;top:0;z-index:2;'>";
-  h += "<th style='padding:10px 12px;text-align:left;color:#fff;font-size:11px;font-weight:800;letter-spacing:.3px;'>SAP</th>";
-  h += "<th style='padding:10px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;'>CSB</th>";
-  h += "<th style='padding:10px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;'>KUNDE</th>";
-  h += "<th style='padding:10px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;'>ORT</th>";
-  h += "<th style='padding:10px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;'>BEREICH</th>";
-  h += "<th style='padding:10px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;'>TOUREN</th>";
-  h += "<th style='padding:10px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;'>RAHMENTOUREN</th>";
-  h += "</tr></thead><tbody>";
-
-  rows.forEach(function(r, i) {{
-    var bg = i % 2 === 0 ? "#fff" : "#f8fafc";
-    h += "<tr style='background:" + bg + ";border-bottom:1px solid #f1f5f9;transition:background .1s;' onmouseover='this.style.background=\"#eff6ff\"' onmouseout='this.style.background=\"" + bg + "\"'>";
-    h += "<td style='padding:9px 12px;font-weight:800;color:#1e3a5f;white-space:nowrap;'><span style=\"background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:2px 8px;font-size:11px;\">" + kundenEsc(r.sap) + "</span></td>";
-    h += "<td style='padding:9px 8px;color:#64748b;font-weight:600;font-size:11px;'>" + kundenEsc(r.csb || "-") + "</td>";
-    h += "<td style='padding:9px 8px;font-weight:700;color:#0f172a;'>" + kundenEsc(r.name) + "</td>";
-    h += "<td style='padding:9px 8px;color:#475569;font-size:11px;'>" + kundenEsc(r.ort) + "</td>";
-    h += "<td style='padding:9px 8px;'><span style='background:#f0fdf4;color:#166534;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;'>" + kundenEsc(r.bereich) + "</span></td>";
-    h += "<td style='padding:9px 8px;color:#475569;font-size:11px;max-width:280px;'>" + kundenEsc(r.touren) + "</td>";
-    h += "<td style='padding:9px 8px;color:#64748b;font-size:10px;max-width:350px;word-break:break-word;'>" + kundenEsc(r.rahmentouren) + "</td>";
-    h += "</tr>";
-  }});
-  h += "</tbody></table>";
-  body.innerHTML = h;
-}}
-
 </script>
 
 </body>
@@ -3925,22 +3688,22 @@ st.caption("Globale Dateien einmalig hochladen. Pro Instanz (Woche) nur die Woch
 st.markdown("**Globale Dateien** – einmalig hochladen, gelten für alle Wochen")
 gc1, gc2, gc3, gc4, gc5, gc6 = st.columns(6)
 with gc1:
-    _up = st.file_uploader("🖼️ Logo", type=["png","jpg","jpeg","svg"], key="global_up_logo_v2")
+    _up = st.file_uploader("🖼️ Logo", type=["png","jpg","jpeg","svg"], key="up_logo")
     if _up: st.session_state.g_logo = _up
 with gc2:
-    _up = st.file_uploader("🔑 Marktschlüssel", type=["xlsx"], key="global_up_key_v2")
+    _up = st.file_uploader("🔑 Marktschlüssel", type=["xlsx"], key="up_key")
     if _up: st.session_state.g_key = _up
 with gc3:
-    _up = st.file_uploader("👤 Telefonnummern Fachberater", type=["xlsx"], key="global_up_fach_v2")
+    _up = st.file_uploader("👤 Telefonnummern Fachberater", type=["xlsx"], key="up_fach")
     if _up: st.session_state.g_fach = _up
 with gc4:
-    _up = st.file_uploader("🔗 Kundenliste Original", type=["xlsx"], key="global_up_fcsb_v2")
+    _up = st.file_uploader("🔗 Kundenliste Original", type=["xlsx"], key="up_fcsb")
     if _up: st.session_state.g_fcsb = _up
 with gc5:
-    _up = st.file_uploader("📋 Lieferhinweise CSV", type=["csv"], key="global_up_lh_csv_v2")
+    _up = st.file_uploader("📋 Lieferhinweise CSV", type=["csv"], key="up_lh_csv")
     if _up: st.session_state.g_lh_csv = _up
 with gc6:
-    _up = st.file_uploader("🗺️ Rahmentourprofil CSV", type=["csv"], key="global_up_rahmen_csv_v2")
+    _up = st.file_uploader("🗺️ Rahmentourprofil CSV", type=["csv"], key="up_rahmen_csv")
     if _up: st.session_state.g_rahmen_csv = _up
 
 _glob_status = []
@@ -4035,7 +3798,7 @@ if st.button("➕ Woche hinzufügen"):
 st.divider()
 
 # ── Telefonliste + Samstags Fahrer (global) ──────────────────────────────────
-tel_up = st.file_uploader("📞 Telefonliste (Excel, optional)", type=["xlsx"], key="extra_tel_upload_v2")
+tel_up = st.file_uploader("📞 Telefonliste (Excel, optional)", type=["xlsx"], key="tel_upload")
 if tel_up:
     tel_sig = upload_signature(tel_up)
     if st.session_state.get("tel_sig") != tel_sig:
@@ -4051,7 +3814,7 @@ touren_ups = st.file_uploader(
     "📂 Touren-Dateien hochladen (Samstag, Zulagen, Drittkunden, Fahrerauswertung – alle auf einmal)",
     type=["xlsx"],
     accept_multiple_files=True,
-    key="touren_upload_v2"
+    key="touren_upload"
 )
 if touren_ups:
     touren_sig = uploads_signature(touren_ups)
