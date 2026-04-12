@@ -3299,6 +3299,12 @@ function kundenGetRows() {{
     rows = _kundenGroups[_kundenActiveGroup] || [];
   }}
   if(_kundenSearchQ) {{
+    // Exact match on SAP or CSB → show only those
+    var exact = rows.filter(function(r) {{
+      return (r.sap||"") === _kundenSearchQ || (r.csb||"") === _kundenSearchQ;
+    }});
+    if(exact.length) return exact;
+    // Otherwise partial match across all fields
     rows = rows.filter(function(r) {{
       return (r.name||"").toLowerCase().indexOf(_kundenSearchQ) !== -1
         || (r.sap||"").indexOf(_kundenSearchQ) !== -1
