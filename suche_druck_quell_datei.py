@@ -1055,48 +1055,9 @@ SUCHE_HTML_TEMPLATE = _patch_suche_template_rahmentour_list_in_rows(SUCHE_HTML_T
 
 
 def _patch_suche_template_sonderliste_marktkauf(template: str) -> str:
-    """Fuegt einen Button mit Sonderliste fuer definierte SAP-Nummern hinzu."""
-    template = template.replace(
-        "grid-template-columns:1fr 220px auto auto auto;",
-        "grid-template-columns:1fr 220px auto auto auto;",
-        1,
-    )
+    """Sends Kunden-Liste data to parent via postMessage for standalone panel."""
 
-    template = template.replace(
-        "<button class=\"btn btn-danger\" id=\"btnReset\">Zurücksetzen</button>",
-        "<button class=\"btn btn-danger\" id=\"btnReset\">Zurücksetzen</button>",
-        1,
-    )
-
-    template = template.replace(
-        "      </div>\n\n      <!-- Tour-Übersicht -->",
-        "      </div>\n\n      <div class=\"tour-summary\" id=\"mkListeWrap\" style=\"display:none;\">\n        <div class=\"tour-summary-head\">\n          <div>\n            <div class=\"tour-summary-title\" id=\"mkListeTitle\">Kunden Liste</div>\n            <div class=\"tour-summary-meta\" id=\"mkListeMeta\"></div>\n          </div>\n        </div>\n        <div class=\"tour-summary-tablewrap\" id=\"mkListeContent\"></div>\n      </div>\n\n      <!-- Tour-Übersicht -->",
-        1,
-    )
-
-    template = template.replace(
-        "</style>",
-        """
-.mk-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
-.mk-stat{border:1px solid var(--grid);border-radius:5px;background:linear-gradient(180deg,#fff 0%,#f7f9fc 100%);padding:10px 12px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
-.mk-stat-label{font-size:10px;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.22px}
-.mk-stat-value{margin-top:4px;font-size:20px;font-weight:950;color:#0f172a;line-height:1}
-.mk-stat-sub{margin-top:4px;font-size:10px;font-weight:700;color:var(--muted-2)}
-.mk-groups{display:grid;gap:12px}
-.mk-group{border:1px solid var(--grid);border-radius:5px;overflow:hidden;background:#fff}
-.mk-group-head{padding:8px 10px;background:linear-gradient(180deg,#f8fafc 0%,#eef2f7 100%);border-bottom:1px solid var(--grid);font-size:12px;font-weight:900;color:#0f172a}
-.mk-group-count{color:var(--muted-2);font-weight:800;margin-left:6px}
-.mk-table{width:100%;border-collapse:separate;border-spacing:0;table-layout:auto;font-size:11px}
-.mk-table th{padding:7px 8px;text-align:left;background:#e6eaf1;color:#0f172a;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.2px;border-bottom:1px solid var(--grid);white-space:nowrap}
-.mk-table td{padding:8px;border-bottom:1px solid var(--grid);vertical-align:top;background:#fff}
-.mk-table tbody tr:nth-child(odd) td{background:#fbfcfe}
-.mk-table tbody tr:last-child td{border-bottom:none}
-.mk-empty{padding:14px 10px;color:var(--muted-2);font-weight:700}
-.mk-badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:999px;border:1px solid var(--grid-2);background:#edf0f5;color:#334155;font-size:10px;font-weight:900;white-space:nowrap}
-</style>""",
-        1,
-    )
-
+    # Add JS helper functions and postMessage sender after allCustomers is built
     template = template.replace(
         "  allCustomers = Array.from(map.values());\n}",
         """  allCustomers = Array.from(map.values());
@@ -1142,102 +1103,16 @@ function classifyKundenCodes(codes){
   if(hasN) return 'Neumünster';
   return 'Direkt / Marktkauf';
 }
-function hideKundenListe(){
-  const wrap = $('#mkListeWrap');
-  const content = $('#mkListeContent');
-  const meta = $('#mkListeMeta');
-  window.__kundenListeState = null;
-  if(content) content.innerHTML = '';
-  if(meta) meta.textContent = '';
-  if(wrap) wrap.style.display = 'none';
-}
-function escapeHtml(value){
-  return String(value == null ? '' : value)
-    .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;')
-    .replace(/'/g,'&#39;');
-}
-function renderKundenToolbar(groups, activeGroup){
-  const total = KUNDEN_LISTE_GROUP_ORDER.reduce((sum, name) => sum + ((groups[name]||[]).length), 0);
-  const parts = ['<div class="mk-toolbar">'];
-  parts.push('<button class="mk-filter-btn' + (activeGroup === 'Alle' ? ' active' : '') + '" onclick="setKundenListeGroup(&#39;Alle&#39;)"><span>Alle</span><span class="mk-filter-count">' + total + '</span></button>');
-  KUNDEN_LISTE_GROUP_ORDER.forEach(name => {
-    const count = (groups[name]||[]).length;
-    parts.push("<button class='mk-filter-btn" + (activeGroup === name ? " active" : "") + "' onclick='setKundenListeGroup(" + JSON.stringify(name) + ")'><span>" + escapeHtml(name) + "</span><span class='mk-filter-count'>" + count + "</span></button>");
-  });
-  parts.push('</div>');
-  return parts.join('');
-}
-function renderKundenGroupRows(rows){
-  if(!rows.length) return '<div class="mk-empty">Keine Kunden.</div>';
-  let html = '<table class="mk-table"><thead><tr><th>SAP</th><th>CSB</th><th>Kunde</th><th>Ort</th><th>Bereich</th><th>Touren</th><th>Rahmentouren</th></tr></thead><tbody>';
-  rows.forEach(row => {
-    html += '<tr>' +
-      '<td><span class="mk-badge">' + escapeHtml(row.sap) + '</span></td>' +
-      '<td>' + escapeHtml(row.csb || '-') + '</td>' +
-      '<td>' + escapeHtml(row.name || '-') + '</td>' +
-      '<td>' + escapeHtml(row.ort || '-') + '</td>' +
-      '<td>' + escapeHtml(row.bereich || '-') + '</td>' +
-      '<td>' + escapeHtml(row.touren || '-') + '</td>' +
-      '<td>' + escapeHtml(row.rahmentouren || '-') + '</td>' +
-      '</tr>';
-  });
-  html += '</tbody></table>';
-  return html;
-}
-function renderKundenListeContent(){
-  const state = window.__kundenListeState;
-  if(!state) return;
-  const groups = state.groups || {};
-  const activeGroup = state.activeGroup || 'Alle';
-  let rows = [];
-  let title = 'Alle Kategorien';
-  if(activeGroup === 'Alle'){
-    KUNDEN_LISTE_GROUP_ORDER.forEach(name => {
-      rows = rows.concat(groups[name] || []);
-    });
-  } else {
-    rows = groups[activeGroup] || [];
-    title = activeGroup;
-  }
-  const html = [renderKundenToolbar(groups, activeGroup)];
-  html.push('<div class="mk-panel">');
-  html.push('<div class="mk-panel-head"><span>' + escapeHtml(title) + '</span><span class="mk-panel-sub">' + rows.length + ' Kunden</span></div>');
-  html.push(renderKundenGroupRows(rows));
-  html.push('</div>');
-  $('#mkListeContent').innerHTML = html.join('');
-  const total = KUNDEN_LISTE_GROUP_ORDER.reduce((sum, name) => sum + ((groups[name]||[]).length), 0);
-  $('#mkListeMeta').textContent = total + ' Kunden nach Rahmentour-Bereich';
-  setResultsMeta(rows.length + ' Treffer · ' + title);
-}
-function setKundenListeGroup(name){
-  if(!window.__kundenListeState) return;
-  window.__kundenListeState.activeGroup = name || 'Alle';
-  renderKundenListeContent();
-}
-window.setKundenListeGroup = setKundenListeGroup;
-function onKundenListe(){
-  closeTourSummary();
-  hideKundenListe();
 
-  const groups = {
-    'SuL': [],
-    'Malchow': [],
-    'Neumünster': [],
-    'Direkt / Marktkauf': [],
-    'Gemischt': [],
-    'Ohne Rahmentour': []
-  };
-
-  const orderedCustomers = [...allCustomers].sort((a, b) => {
-    const nameA = String(a.name||'').localeCompare(String(b.name||''), 'de');
-    if(nameA !== 0) return nameA;
-    return String(a.sap_nummer||'').localeCompare(String(b.sap_nummer||''), 'de');
+function sendKundenDataToParent(){
+  if(!allCustomers || !allCustomers.length) return;
+  const groups = {};
+  KUNDEN_LISTE_GROUP_ORDER.forEach(g => { groups[g] = []; });
+  const ordered = [...allCustomers].sort((a, b) => {
+    const c = String(a.name||'').localeCompare(String(b.name||''), 'de');
+    return c !== 0 ? c : String(a.sap_nummer||'').localeCompare(String(b.sap_nummer||''), 'de');
   });
-
-  orderedCustomers.forEach(k => {
+  ordered.forEach(k => {
     const codes = getCustomerRahmentourCodes(k);
     const group = classifyKundenCodes(codes);
     const touren = (k.touren||[])
@@ -1249,6 +1124,7 @@ function onKundenListe(){
       .filter(Boolean)
       .filter((v, i, a) => a.indexOf(v) === i)
       .join(', ');
+    if(!groups[group]) groups[group] = [];
     groups[group].push({
       sap: normalizeDigits(k.sap_nummer) || '',
       csb: normalizeDigits(k.csb_nummer) || '',
@@ -1259,48 +1135,19 @@ function onKundenListe(){
       rahmentouren: codes.length ? codes.join(', ') : '-'
     });
   });
-
-  window.__kundenListeState = {
-    groups: groups,
-    activeGroup: 'Alle'
-  };
-
-  $('#mkListeTitle').textContent = 'Kunden Liste';
-  $('#mkListeWrap').style.display = 'block';
-  renderKundenListeContent();
-  renderTable(orderedCustomers);
+  try {
+    window.parent.postMessage({type:'kunden-liste-data', groups: groups, order: KUNDEN_LISTE_GROUP_ORDER}, '*');
+  } catch(e){}
 }
-window.onKundenListe = onKundenListe;
-window.onMkListe = onKundenListe;
+// Auto-send after a short delay to let iframe fully initialize
+setTimeout(sendKundenDataToParent, 500);
+window.onKundenListe = function(){ sendKundenDataToParent(); };
+window.onMkListe = window.onKundenListe;
 """,
         1,
     )
 
-    template = template.replace(
-        "  const qRaw=$('#smartSearch').value.trim();\n  closeTourSummary();",
-        "  const qRaw=$('#smartSearch').value.trim();\n  closeTourSummary();\n  hideKundenListe();",
-        1,
-    )
-    template = template.replace(
-        "  const q=$('#keySearch').value.trim();\n  closeTourSummary();",
-        "  const q=$('#keySearch').value.trim();\n  closeTourSummary();\n  hideKundenListe();",
-        1,
-    )
-
-    template = template.replace(
-        "  $('#keySearch').addEventListener('input', debounce(onKey,140));",
-        "  $('#keySearch').addEventListener('input', debounce(onKey,140));",
-        1,
-    )
-
-    template = template.replace(
-        "    closeTourSummary();\n    renderTable([]);",
-        "    closeTourSummary();\n    hideKundenListe();\n    renderTable([]);",
-        1,
-    )
-
     return template
-
 
 SUCHE_HTML_TEMPLATE = _patch_suche_template_sonderliste_marktkauf(SUCHE_HTML_TEMPLATE)
 
@@ -2518,7 +2365,7 @@ iframe.active{{display:block}}
     </button>
     <div class="dd-menu" id="ddmenu-vz"></div>
   </div>
-  <button class="nav-btn" id="btn-kunden" onclick="showKundenListeTop()">&#128203; Kunden Liste</button>
+  <button class="nav-btn" id="btn-kunden" onclick="showArea('kunden')">&#128203; Kunden Liste</button>
   <button class="nav-btn" id="btn-tel" onclick="showArea('tel')">&#128222; Telefonliste</button>
   <button class="nav-btn" id="btn-sam" onclick="showArea('sam')">&#128664; Sa + So Einstätze</button>
   <button class="nav-btn" id="btn-fa" onclick="showArea('fa')">&#128101; Fahrerauswertung</button>
@@ -2648,6 +2495,22 @@ iframe.active{{display:block}}
 
 
 
+
+  <!-- ── Kunden Liste Panel ───────────────────────────────────── -->
+  <div id="panel-kunden" style="display:none;flex:1;flex-direction:column;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;">
+    <div id="kunden-toolbar" style="display:flex;align-items:center;gap:10px;padding:14px 24px;background:#fff;border-bottom:1.5px solid #e2e8f0;flex-wrap:wrap;flex-shrink:0;">
+      <h2 style="margin:0;font-size:17px;font-weight:900;color:#1e3a5f;">&#128203; Kunden Liste</h2>
+      <input id="kunden-search" placeholder="Suchen..." oninput="kundenFilter(this.value)"
+        style="flex:1;min-width:160px;max-width:300px;padding:8px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#f8fafc;transition:border .15s;color:#0f172a;"
+        onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#cbd5e1'">
+      <span id="kunden-total" style="font-size:12px;font-weight:700;color:#64748b;"></span>
+    </div>
+    <div id="kunden-cats" style="display:flex;gap:6px;padding:10px 24px;background:#fff;border-bottom:1px solid #e2e8f0;flex-wrap:wrap;flex-shrink:0;"></div>
+    <div id="kunden-body" style="flex:1;overflow-y:auto;padding:0;">
+      <div style="color:#94a3b8;padding:60px;text-align:center;font-size:14px;">Daten werden geladen &hellip;</div>
+    </div>
+  </div>
+
 </div>
 </div>
 
@@ -2753,8 +2616,6 @@ function showArea(s) {{
     var btn = document.getElementById("btn-"+id);
     if(btn) btn.className = "nav-dd-btn" + (id===s?" active":"");
   }});
-  var kundenBtn = document.getElementById("btn-kunden");
-  if(kundenBtn) kundenBtn.className = "nav-btn";
   // Telefonliste-Button
   var telBtn = document.getElementById("btn-tel");
   if(telBtn) telBtn.className = "nav-btn" + (s==="tel"?" active":"");
@@ -2777,33 +2638,26 @@ function showArea(s) {{
   if(zulagePanel) zulagePanel.style.display = (s==="zulage") ? "flex" : "none";
   var zuBtn = document.getElementById("btn-zulage");
   if(zuBtn) zuBtn.className = "nav-btn" + (s==="zulage" ? " active" : "");
+  var kundenPanel = document.getElementById("panel-kunden");
+  if(kundenPanel) kundenPanel.style.display = (s==="kunden") ? "flex" : "none";
+  var kundenBtn = document.getElementById("btn-kunden");
+  if(kundenBtn) kundenBtn.className = "nav-btn" + (s==="kunden" ? " active" : "");
 
   if(s==="vz") fwInitDatePicker();
   if(s==="tel" && !telPanel.dataset.loaded) {{ telRender(""); telPanel.dataset.loaded="1"; }}
   if(s==="sam" && samPanel && !samPanel.dataset.loaded) {{ samRender(""); samPanel.dataset.loaded="1"; }}
   if(s==="zulage" && zulagePanel && !zulagePanel.dataset.loaded) {{ zulagenInit(); zulagePanel.dataset.loaded="1"; }}
+  if(s==="kunden") {{
+    if(_kundenGroups) kundenRenderBody();
+    else {{
+      // Request data from iframe
+      try {{ var f=document.getElementById("frame-suche"); if(f&&f.contentWindow&&typeof f.contentWindow.onKundenListe==="function") f.contentWindow.onKundenListe(); }} catch(e){{}}
+    }}
+  }}
   if(s==="fa") {{ if(faPanel) faPanel.scrollTop = 0; if(faPanel && !faPanel.dataset.loaded) {{ faRender(""); faPanel.dataset.loaded="1"; }} }}
 }}
 
-function showKundenListeTop() {{
-  showArea("suche");
-  var frame = document.getElementById("frame-suche");
-  function trigger(tries) {{
-    try {{
-      var win = frame && frame.contentWindow;
-      if(win && typeof win.onKundenListe === "function") {{
-        win.onKundenListe();
-        var kundenBtn = document.getElementById("btn-kunden");
-        if(kundenBtn) kundenBtn.className = "nav-btn active";
-        return;
-      }}
-    }} catch(err) {{}}
-    if((tries || 0) < 25) {{
-      setTimeout(function() {{ trigger((tries || 0) + 1); }}, 120);
-    }}
-  }}
-  trigger(0);
-}}
+// showKundenListeTop removed — Kunden Liste is now a standalone panel
 
 if(INSTANCES.length > 0) {{
   document.getElementById("frame-suche").srcdoc = b64ChunksToString(INSTANCES[0].s);
@@ -2819,6 +2673,15 @@ window.addEventListener("message", function(e) {{
     vzAllData = e.data.data;
     // Erste Instanz = Normalwochen → als Referenz speichern
     if(currentInst === 0) normalInstData = e.data.data;
+  }}
+  if (e.data && e.data.type === "kunden-liste-data") {{
+    _kundenGroups = e.data.groups || {{}};
+    _kundenOrder = e.data.order || [];
+    _kundenActiveGroup = "Alle";
+    _kundenSearchQ = "";
+    var inp = document.getElementById("kunden-search");
+    if(inp) inp.value = "";
+    kundenRenderBody();
   }}
   if (e.data && e.data.type === "request-normal-data") {{
     // Druck-iframe fragt nach Normalwochen-Daten
@@ -3372,6 +3235,105 @@ function samToggle(el) {{
 
 {fa_js_code}
 {zulage_js_code}
+// ── Kunden Liste (Standalone Panel) ──────────────────────────────────────────
+var _kundenGroups = null;
+var _kundenOrder = [];
+var _kundenActiveGroup = "Alle";
+var _kundenSearchQ = "";
+
+function kundenFilter(q) {{
+  _kundenSearchQ = (q||"").toLowerCase().trim();
+  kundenRenderBody();
+}}
+
+function kundenSetGroup(name) {{
+  _kundenActiveGroup = name || "Alle";
+  kundenRenderBody();
+}}
+
+function kundenEsc(v) {{
+  return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}}
+
+function kundenRenderCats() {{
+  var el = document.getElementById("kunden-cats");
+  if(!el || !_kundenGroups) return;
+  var total = 0;
+  _kundenOrder.forEach(function(n){{ total += (_kundenGroups[n]||[]).length; }});
+  var h = "";
+  // "Alle" button
+  var aA = _kundenActiveGroup === "Alle";
+  h += "<button onclick='kundenSetGroup(\"Alle\")' style='padding:6px 14px;border-radius:8px;border:1.5px solid "+(aA?"#1e3a5f":"#cbd5e1")+";background:"+(aA?"#1e3a5f":"#fff")+";color:"+(aA?"#fff":"#475569")+";font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;'>Alle <b style=\"margin-left:4px;\">" + total + "</b></button>";
+  _kundenOrder.forEach(function(name) {{
+    var cnt = (_kundenGroups[name]||[]).length;
+    var isActive = _kundenActiveGroup === name;
+    h += "<button onclick='kundenSetGroup(" + JSON.stringify(name) + ")' style='padding:6px 14px;border-radius:8px;border:1.5px solid "+(isActive?"#1e3a5f":"#cbd5e1")+";background:"+(isActive?"#1e3a5f":"#fff")+";color:"+(isActive?"#fff":"#475569")+";font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;'>" + kundenEsc(name) + " <b style=\"margin-left:4px;\">" + cnt + "</b></button>";
+  }});
+  el.innerHTML = h;
+}}
+
+function kundenGetRows() {{
+  var rows = [];
+  if(_kundenActiveGroup === "Alle") {{
+    _kundenOrder.forEach(function(n) {{ rows = rows.concat(_kundenGroups[n]||[]); }});
+  }} else {{
+    rows = _kundenGroups[_kundenActiveGroup] || [];
+  }}
+  if(_kundenSearchQ) {{
+    rows = rows.filter(function(r) {{
+      return (r.name||"").toLowerCase().indexOf(_kundenSearchQ) !== -1
+        || (r.sap||"").indexOf(_kundenSearchQ) !== -1
+        || (r.csb||"").indexOf(_kundenSearchQ) !== -1
+        || (r.ort||"").toLowerCase().indexOf(_kundenSearchQ) !== -1
+        || (r.touren||"").toLowerCase().indexOf(_kundenSearchQ) !== -1
+        || (r.rahmentouren||"").toLowerCase().indexOf(_kundenSearchQ) !== -1;
+    }});
+  }}
+  return rows;
+}}
+
+function kundenRenderBody() {{
+  var body = document.getElementById("kunden-body");
+  var totalEl = document.getElementById("kunden-total");
+  if(!body || !_kundenGroups) return;
+
+  kundenRenderCats();
+
+  var rows = kundenGetRows();
+  if(totalEl) totalEl.textContent = rows.length + " Kunden" + (_kundenSearchQ ? " (gefiltert)" : "");
+
+  if(!rows.length) {{
+    body.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Kunden gefunden.</div>";
+    return;
+  }}
+
+  var h = "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
+  h += "<thead><tr style='background:#1e3a5f;position:sticky;top:0;z-index:2;'>";
+  h += "<th style='padding:10px 12px;text-align:left;color:#fff;font-size:11px;font-weight:800;letter-spacing:.3px;'>SAP</th>";
+  h += "<th style='padding:10px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;'>CSB</th>";
+  h += "<th style='padding:10px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;'>KUNDE</th>";
+  h += "<th style='padding:10px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;'>ORT</th>";
+  h += "<th style='padding:10px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;'>BEREICH</th>";
+  h += "<th style='padding:10px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;'>TOUREN</th>";
+  h += "<th style='padding:10px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;'>RAHMENTOUREN</th>";
+  h += "</tr></thead><tbody>";
+
+  rows.forEach(function(r, i) {{
+    var bg = i % 2 === 0 ? "#fff" : "#f8fafc";
+    h += "<tr style='background:" + bg + ";border-bottom:1px solid #f1f5f9;transition:background .1s;' onmouseover='this.style.background=\"#eff6ff\"' onmouseout='this.style.background=\"" + bg + "\"'>";
+    h += "<td style='padding:9px 12px;font-weight:800;color:#1e3a5f;white-space:nowrap;'><span style=\"background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:2px 8px;font-size:11px;\">" + kundenEsc(r.sap) + "</span></td>";
+    h += "<td style='padding:9px 8px;color:#64748b;font-weight:600;font-size:11px;'>" + kundenEsc(r.csb || "-") + "</td>";
+    h += "<td style='padding:9px 8px;font-weight:700;color:#0f172a;'>" + kundenEsc(r.name) + "</td>";
+    h += "<td style='padding:9px 8px;color:#475569;font-size:11px;'>" + kundenEsc(r.ort) + "</td>";
+    h += "<td style='padding:9px 8px;'><span style='background:#f0fdf4;color:#166534;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;'>" + kundenEsc(r.bereich) + "</span></td>";
+    h += "<td style='padding:9px 8px;color:#475569;font-size:11px;max-width:280px;'>" + kundenEsc(r.touren) + "</td>";
+    h += "<td style='padding:9px 8px;color:#64748b;font-size:10px;max-width:350px;word-break:break-word;'>" + kundenEsc(r.rahmentouren) + "</td>";
+    h += "</tr>";
+  }});
+  h += "</tbody></table>";
+  body.innerHTML = h;
+}}
+
 </script>
 
 </body>
