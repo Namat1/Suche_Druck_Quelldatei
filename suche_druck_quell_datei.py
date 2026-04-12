@@ -772,6 +772,105 @@ document.addEventListener('DOMContentLoaded', function(){
 
 SUCHE_HTML_TEMPLATE = _patch_suche_template_tour_summary_collapsible_fix(SUCHE_HTML_TEMPLATE)
 
+
+def _patch_suche_template_search_all_inputs(template: str) -> str:
+    """Die Suche soll bei jeder Eingabe alle Felder durchsuchen,
+    auch bei kurzen oder rein numerischen Werten wie 3-, 4- oder 5-stelligen Eingaben."""
+    old = """function onSmart(){
+  const qRaw=$('#smartSearch').value.trim();
+  closeTourSummary();
+
+  if(!qRaw){ renderTable([]); return; }
+
+  if(/^\d{1,3}$/.test(qRaw)){
+    const n=qRaw.replace(/^0+(\d)/,'$1');
+    const r=allCustomers.filter(k=>(k.touren||[]).some(t=>(t.tournummer||'').startsWith(n)));
+    renderTable(r);
+    return;
+  }
+
+  if(/^\d{4}$/.test(qRaw)){
+    const n=qRaw.replace(/^0+(\d)/,'$1');
+    const tr=allCustomers.filter(k=>(k.touren||[]).some(t=>(t.tournummer||'')===n));
+    const cr=allCustomers.filter(k=>(k.csb_nummer||'')===n);
+    const r=dedupByCSB([...tr,...cr]);
+
+    if(tr.length){
+      renderTourSummary(tr, n);
+    }
+    renderTable(r);
+    return;
+  }
+
+  const q=normDE(qRaw);
+  const r=allCustomers.filter(k=>{
+    const fb=k.fachberater||'';
+    const text=(k.name+' '+k.strasse+' '+k.ort+' '+k.csb_nummer+' '+k.sap_nummer+' '+fb+' '+(k.schluessel||'')+' '+(k.fb_phone||'')+' '+(k.market_phone||'')+' '+(k.market_email||'')+' '+((kundenNotizen[k.csb_nummer]||{}).c||'')+' '+((kundenNotizen[k.csb_nummer]||{}).d||''));
+    return normDE(text).includes(q);
+  });
+  renderTable(r);
+}"""
+
+    new = """function onSmart(){
+  const qRaw=$('#smartSearch').value.trim();
+  closeTourSummary();
+
+  if(!qRaw){ renderTable([]); return; }
+
+  const q = normDE(qRaw);
+  const n = normalizeDigits(qRaw);
+
+  let r = allCustomers.filter(k=>{
+    const fb = k.fachberater || '';
+    const tourText = (k.touren||[]).map(t => ((t.tournummer||'') + ' ' + (t.liefertag||''))).join(' ');
+    const text = (
+      (k.name||'') + ' ' +
+      (k.strasse||'') + ' ' +
+      (k.ort||'') + ' ' +
+      (k.csb_nummer||'') + ' ' +
+      (k.sap_nummer||'') + ' ' +
+      fb + ' ' +
+      (k.schluessel||'') + ' ' +
+      (k.fb_phone||'') + ' ' +
+      (k.market_phone||'') + ' ' +
+      (k.market_email||'') + ' ' +
+      ((kundenNotizen[k.csb_nummer]||{}).c||'') + ' ' +
+      ((kundenNotizen[k.csb_nummer]||{}).d||'') + ' ' +
+      tourText
+    );
+
+    if(normDE(text).includes(q)) return true;
+    if(!n) return false;
+
+    if(normalizeDigits(k.csb_nummer) === n) return true;
+    if(normalizeDigits(k.sap_nummer) === n) return true;
+    if(normalizeDigits(k.schluessel) === n) return true;
+
+    return (k.touren||[]).some(t=>{
+      const tourNum = normalizeDigits(t.tournummer);
+      if(!tourNum) return false;
+      return tourNum === n || tourNum.startsWith(n);
+    });
+  });
+
+  if(n){
+    const tr = allCustomers.filter(k => (k.touren||[]).some(t => normalizeDigits(t.tournummer) === n));
+    if(tr.length){
+      renderTourSummary(tr, n);
+      r = dedupByCSB([...tr, ...r]);
+    }
+  }
+
+  renderTable(dedupByCSB(r));
+}"""
+
+    if old in template:
+        return template.replace(old, new, 1)
+    return template
+
+
+SUCHE_HTML_TEMPLATE = _patch_suche_template_search_all_inputs(SUCHE_HTML_TEMPLATE)
+
 DRUCK_HTML_TEMPLATE: str = base64.b64decode(_DRUCK_B64).decode("utf-8")
 
 
