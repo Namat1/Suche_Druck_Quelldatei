@@ -1063,7 +1063,7 @@ def _patch_suche_template_sonderliste_marktkauf(template: str) -> str:
         """  allCustomers = Array.from(map.values());
 }
 
-const KUNDEN_LISTE_GROUP_ORDER = ['SuL','Malchow','Neumünster','Direkt / Marktkauf','Gemischt','Ohne Rahmentour'];
+const KUNDEN_LISTE_GROUP_ORDER = ['SuL','Malchow','Neumünster','Direkt','Marktkauf','Gemischt','Ohne Rahmentour'];
 
 function normalizeRahmentourCodeGlobal(value){
   return String(value||'').toUpperCase().replace(/\s+/g,'').trim();
@@ -1101,7 +1101,7 @@ function classifyKundenCodes(codes){
   if(hasZ) return 'SuL';
   if(hasM) return 'Malchow';
   if(hasN) return 'Neumünster';
-  return 'Direkt / Marktkauf';
+  return 'Direkt';
 }
 
 function hasMarktkaufTour(k){
@@ -1122,7 +1122,7 @@ function sendKundenDataToParent(){
   ordered.forEach(k => {
     const codes = getCustomerRahmentourCodes(k);
     const isMarktkauf = hasMarktkaufTour(k);
-    const group = isMarktkauf ? 'Direkt / Marktkauf' : classifyKundenCodes(codes);
+    const group = isMarktkauf ? 'Marktkauf' : classifyKundenCodes(codes);
     const touren = (k.touren||[])
       .map(t => {
         const num = normalizeDigits(t.tournummer) || String(t.tournummer||'').trim();
@@ -2513,6 +2513,7 @@ iframe.active{{display:block}}
           style="flex:1;min-width:160px;max-width:300px;padding:8px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#fff;transition:border .15s;color:#0f172a;"
           onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#cbd5e1'">
         <span id="kunden-total" style="font-size:12px;font-weight:700;color:#64748b;"></span>
+        <button onclick="kundenExportExcel()" style="margin-left:auto;padding:6px 14px;background:#1d6f42;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;">&#128196; Excel</button>
       </div>
       <div id="kunden-cats" style="display:flex;gap:6px;padding:0 0 10px 0;flex-wrap:wrap;flex-shrink:0;"></div>
       <div id="kunden-body" style="flex:1;overflow-y:auto;padding:0;border-radius:8px;border:1.5px solid #e2e8f0;background:#fff;">
@@ -3324,7 +3325,6 @@ function kundenRenderBody() {{
   h += "<th style='padding:10px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;'>CSB</th>";
   h += "<th style='padding:10px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;'>KUNDE</th>";
   h += "<th style='padding:10px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;'>ORT</th>";
-  h += "<th style='padding:10px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;'>BEREICH</th>";
   h += "<th style='padding:10px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;'>TOUREN</th>";
   h += "<th style='padding:10px 8px;text-align:left;color:#fff;font-size:11px;font-weight:800;'>RAHMENTOUREN</th>";
   h += "</tr></thead><tbody>";
@@ -3336,13 +3336,28 @@ function kundenRenderBody() {{
     h += "<td style='padding:9px 8px;color:#64748b;font-weight:600;font-size:11px;'>" + kundenEsc(r.csb || "-") + "</td>";
     h += "<td style='padding:9px 8px;font-weight:700;color:#0f172a;'>" + kundenEsc(r.name) + "</td>";
     h += "<td style='padding:9px 8px;color:#475569;font-size:11px;'>" + kundenEsc(r.ort) + "</td>";
-    h += "<td style='padding:9px 8px;'><span style='background:#f0fdf4;color:#166534;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;'>" + kundenEsc(r.bereich) + "</span></td>";
     h += "<td style='padding:9px 8px;color:#475569;font-size:11px;max-width:280px;'>" + kundenEsc(r.touren) + "</td>";
     h += "<td style='padding:9px 8px;color:#64748b;font-size:10px;max-width:350px;word-break:break-word;'>" + kundenEsc(r.rahmentouren) + "</td>";
     h += "</tr>";
   }});
-  h += "</tbody></table>";
+  h += "</tbody></table><div style='height:40px;'></div>";
   body.innerHTML = h;
+}}
+
+function kundenExportExcel() {{
+  if(!_kundenGroups || !window.XLSX) {{ alert("Keine Daten oder XLSX nicht geladen."); return; }}
+  var rows = kundenGetRows();
+  if(!rows.length) {{ alert("Keine Kunden zum Exportieren."); return; }}
+  var ws_data = [["SAP","CSB","Kunde","Ort","Touren","Rahmentouren"]];
+  rows.forEach(function(r) {{
+    ws_data.push([r.sap, r.csb||"", r.name||"", r.ort||"", r.touren||"", r.rahmentouren||""]);
+  }});
+  var wb = XLSX.utils.book_new();
+  var ws = XLSX.utils.aoa_to_sheet(ws_data);
+  ws["!cols"] = [{{wch:10}},{{wch:8}},{{wch:30}},{{wch:25}},{{wch:40}},{{wch:50}}];
+  var label = _kundenActiveGroup === "Alle" ? "Alle" : _kundenActiveGroup;
+  XLSX.utils.book_append_sheet(wb, ws, label.substring(0,31));
+  XLSX.writeFile(wb, "Kunden_" + label.replace(/[^a-zA-Z0-9äöüÄÖÜß]/g,"_") + ".xlsx");
 }}
 
 </script>
