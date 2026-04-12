@@ -1320,6 +1320,127 @@ def build_rahmentour_map(csv_file) -> dict:
     return result
 
 
+def normalize_wochentag_py(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    key = unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode("ascii").lower().strip()
+    mapping = {
+        "montag": "Montag",
+        "dienstag": "Dienstag",
+        "mittwoch": "Mittwoch",
+        "donnerstag": "Donnerstag",
+        "freitag": "Freitag",
+        "samstag": "Samstag",
+        "sonntag": "Sonntag",
+    }
+    return mapping.get(key, raw)
+
+
+def build_rahmentour_week_data(csv_file) -> dict:
+    """Bereitet die Rahmentourprofil-CSV für eine interaktive Wochenansicht auf."""
+    tage = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+    by_day = {tag: {"rahmentouren": 0, "touren": 0} for tag in tage}
+    if csv_file is None:
+        return {
+            "days": tage,
+            "rows": [],
+            "by_day": by_day,
+            "summary": {
+                "rahmentouren": 0,
+                "touren": 0,
+                "tage_mit_eintraegen": 0,
+                "mehrfach_touren": 0,
+                "mehrtages_touren": 0,
+            },
+            "top_tours": [],
+        }
+
+    import csv as _csv
+    import io as _io
+
+    try:
+        csv_file.seek(0)
+        raw = csv_file.read()
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8-sig", errors="replace")
+    except Exception:
+        raw = ""
+
+    rows = []
+    tour_groups = {}
+    day_unique_tours = {tag: set() for tag in tage}
+    reader = _csv.reader(_io.StringIO(raw), delimiter=";", quotechar='"')
+    header_skipped = False
+
+    for row in reader:
+        if not header_skipped:
+            header_skipped = True
+            if len(row) > 0 and not row[0].strip().lstrip("0").isdigit():
+                continue
+        if len(row) < 2:
+            continue
+
+        sap_raw = str(row[0]).strip()
+        sap_norm = sap_raw.lstrip("0") or "0"
+        csb = normalize_digits_py(row[1]) if len(row) > 1 else ""
+        tag = normalize_wochentag_py(row[2] if len(row) > 2 else "")
+        if not csb or not sap_raw or tag not in by_day:
+            continue
+
+        entry = {
+            "sap": sap_raw,
+            "sap_norm": sap_norm,
+            "csb": csb,
+            "wochentag": tag,
+        }
+        rows.append(entry)
+        by_day[tag]["rahmentouren"] += 1
+        day_unique_tours[tag].add(csb)
+
+        grp = tour_groups.setdefault(csb, {
+            "csb": csb,
+            "count": 0,
+            "wochentage": set(),
+            "sap_list": [],
+        })
+        grp["count"] += 1
+        grp["wochentage"].add(tag)
+        grp["sap_list"].append(sap_raw)
+
+    for tag in tage:
+        by_day[tag]["touren"] = len(day_unique_tours[tag])
+
+    day_order = {tag: idx for idx, tag in enumerate(tage)}
+    rows.sort(key=lambda r: (day_order.get(r["wochentag"], 999), int(r["csb"]) if str(r["csb"]).isdigit() else 999999, r["sap_norm"]))
+
+    top_tours = []
+    for csb, grp in sorted(
+        tour_groups.items(),
+        key=lambda item: (-item[1]["count"], int(item[0]) if str(item[0]).isdigit() else 999999)
+    )[:20]:
+        top_tours.append({
+            "csb": csb,
+            "count": grp["count"],
+            "wochentage": sorted(grp["wochentage"], key=lambda tag: day_order.get(tag, 999)),
+            "sap_list": grp["sap_list"],
+        })
+
+    return {
+        "days": tage,
+        "rows": rows,
+        "by_day": by_day,
+        "summary": {
+            "rahmentouren": len(rows),
+            "touren": len(tour_groups),
+            "tage_mit_eintraegen": sum(1 for tag in tage if by_day[tag]["rahmentouren"] > 0),
+            "mehrfach_touren": sum(1 for grp in tour_groups.values() if grp["count"] > 1),
+            "mehrtages_touren": sum(1 for grp in tour_groups.values() if len(grp["wochentage"]) > 1),
+        },
+        "top_tours": top_tours,
+    }
+
+
 def generate_suche_html(excel_file, key_file, logo_file,
                          berater_file, berater_csb_file,
                          lieferhinweis_csv=None, rahmentour_csv=None) -> str:
@@ -1865,6 +1986,11 @@ def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa
     except Exception:
         _logo_up = None
     logo_data_url = logo_file_to_data_uri(_logo_up) or load_logo_data_uri()
+    try:
+        _rahmen_up = st.session_state.get("g_rahmen_csv")
+    except Exception:
+        _rahmen_up = None
+    rahmen_data = build_rahmentour_week_data(_rahmen_up)
 
     """
     Bettet beliebig viele Suche+Druck-Paare (Instanzen) in eine HTML ein.
@@ -1956,6 +2082,302 @@ def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa
         sam_json = _j.dumps(sam_list, ensure_ascii=False)
     except Exception:
         pass
+
+    rahmen_js_code = """
+// ── Rahmentour Woche ──────────────────────────────────────────────────────
+var rahmenState = { day: "Alle", search: "", onlyMulti: false, onlyMultiDay: false, selectedTour: "" };
+var rahmenChart = null;
+
+function rahmenEsc(v) {
+  return String(v == null ? "" : v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function rahmenRows() {
+  return (RAHMEN_DATA && Array.isArray(RAHMEN_DATA.rows)) ? RAHMEN_DATA.rows : [];
+}
+
+function rahmenDays() {
+  return (RAHMEN_DATA && Array.isArray(RAHMEN_DATA.days) && RAHMEN_DATA.days.length)
+    ? RAHMEN_DATA.days
+    : ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"];
+}
+
+function rahmenGetTourMeta() {
+  if(RAHMEN_DATA._tourMeta) return RAHMEN_DATA._tourMeta;
+  var meta = {};
+  rahmenRows().forEach(function(r) {
+    var key = String(r.csb || "");
+    if(!key) return;
+    if(!meta[key]) meta[key] = {
+      csb: key,
+      rows: [],
+      days: [],
+      daySet: {},
+      sapList: [],
+      sapSet: {},
+      searchBlob: ""
+    };
+    var m = meta[key];
+    m.rows.push(r);
+    var day = String(r.wochentag || "");
+    if(day && !m.daySet[day]) {
+      m.daySet[day] = true;
+      m.days.push(day);
+    }
+    var sap = String(r.sap || "");
+    if(sap && !m.sapSet[sap]) {
+      m.sapSet[sap] = true;
+      m.sapList.push(sap);
+    }
+  });
+  var dayIdx = {};
+  rahmenDays().forEach(function(day, idx){ dayIdx[day] = idx; });
+  Object.keys(meta).forEach(function(key) {
+    var m = meta[key];
+    m.days.sort(function(a,b){ return (dayIdx[a] ?? 999) - (dayIdx[b] ?? 999); });
+    m.rows.sort(function(a,b){
+      var d = (dayIdx[a.wochentag] ?? 999) - (dayIdx[b.wochentag] ?? 999);
+      if(d !== 0) return d;
+      return String(a.sap_norm || a.sap || "").localeCompare(String(b.sap_norm || b.sap || ""), "de");
+    });
+    m.count = m.rows.length;
+    m.searchBlob = [m.csb].concat(m.sapList).concat(m.rows.map(function(r){ return r.sap_norm || ""; })).join(" ").toLowerCase();
+  });
+  RAHMEN_DATA._tourMeta = meta;
+  return meta;
+}
+
+function rahmenBuildDayCounts(tourList) {
+  var counts = {};
+  rahmenDays().forEach(function(day){ counts[day] = { rahmentouren: 0, touren: 0 }; });
+  tourList.forEach(function(m) {
+    (m.days || []).forEach(function(day) {
+      if(!counts[day]) counts[day] = { rahmentouren: 0, touren: 0 };
+      counts[day].touren += 1;
+    });
+    (m.rows || []).forEach(function(r) {
+      var day = r.wochentag;
+      if(!counts[day]) counts[day] = { rahmentouren: 0, touren: 0 };
+      counts[day].rahmentouren += 1;
+    });
+  });
+  return counts;
+}
+
+function rahmenGetFilteredTours() {
+  var q = String(rahmenState.search || "").toLowerCase().trim();
+  var day = rahmenState.day;
+  var meta = rahmenGetTourMeta();
+  var list = Object.keys(meta).map(function(key){ return meta[key]; });
+  list = list.filter(function(m) {
+    if(day && day !== "Alle" && m.days.indexOf(day) === -1) return false;
+    if(rahmenState.onlyMulti && m.count <= 1) return false;
+    if(rahmenState.onlyMultiDay && m.days.length <= 1) return false;
+    if(q && m.searchBlob.indexOf(q) === -1) return false;
+    return true;
+  });
+  list.sort(function(a,b) {
+    if(b.count !== a.count) return b.count - a.count;
+    return String(a.csb).localeCompare(String(b.csb), "de", {numeric:true});
+  });
+  return list;
+}
+
+function rahmenSetDay(day) {
+  rahmenState.day = day || "Alle";
+  rahmenRender();
+}
+function rahmenSetSearch(v) {
+  rahmenState.search = v || "";
+  rahmenRender();
+}
+function rahmenToggleMulti() {
+  rahmenState.onlyMulti = !rahmenState.onlyMulti;
+  rahmenRender();
+}
+function rahmenToggleMultiDay() {
+  rahmenState.onlyMultiDay = !rahmenState.onlyMultiDay;
+  rahmenRender();
+}
+function rahmenReset() {
+  rahmenState.day = "Alle";
+  rahmenState.search = "";
+  rahmenState.onlyMulti = false;
+  rahmenState.onlyMultiDay = false;
+  rahmenState.selectedTour = "";
+  var inp = document.getElementById("rahmen-search");
+  if(inp) inp.value = "";
+  rahmenRender();
+}
+function rahmenSelectTour(csb) {
+  rahmenState.selectedTour = String(csb || "");
+  rahmenRender();
+}
+
+function rahmenRenderDayButtons(counts) {
+  var wrap = document.getElementById("rahmen-day-buttons");
+  if(!wrap) return;
+  var totalTours = Object.keys(rahmenGetTourMeta()).length;
+  var totalRows = rahmenRows().length;
+  var html = "";
+  html += "<button onclick="rahmenSetDay('Alle')" style="padding:10px 12px;border:2px solid "+(rahmenState.day==='Alle'?'#1b66b3':'#d4dbe5')+";background:"+(rahmenState.day==='Alle'?'#eff6ff':'#fff')+";color:"+(rahmenState.day==='Alle'?'#1b66b3':'#334155')+";border-radius:6px;cursor:pointer;font-weight:800;font-size:12px;min-width:120px;text-align:left;">Alle<br><span style='font-size:10px;font-weight:700;color:#64748b;'>"+totalRows+" Rahmentouren · "+totalTours+" Touren</span></button>";
+  rahmenDays().forEach(function(day) {
+    var c = counts[day] || {rahmentouren:0,touren:0};
+    html += "<button onclick="rahmenSetDay('"+day+"')" style="padding:10px 12px;border:2px solid "+(rahmenState.day===day?'#1b66b3':'#d4dbe5')+";background:"+(rahmenState.day===day?'#eff6ff':'#fff')+";color:"+(rahmenState.day===day?'#1b66b3':'#334155')+";border-radius:6px;cursor:pointer;font-weight:800;font-size:12px;min-width:120px;text-align:left;">"+day+"<br><span style='font-size:10px;font-weight:700;color:#64748b;'>"+c.rahmentouren+" Rahmentouren · "+c.touren+" Touren</span></button>";
+  });
+  wrap.innerHTML = html;
+}
+
+function rahmenRenderStats(tourList, counts) {
+  var stats = document.getElementById("rahmen-stats");
+  if(!stats) return;
+  var rowsCount = tourList.reduce(function(sum, item){ return sum + (item.rows ? item.rows.length : 0); }, 0);
+  var multiCount = tourList.filter(function(item){ return item.count > 1; }).length;
+  var multiDayCount = tourList.filter(function(item){ return item.days.length > 1; }).length;
+  var activeDays = rahmenDays().filter(function(day){ return (counts[day] && counts[day].rahmentouren) ? true : false; }).length;
+  stats.innerHTML = "" +
+    "<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;'>" +
+      "<div style='background:#fff;border:1px solid #dbe3ec;border-radius:6px;padding:12px;'><div style='font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;'>Treffer Touren</div><div style='font-size:28px;font-weight:900;color:#1b66b3;line-height:1.1;'>"+tourList.length+"</div></div>" +
+      "<div style='background:#fff;border:1px solid #dbe3ec;border-radius:6px;padding:12px;'><div style='font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;'>Treffer Rahmentouren</div><div style='font-size:28px;font-weight:900;color:#0f172a;line-height:1.1;'>"+rowsCount+"</div></div>" +
+      "<div style='background:#fff;border:1px solid #dbe3ec;border-radius:6px;padding:12px;'><div style='font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;'>Mehrfach Touren</div><div style='font-size:28px;font-weight:900;color:#b45309;line-height:1.1;'>"+multiCount+"</div></div>" +
+      "<div style='background:#fff;border:1px solid #dbe3ec;border-radius:6px;padding:12px;'><div style='font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;'>Mehrtägig</div><div style='font-size:28px;font-weight:900;color:#7c3aed;line-height:1.1;'>"+multiDayCount+"</div></div>" +
+      "<div style='background:#fff;border:1px solid #dbe3ec;border-radius:6px;padding:12px;'><div style='font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;'>Tage mit Treffern</div><div style='font-size:28px;font-weight:900;color:#166534;line-height:1.1;'>"+activeDays+"</div></div>" +
+    "</div>";
+}
+
+function rahmenRenderChart(counts) {
+  var canvas = document.getElementById("rahmen-chart");
+  if(!canvas || typeof Chart === "undefined") return;
+  var labels = rahmenDays();
+  var values = labels.map(function(day){ return counts[day] ? counts[day].rahmentouren : 0; });
+  var bg = labels.map(function(day){ return rahmenState.day === day ? "rgba(27,102,179,0.85)" : "rgba(79,135,232,0.5)"; });
+  var border = labels.map(function(day){ return rahmenState.day === day ? "rgba(27,102,179,1)" : "rgba(79,135,232,0.9)"; });
+  if(rahmenChart) {
+    rahmenChart.data.labels = labels;
+    rahmenChart.data.datasets[0].data = values;
+    rahmenChart.data.datasets[0].backgroundColor = bg;
+    rahmenChart.data.datasets[0].borderColor = border;
+    rahmenChart.update();
+    return;
+  }
+  rahmenChart = new Chart(canvas.getContext("2d"), {
+    type: "bar",
+    data: {
+      labels: labels,
+      datasets: [{
+        label: "Rahmentouren",
+        data: values,
+        backgroundColor: bg,
+        borderColor: border,
+        borderWidth: 1.5,
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { precision: 0 } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+}
+
+function rahmenRenderList(tourList) {
+  var el = document.getElementById("rahmen-list");
+  if(!el) return;
+  if(!tourList.length) {
+    el.innerHTML = "<div style='background:#fff;border:1px solid #dbe3ec;border-radius:6px;padding:26px;text-align:center;color:#94a3b8;'>Keine Treffer mit den aktuellen Filtern.</div>";
+    return;
+  }
+  var html = "<div style='display:grid;gap:10px;'>";
+  tourList.forEach(function(item) {
+    var active = rahmenState.selectedTour === item.csb;
+    var preview = item.sapList.slice(0, 6).map(function(sap){
+      return "<span style='display:inline-block;background:#f8fafc;border:1px solid #dbe3ec;border-radius:4px;padding:2px 6px;font-size:10px;font-weight:700;color:#334155;'>"+rahmenEsc(sap)+"</span>";
+    }).join(" ");
+    html += "<button onclick="rahmenSelectTour('"+item.csb+"')" style="width:100%;text-align:left;background:"+(active?'#eff6ff':'#fff')+";border:2px solid "+(active?'#1b66b3':'#dbe3ec')+";border-radius:6px;padding:12px;cursor:pointer;box-shadow:0 1px 2px rgba(15,23,42,.04);">";
+    html += "<div style='display:flex;justify-content:space-between;gap:10px;align-items:flex-start;'>";
+    html += "<div><div style='font-size:18px;font-weight:900;color:#0f172a;'>"+rahmenEsc(item.csb)+"</div><div style='font-size:11px;font-weight:800;color:#64748b;margin-top:2px;'>"+item.days.map(rahmenEsc).join(" · ")+"</div></div>";
+    html += "<div style='text-align:right;white-space:nowrap;'><div style='font-size:24px;font-weight:900;color:#1b66b3;line-height:1;'>"+item.count+"</div><div style='font-size:10px;font-weight:800;color:#64748b;'>Rahmentouren</div></div>";
+    html += "</div>";
+    html += "<div style='margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;'>"+preview+(item.sapList.length > 6 ? "<span style='font-size:10px;font-weight:800;color:#94a3b8;'>+"+(item.sapList.length-6)+" weitere</span>" : "")+"</div>";
+    html += "</button>";
+  });
+  html += "</div>";
+  el.innerHTML = html;
+}
+
+function rahmenRenderDetail(tourList) {
+  var el = document.getElementById("rahmen-detail");
+  if(!el) return;
+  var selected = tourList.find(function(item){ return item.csb === rahmenState.selectedTour; });
+  if(!selected) {
+    var top = (RAHMEN_DATA.top_tours || []).slice(0, 8).map(function(item) {
+      return "<tr><td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;font-weight:800;'>"+rahmenEsc(item.csb)+"</td><td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;'>"+item.count+"</td><td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;'>"+item.wochentage.map(rahmenEsc).join(" · ")+"</td></tr>";
+    }).join("");
+    el.innerHTML = "<div style='background:#fff;border:1px solid #dbe3ec;border-radius:6px;padding:18px;'>" +
+      "<div style='font-size:18px;font-weight:900;color:#0f172a;margin-bottom:6px;'>Rahmentour Details</div>" +
+      "<div style='font-size:13px;color:#64748b;margin-bottom:14px;'>Klicke links eine CSB Tournummer an. Dann siehst du alle zugehörigen SAP Rahmentouren, die Wochentage und die komplette Zuordnung.</div>" +
+      "<div style='font-size:12px;font-weight:900;color:#1b66b3;text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px;'>Top Tournummern</div>" +
+      "<div style='overflow:auto;'><table style='width:100%;border-collapse:collapse;font-size:12px;'><thead><tr><th style='text-align:left;padding:8px 10px;background:#eff6ff;border-bottom:1px solid #dbe3ec;'>CSB Tour</th><th style='text-align:left;padding:8px 10px;background:#eff6ff;border-bottom:1px solid #dbe3ec;'>Anzahl</th><th style='text-align:left;padding:8px 10px;background:#eff6ff;border-bottom:1px solid #dbe3ec;'>Tage</th></tr></thead><tbody>" + (top || "<tr><td colspan='3' style='padding:12px;color:#94a3b8;'>Keine Daten vorhanden.</td></tr>") + "</tbody></table></div>" +
+    "</div>";
+    return;
+  }
+  var rowsHtml = selected.rows.map(function(r) {
+    return "<tr><td style='padding:9px 10px;border-bottom:1px solid #e2e8f0;font-weight:800;color:#0f172a;'>"+rahmenEsc(r.sap)+"</td><td style='padding:9px 10px;border-bottom:1px solid #e2e8f0;'>"+rahmenEsc(r.wochentag)+"</td><td style='padding:9px 10px;border-bottom:1px solid #e2e8f0;'>"+rahmenEsc(r.csb)+"</td></tr>";
+  }).join("");
+  el.innerHTML = "<div style='background:#fff;border:1px solid #dbe3ec;border-radius:6px;padding:18px;'>" +
+    "<div style='display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px;'>" +
+      "<div><div style='font-size:24px;font-weight:900;color:#0f172a;'>CSB Tour " + rahmenEsc(selected.csb) + "</div><div style='font-size:13px;color:#64748b;margin-top:4px;'>" + selected.days.map(rahmenEsc).join(" · ") + "</div></div>" +
+      "<div style='text-align:right;'><div style='font-size:30px;font-weight:900;color:#1b66b3;line-height:1;'>" + selected.count + "</div><div style='font-size:10px;font-weight:800;color:#64748b;'>Rahmentouren</div></div>" +
+    "</div>" +
+    "<div style='display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;'>" +
+      selected.sapList.map(function(sap){ return "<span style='display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:800;color:#1d4ed8;'>"+rahmenEsc(sap)+"</span>"; }).join("") +
+    "</div>" +
+    "<div style='overflow:auto;'><table style='width:100%;border-collapse:collapse;font-size:12px;'><thead><tr><th style='text-align:left;padding:8px 10px;background:#eff6ff;border-bottom:1px solid #dbe3ec;'>SAP Rahmentour</th><th style='text-align:left;padding:8px 10px;background:#eff6ff;border-bottom:1px solid #dbe3ec;'>Wochentag</th><th style='text-align:left;padding:8px 10px;background:#eff6ff;border-bottom:1px solid #dbe3ec;'>CSB Tour</th></tr></thead><tbody>" + rowsHtml + "</tbody></table></div>" +
+  "</div>";
+}
+
+function rahmenRender() {
+  var panel = document.getElementById("panel-rahmen");
+  if(!panel) return;
+  if(!rahmenRows().length) {
+    var noData = "<div style='max-width:900px;margin:40px auto;background:#fff;border:1px solid #dbe3ec;border-radius:6px;padding:28px;text-align:center;color:#64748b;font-size:14px;'>Keine Rahmentourprofil CSV geladen.<br>Bitte die Datei in Streamlit hochladen und die App neu generieren.</div>";
+    var wrap = document.getElementById("rahmen-main");
+    if(wrap) wrap.innerHTML = noData;
+    return;
+  }
+  var tours = rahmenGetFilteredTours();
+  if(rahmenState.selectedTour && !tours.some(function(item){ return item.csb === rahmenState.selectedTour; })) {
+    rahmenState.selectedTour = "";
+  }
+  var counts = rahmenBuildDayCounts(tours);
+  var multiBtn = document.getElementById("rahmen-btn-multi");
+  if(multiBtn) {
+    multiBtn.style.background = rahmenState.onlyMulti ? "#1b66b3" : "#fff";
+    multiBtn.style.color = rahmenState.onlyMulti ? "#fff" : "#1b66b3";
+  }
+  var multiDayBtn = document.getElementById("rahmen-btn-multiday");
+  if(multiDayBtn) {
+    multiDayBtn.style.background = rahmenState.onlyMultiDay ? "#7c3aed" : "#fff";
+    multiDayBtn.style.color = rahmenState.onlyMultiDay ? "#fff" : "#7c3aed";
+    multiDayBtn.style.borderColor = rahmenState.onlyMultiDay ? "#7c3aed" : "#c4b5fd";
+  }
+  rahmenRenderDayButtons(counts);
+  rahmenRenderStats(tours, counts);
+  rahmenRenderChart(counts);
+  rahmenRenderList(tours);
+  rahmenRenderDetail(tours);
+}
+"""
 
     return f"""<!DOCTYPE html>
 <html lang="de">
@@ -2072,11 +2494,11 @@ iframe.active{{display:block}}
     </button>
     <div class="dd-menu" id="ddmenu-vz"></div>
   </div>
+  <button class="nav-btn" id="btn-rahmen" onclick="showArea('rahmen')">&#128197; Rahmentour Woche</button>
   <button class="nav-btn" id="btn-tel" onclick="showArea('tel')">&#128222; Telefonliste</button>
   <button class="nav-btn" id="btn-sam" onclick="showArea('sam')">&#128664; Sa + So Einstätze</button>
   <button class="nav-btn" id="btn-fa" onclick="showArea('fa')">&#128101; Fahrerauswertung</button>
   <button class="nav-btn" id="btn-zulage" onclick="showArea('zulage')">&#128176; Zulagen</button>
-  </div>
   <span class="topnav-stamp">{last_updated}</span>
 </nav>
 
@@ -2107,6 +2529,29 @@ iframe.active{{display:block}}
         <button onclick="fwExportPdf()" style="padding:8px 16px;background:#dc2626;color:#fff;border:none;border-radius:5px;font-weight:800;font-size:12px;cursor:pointer;">
           &#128196; Fahrzeugw&#228;schen PDF
         </button>
+      </div>
+    </div>
+  </div>
+  <div id="panel-rahmen" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#e8ecf1;font-family:'Segoe UI',Arial,sans-serif">
+    <div id="rahmen-main" style="max-width:1400px;margin:0 auto">
+      <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128197; Rahmentour Woche</h2>
+      <p style="color:#64748b;font-size:13px;margin:0 0 16px 0">Interaktive Wochenansicht aus der Rahmentourprofil CSV. Du kannst nach Wochentag, CSB Tournummer und SAP Rahmentour filtern.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <input id="rahmen-search" placeholder="SAP Rahmentour oder CSB Tour suchen..." oninput="rahmenSetSearch(this.value)"
+          style="flex:1;min-width:240px;max-width:420px;padding:8px 14px;border:2px solid #1b66b3;border-radius:5px;font-size:13px;font-family:inherit;outline:none;background:#fff">
+        <button id="rahmen-btn-multi" onclick="rahmenToggleMulti()" style="padding:8px 12px;border:2px solid #1b66b3;background:#fff;color:#1b66b3;border-radius:5px;font-weight:800;font-size:12px;cursor:pointer;">Nur mehrfach</button>
+        <button id="rahmen-btn-multiday" onclick="rahmenToggleMultiDay()" style="padding:8px 12px;border:2px solid #c4b5fd;background:#fff;color:#7c3aed;border-radius:5px;font-weight:800;font-size:12px;cursor:pointer;">Nur mehrtägig</button>
+        <button onclick="rahmenReset()" style="padding:8px 12px;border:2px solid #d4dbe5;background:#fff;color:#334155;border-radius:5px;font-weight:800;font-size:12px;cursor:pointer;">Zurücksetzen</button>
+      </div>
+      <div id="rahmen-stats" style="margin-bottom:14px"></div>
+      <div style="background:#fff;border:1px solid #dbe3ec;border-radius:6px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(15,23,42,.04)">
+        <div style="font-size:12px;font-weight:900;color:#1b66b3;text-transform:uppercase;letter-spacing:.3px;margin-bottom:10px">Wochenverteilung</div>
+        <div style="height:230px"><canvas id="rahmen-chart"></canvas></div>
+      </div>
+      <div id="rahmen-day-buttons" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px"></div>
+      <div style="display:grid;grid-template-columns:minmax(360px,0.95fr) minmax(420px,1.05fr);gap:16px;align-items:start">
+        <div id="rahmen-list"></div>
+        <div id="rahmen-detail"></div>
       </div>
     </div>
   </div>
@@ -2306,6 +2751,8 @@ function showArea(s) {{
     var btn = document.getElementById("btn-"+id);
     if(btn) btn.className = "nav-dd-btn" + (id===s?" active":"");
   }});
+  var rahmenBtn = document.getElementById("btn-rahmen");
+  if(rahmenBtn) rahmenBtn.className = "nav-btn" + (s==="rahmen"?" active":"");
   // Telefonliste-Button
   var telBtn = document.getElementById("btn-tel");
   if(telBtn) telBtn.className = "nav-btn" + (s==="tel"?" active":"");
@@ -2317,11 +2764,13 @@ function showArea(s) {{
   if(faBtn) faBtn.className = "nav-btn" + (s==="fa"?" active":"");
   // Panels
   var vzPanel       = document.getElementById("panel-vz");
+  var rahmenPanel   = document.getElementById("panel-rahmen");
   var telPanel      = document.getElementById("panel-tel");
   var samPanel      = document.getElementById("panel-sam");
-  vzPanel.style.display  = (s==="vz")  ? "block" : "none";
-  telPanel.style.display = (s==="tel") ? "block" : "none";
-  if(samPanel)      samPanel.style.display      = (s==="sam")       ? "block" : "none";
+  vzPanel.style.display  = (s==="vz")      ? "block" : "none";
+  if(rahmenPanel)   rahmenPanel.style.display = (s==="rahmen") ? "block" : "none";
+  telPanel.style.display = (s==="tel")     ? "block" : "none";
+  if(samPanel)      samPanel.style.display  = (s==="sam")      ? "block" : "none";
   var faPanel = document.getElementById("panel-fa");
   if(faPanel) faPanel.style.display = (s==="fa") ? "flex" : "none";
   var zulagePanel = document.getElementById("panel-zulage");
@@ -2330,6 +2779,8 @@ function showArea(s) {{
   if(zuBtn) zuBtn.className = "nav-btn" + (s==="zulage" ? " active" : "");
 
   if(s==="vz") fwInitDatePicker();
+  if(s==="rahmen" && rahmenPanel && !rahmenPanel.dataset.loaded) {{ rahmenRender(); rahmenPanel.dataset.loaded="1"; }}
+  if(s==="rahmen" && rahmenPanel && rahmenPanel.dataset.loaded) {{ rahmenRender(); }}
   if(s==="tel" && !telPanel.dataset.loaded) {{ telRender(""); telPanel.dataset.loaded="1"; }}
   if(s==="sam" && samPanel && !samPanel.dataset.loaded) {{ samRender(""); samPanel.dataset.loaded="1"; }}
   if(s==="zulage" && zulagePanel && !zulagePanel.dataset.loaded) {{ zulagenInit(); zulagePanel.dataset.loaded="1"; }}
@@ -2552,6 +3003,7 @@ var ZULAGE_XLSX_SONDER   = "{zulage_xlsx_sonder}";
 var ZULAGE_XLSX_FUENGERS    = "{zulage_xlsx_fuengers}";
 var DRITTKUNDEN_DATA        = {drittkunden_json};
 var ZULAGE_XLSX_DRITTKUNDEN = "{zulage_xlsx_drittkunden}";
+var RAHMEN_DATA             = {json.dumps(rahmen_data, ensure_ascii=False)};
 
 
 
@@ -2903,6 +3355,7 @@ function samToggle(el) {{
 
 {fa_js_code}
 {zulage_js_code}
+{rahmen_js_code}
 </script>
 
 </body>
