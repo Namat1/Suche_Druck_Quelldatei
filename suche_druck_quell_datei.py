@@ -1103,6 +1103,18 @@ function hasMarktkaufTour(k){
     return /^\d88\d$/.test(num);
   });
 }
+function hasMalchowTour(k){
+  return (k.touren||[]).some(t => {
+    const num = String(t.tournummer||'').replace(/\D/g,'');
+    return /^\d777\d$/.test(num);
+  });
+}
+function hasNMSTour(k){
+  return (k.touren||[]).some(t => {
+    const num = String(t.tournummer||'').replace(/\D/g,'');
+    return /^\d222\d$/.test(num);
+  });
+}
 
 function sendKundenDataToParent(){
   if(!allCustomers || !allCustomers.length) return;
@@ -1114,8 +1126,10 @@ function sendKundenDataToParent(){
   });
   ordered.forEach(k => {
     const codes = getCustomerRahmentourCodes(k);
-    const isMarktkauf = hasMarktkaufTour(k);
-    const group = isMarktkauf ? 'Marktkauf' : classifyKundenCodes(codes);
+    let group = classifyKundenCodes(codes);
+    if(hasMarktkaufTour(k)) group = 'Marktkauf';
+    else if(hasMalchowTour(k) && (group === 'Direkt' || group === 'Ohne Rahmentour')) group = 'Malchow';
+    else if(hasNMSTour(k) && (group === 'Direkt' || group === 'Ohne Rahmentour')) group = 'Neumünster';
     const touren = (k.touren||[])
       .map(t => {
         const num = normalizeDigits(t.tournummer) || String(t.tournummer||'').trim();
