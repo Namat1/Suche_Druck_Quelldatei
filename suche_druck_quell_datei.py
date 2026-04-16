@@ -2604,22 +2604,8 @@ iframe.active{{display:block}}
         </div>
       </div>
 
-      <!-- ── Rangliste ───────────────────────────────────────────────────── -->
-      <div style="background:#fff;border:1px solid #d7dee7;border-radius:12px;box-shadow:0 2px 8px rgba(15,23,42,.06);overflow:hidden;margin-bottom:14px">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 20px;border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#fafbfc 0%,#ffffff 100%)">
-          <div style="display:flex;align-items:center;gap:10px">
-            <div style="width:32px;height:32px;border-radius:8px;background:#fff4e6;color:#9a4e00;display:flex;align-items:center;justify-content:center;font-size:17px">&#127942;</div>
-            <div>
-              <div style="font-size:13px;font-weight:900;color:#0f172a;letter-spacing:-.1px">Rangliste Fahrzeugw&#228;sche</div>
-              <div style="font-size:11px;color:#64748b;margin-top:1px">Wer hat am meisten gewaschen &ndash; PDF-Export pro Fahrer</div>
-            </div>
-          </div>
-        </div>
-        <div id="fw-ranking-body"></div>
-      </div>
-
       <!-- ── Übersicht-Karte ───────────────────────────────────────────────── -->
-      <div style="background:#fff;border:1px solid #d7dee7;border-radius:12px;box-shadow:0 2px 8px rgba(15,23,42,.06);overflow:hidden">
+      <div style="background:#fff;border:1px solid #d7dee7;border-radius:12px;box-shadow:0 2px 8px rgba(15,23,42,.06);overflow:hidden;margin-bottom:14px">
 
         <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 20px;border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#fafbfc 0%,#ffffff 100%)">
           <div style="display:flex;align-items:center;gap:10px">
@@ -2639,6 +2625,20 @@ iframe.active{{display:block}}
         </div>
 
         <div id="fw-overview-table"></div>
+      </div>
+
+      <!-- ── Rangliste ───────────────────────────────────────────────────── -->
+      <div style="background:#fff;border:1px solid #d7dee7;border-radius:12px;box-shadow:0 2px 8px rgba(15,23,42,.06);overflow:hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 20px;border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#fafbfc 0%,#ffffff 100%)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:32px;height:32px;border-radius:8px;background:#fff4e6;color:#9a4e00;display:flex;align-items:center;justify-content:center;font-size:17px">&#127942;</div>
+            <div>
+              <div style="font-size:13px;font-weight:900;color:#0f172a;letter-spacing:-.1px">Rangliste Fahrzeugw&#228;sche</div>
+              <div style="font-size:11px;color:#64748b;margin-top:1px">Wer hat am meisten gewaschen &ndash; PDF-Export pro Fahrer</div>
+            </div>
+          </div>
+        </div>
+        <div id="fw-ranking-body"></div>
       </div>
 
     </div>
