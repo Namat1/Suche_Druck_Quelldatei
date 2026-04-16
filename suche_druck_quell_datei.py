@@ -4127,6 +4127,12 @@ def parse_fahrzeugwaesche_excel(uploaded_files) -> str:
                         resolved[target] = norm_cols[alias]
                         break
 
+            # Kennzeichen steht IMMER in Spalte E (0-basiert: Index 4) — positional übersteuern,
+            # weil die Header in den Quell-Dateien uneinheitlich sind und das Header-Matching
+            # sonst teils Spalte D (Fahrzeug-IA) liefert.
+            if len(df.columns) > 4:
+                resolved["fahrzeug"] = df.columns[4]
+
             if not all(field in resolved for field in required_fields):
                 continue
 
