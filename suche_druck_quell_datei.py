@@ -4047,6 +4047,21 @@ def parse_fahrzeugwaesche_excel(uploaded_files) -> str:
             return f"{int(d):02d}.{int(mo):02d}.{y}", f"{y}-{int(mo):02d}-{int(d):02d}"
         return s, ""
 
+    def _normalize_kennzeichen(value: str) -> str:
+        """Normalisiert Spalte E (Fahrzeug-Kennzeichen) auf 'LWL - E XXX'.
+
+        Extrahiert die erste zusammenhängende Ziffernfolge aus dem Eingabewert
+        und baut damit das einheitliche Zielformat. Enthält der Wert keine
+        Ziffern, wird er unverändert zurückgegeben (damit Freitext nicht verloren geht).
+        """
+        s = _clean_text(value)
+        if not s:
+            return ""
+        m = re.search(r"\d+", s)
+        if not m:
+            return s
+        return f"LWL - E {m.group(0)}"
+
     def _parse_time(value):
         if pd.isna(value):
             return ""
@@ -4133,6 +4148,7 @@ def parse_fahrzeugwaesche_excel(uploaded_files) -> str:
                 fahrzeug_ia = _clean_text(row.get("fahrzeug_ia"))
                 if not fahrzeug and fahrzeug_ia:
                     fahrzeug = fahrzeug_ia
+                fahrzeug = _normalize_kennzeichen(fahrzeug)
                 produkt = _clean_text(row.get("produkt"))
                 fahrzeug_kategorie = _clean_text(row.get("fahrzeug_kategorie"))
                 transaktions_typ = _clean_text(row.get("transaktions_typ"))
