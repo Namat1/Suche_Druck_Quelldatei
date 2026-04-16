@@ -4050,17 +4050,18 @@ def parse_fahrzeugwaesche_excel(uploaded_files) -> str:
             return f"{int(hh):02d}:{mm}:{ss}"
         return s
 
-    required = {
-        "fahrzeugkategorie": "fahrzeug_kategorie",
-        "datumdertransaktion": "datum",
-        "zeitpunktdertransaktion": "uhrzeit",
-        "fahrzeugia": "fahrzeug_ia",
-        "fahrzeug": "fahrzeug",
-        "fahrer": "fahrer",
-        "produkt": "produkt",
-        "transaktionstyp": "transaktions_typ",
-        "zapfsaeule": "zapfsaeule",
+    header_aliases = {
+        "fahrzeug_kategorie": ["fahrzeugkategorie"],
+        "datum": ["datumdertransaktion"],
+        "uhrzeit": ["zeitpunktdertransaktion"],
+        "fahrzeug_ia": ["fahrzeugia"],
+        "fahrzeug": ["fahrzeug"],
+        "fahrer": ["fahrer"],
+        "produkt": ["produkt"],
+        "transaktions_typ": ["transaktionstyp"],
+        "zapfsaeule": ["zapfsaule", "zapfsaeule"],
     }
+    required_fields = ["datum", "uhrzeit", "fahrer", "fahrzeug_ia", "fahrzeug", "produkt"]
 
     rows = []
     seen = set()
@@ -4083,10 +4084,22 @@ def parse_fahrzeugwaesche_excel(uploaded_files) -> str:
                 continue
 
             norm_cols = {_norm_header(col): col for col in df.columns}
-            if not all(key in norm_cols for key in required):
+            resolved = {}
+            for target, aliases in header_aliases.items():
+                for alias in aliases:
+                    if alias in norm_cols:
+                        resolved[target] = norm_cols[alias]
+                        break
+
+            if not all(field in resolved for field in required_fields):
                 continue
 
-            selected = df[[norm_cols[key] for key in required]].rename(columns={norm_cols[key]: val for key, val in required.items()}).copy()
+            selected = pd.DataFrame()
+            for target in header_aliases:
+                if target in resolved:
+                    selected[target] = df[resolved[target]]
+                else:
+                    selected[target] = ""
             selected = selected.dropna(how="all")
             if selected.empty:
                 continue
