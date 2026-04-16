@@ -2388,18 +2388,176 @@ function fwRenderTotalBanner() {
     "</div>";
 }
 
-// Hook: nach fwInitOverview / fwRenderOverview auch Rangliste + Banner rendern
+function fwComputeLkwRanking() {
+  var rows = fwOverviewData();
+  var byLkw = {};
+  rows.forEach(function(r, idx) {
+    var fz = (r.fahrzeug || r.fahrzeug_ia || "").trim();
+    if(!fz) return;
+    if(!byLkw[fz]) byLkw[fz] = { lkw: fz, washKeys: {}, fahrer: {}, kategorie: "" };
+    var dt = (r.datum || "").trim();
+    var key = dt ? (dt + "||" + fz) : ("__r_" + idx);
+    byLkw[fz].washKeys[key] = 1;
+    var fa = (r.fahrer || "").trim();
+    if(fa) byLkw[fz].fahrer[fa] = 1;
+    if(!byLkw[fz].kategorie) byLkw[fz].kategorie = (r.fahrzeug_kategorie || "").trim();
+  });
+  var arr = [];
+  for(var k in byLkw) {
+    arr.push({
+      lkw: byLkw[k].lkw,
+      waschungen: Object.keys(byLkw[k].washKeys).length,
+      fahrer: Object.keys(byLkw[k].fahrer).length,
+      kategorie: byLkw[k].kategorie
+    });
+  }
+  arr.sort(function(a,b){
+    if(b.waschungen !== a.waschungen) return b.waschungen - a.waschungen;
+    return a.lkw.localeCompare(b.lkw, "de");
+  });
+  return arr;
+}
+
+function fwRenderLkwRanking() {
+  var wrap = document.getElementById("fw-lkw-ranking-body");
+  if(!wrap) return;
+  if(!fwOverviewData().length) {
+    wrap.innerHTML = "<div style='padding:20px 16px;color:#94a3b8;text-align:center;font-size:12px;'>Keine Fahrzeugwäsche-Dateien geladen.</div>";
+    return;
+  }
+  var ranking = fwComputeLkwRanking();
+  if(!ranking.length) {
+    wrap.innerHTML = "<div style='padding:20px 16px;color:#94a3b8;text-align:center;font-size:12px;'>Keine LKW gefunden.</div>";
+    return;
+  }
+  var html = "<div style='overflow:auto;max-height:340px;background:#fff;'><table style='width:100%;border-collapse:collapse;font-size:12px;'>";
+  html += "<thead><tr style='position:sticky;top:0;background:linear-gradient(180deg,#1b66b3 0%,#155193 100%);z-index:2;box-shadow:0 2px 4px rgba(0,0,0,.08);'>";
+  var cols = [["#","center","56px"],["LKW","left",""],["Kategorie","left",""],["Waschungen","center","110px"],["Fahrer","center","90px"],["Aktion","center","110px"]];
+  cols.forEach(function(c){
+    var w = c[2] ? ";width:" + c[2] : "";
+    html += "<th style='padding:10px 12px;text-align:" + c[1] + ";color:#fff;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;border-right:1px solid rgba(255,255,255,.15);white-space:nowrap" + w + ";'>" + c[0] + "</th>";
+  });
+  html += "</tr></thead><tbody>";
+  ranking.forEach(function(d, i){
+    var rank = i + 1;
+    var medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : String(rank);
+    var bg = i % 2 === 0 ? "#ffffff" : "#f8fafc";
+    var lkwEsc = fwOverviewEsc(d.lkw);
+    var katEsc = fwOverviewEsc(d.kategorie || "—");
+    var lkwAttr = String(d.lkw).replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+    html += "<tr style='background:" + bg + ";border-bottom:1px solid #eef2f7;'>";
+    html += "<td style='padding:10px 12px;text-align:center;font-weight:900;color:#0f172a;font-size:15px;'>" + medal + "</td>";
+    html += "<td style='padding:10px 12px;font-weight:700;color:#0f172a;'>" + lkwEsc + "</td>";
+    html += "<td style='padding:10px 12px;color:#475569;'>" + katEsc + "</td>";
+    html += "<td style='padding:10px 12px;text-align:center;font-variant-numeric:tabular-nums;color:#165532;font-weight:900;font-size:15px;'>" + d.waschungen + "</td>";
+    html += "<td style='padding:10px 12px;text-align:center;font-variant-numeric:tabular-nums;color:#9a4e00;font-weight:800;'>" + d.fahrer + "</td>";
+    html += "<td style='padding:10px 12px;text-align:center;'>";
+    html += "<button onclick=\"fwExportLkwPdf('" + lkwAttr + "')\" style='padding:6px 12px;background:#dc2626;color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;letter-spacing:.2px;' onmouseover=\"this.style.background='#b91c1c'\" onmouseout=\"this.style.background='#dc2626'\">📄 PDF</button>";
+    html += "</td>";
+    html += "</tr>";
+  });
+  html += "</tbody></table></div>";
+  wrap.innerHTML = html;
+}
+
+function fwExportLkwPdf(lkwName) {
+  if(!window.jspdf || !window.jspdf.jsPDF || typeof window.jspdf.jsPDF !== "function") {
+    alert("PDF-Bibliothek ist nicht geladen.");
+    return;
+  }
+  var all = fwOverviewData();
+  var rows = all.filter(function(r){
+    var fz = (r.fahrzeug || r.fahrzeug_ia || "").trim();
+    return fz === lkwName;
+  });
+  if(!rows.length) {
+    alert("Keine Daten für " + lkwName);
+    return;
+  }
+  rows.sort(function(a,b){
+    var ak = a.datetime_iso || "";
+    var bk = b.datetime_iso || "";
+    return bk.localeCompare(ak);
+  });
+  var washKeys = {};
+  var fahrer = {};
+  rows.forEach(function(r, idx){
+    var dt = (r.datum || "").trim();
+    var key = dt ? (dt + "||" + lkwName) : ("__r_" + idx);
+    washKeys[key] = 1;
+    var fa = (r.fahrer || "").trim();
+    if(fa) fahrer[fa] = 1;
+  });
+  var washCount = Object.keys(washKeys).length;
+  var fahrerCount = Object.keys(fahrer).length;
+
+  var jsPDF = window.jspdf.jsPDF;
+  var doc = new jsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
+
+  doc.setFillColor(27, 102, 179);
+  doc.roundedRect(12, 10, 186, 22, 3, 3, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.text("Fahrzeugwaesche - " + lkwName, 16, 19);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text(washCount + " Waschungen  |  " + fahrerCount + " Fahrer  |  " + rows.length + " Eintraege", 16, 27);
+  var today = new Date().toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric"});
+  doc.text("Stand: " + today, 160, 27);
+
+  var body = rows.map(function(r){
+    return [
+      r.datum || "",
+      r.uhrzeit || "",
+      r.fahrer || "",
+      r.produkt || "",
+      r.fahrzeug_kategorie || ""
+    ];
+  });
+  doc.autoTable({
+    startY: 38,
+    head: [["Datum","Zeit","Fahrer","Produkt","Kategorie"]],
+    body: body,
+    theme: "grid",
+    styles: { font:"helvetica", fontSize:9, cellPadding:2.3, lineColor:[205,213,225], lineWidth:0.2, valign:"middle", overflow:"linebreak" },
+    headStyles: { fillColor:[232,240,251], textColor:[27,102,179], fontStyle:"bold", halign:"left", lineColor:[27,102,179], lineWidth:0.25 },
+    columnStyles: {
+      0: { cellWidth: 24, fontStyle:"bold" },
+      1: { cellWidth: 22 },
+      2: { cellWidth: 42 },
+      3: { cellWidth: 50 },
+      4: { cellWidth: 48 }
+    },
+    margin: { left:12, right:12, top:10, bottom:12 },
+    didDrawPage: function(data) {
+      var pageSize = doc.internal.pageSize;
+      var pageHeight = pageSize.height || pageSize.getHeight();
+      doc.setFontSize(8);
+      doc.setTextColor(100,116,139);
+      doc.text(lkwName, 12, pageHeight - 6);
+      doc.text("Seite " + doc.getCurrentPageInfo().pageNumber, pageSize.width - 24, pageHeight - 6);
+    }
+  });
+
+  var safeName = String(lkwName).replace(/[\\/:*?"<>|]+/g, "_");
+  doc.save("Fahrzeugwaeschen_LKW_" + safeName + ".pdf");
+}
+
+// Hook: nach fwInitOverview / fwRenderOverview auch Ranglisten + Banner rendern
 (function(){
   var _origInit = window.fwInitOverview;
   window.fwInitOverview = function(){
     if(_origInit) _origInit.apply(this, arguments);
     fwRenderRanking();
+    fwRenderLkwRanking();
     fwRenderTotalBanner();
   };
   var _origRender = window.fwRenderOverview;
   window.fwRenderOverview = function(){
     if(_origRender) _origRender.apply(this, arguments);
     fwRenderRanking();
+    fwRenderLkwRanking();
     fwRenderTotalBanner();
   };
 })();
@@ -2693,6 +2851,20 @@ iframe.active{{display:block}}
           </div>
         </div>
         <div id="fw-ranking-body"></div>
+      </div>
+
+      <!-- ── LKW-Rangliste ───────────────────────────────────────────────── -->
+      <div style="background:#fff;border:1px solid #d7dee7;border-radius:12px;box-shadow:0 2px 8px rgba(15,23,42,.06);overflow:hidden;margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 20px;border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#fafbfc 0%,#ffffff 100%)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:32px;height:32px;border-radius:8px;background:#e8f1fb;color:#1b66b3;display:flex;align-items:center;justify-content:center;font-size:17px">&#128666;</div>
+            <div>
+              <div style="font-size:13px;font-weight:900;color:#0f172a;letter-spacing:-.1px">Rangliste LKW</div>
+              <div style="font-size:11px;color:#64748b;margin-top:1px">Welche Fahrzeuge am meisten gewaschen wurden &ndash; PDF-Export pro LKW</div>
+            </div>
+          </div>
+        </div>
+        <div id="fw-lkw-ranking-body"></div>
       </div>
 
     </div>
