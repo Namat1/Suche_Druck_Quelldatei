@@ -4057,7 +4057,9 @@ def parse_fahrzeugwaesche_excel(uploaded_files) -> str:
         "transaktions_typ": ["transaktionstyp"],
         "zapfsaeule": ["zapfsaule", "zapfsaeule"],
     }
-    required_fields = ["datum", "uhrzeit", "fahrer", "fahrzeug_ia", "fahrzeug", "produkt"]
+    # Fahrzeug-IA ist optional, weil einige Waschdateien diese Spalte nicht enthalten.
+    # Wenn sie hier Pflicht bleibt, werden komplette Dateien bzw. Blätter übersprungen.
+    required_fields = ["datum", "uhrzeit", "fahrer", "fahrzeug", "produkt"]
 
     rows = []
     seen = set()
@@ -4106,6 +4108,8 @@ def parse_fahrzeugwaesche_excel(uploaded_files) -> str:
                 fahrer = _clean_text(row.get("fahrer"))
                 fahrzeug = _clean_text(row.get("fahrzeug"))
                 fahrzeug_ia = _clean_text(row.get("fahrzeug_ia"))
+                if not fahrzeug and fahrzeug_ia:
+                    fahrzeug = fahrzeug_ia
                 produkt = _clean_text(row.get("produkt"))
                 fahrzeug_kategorie = _clean_text(row.get("fahrzeug_kategorie"))
                 transaktions_typ = _clean_text(row.get("transaktions_typ"))
