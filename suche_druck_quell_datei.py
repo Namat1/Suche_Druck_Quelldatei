@@ -2339,17 +2339,68 @@ function fwExportDriverPdf(driverName) {
   doc.save("Fahrzeugwaeschen_" + safeName + ".pdf");
 }
 
-// Hook: nach fwInitOverview / fwRenderOverview auch Rangliste rendern
+function fwRenderTotalBanner() {
+  var wrap = document.getElementById("fw-total-banner");
+  if(!wrap) return;
+  var rows = fwOverviewData();
+  if(!rows.length) {
+    wrap.innerHTML = "";
+    return;
+  }
+  var washKeys = {};
+  var driverSet = {};
+  var lkwSet = {};
+  rows.forEach(function(r, idx){
+    var fz = (r.fahrzeug || r.fahrzeug_ia || "").trim();
+    var dt = (r.datum || "").trim();
+    var fa = (r.fahrer || "").trim();
+    var key = (dt && fz) ? (dt + "||" + fz) : ("__r_" + idx);
+    washKeys[key] = 1;
+    if(fa) driverSet[fa] = 1;
+    if(fz) lkwSet[fz] = 1;
+  });
+  var washCount = Object.keys(washKeys).length;
+  var driverCount = Object.keys(driverSet).length;
+  var lkwCount = Object.keys(lkwSet).length;
+
+  wrap.innerHTML =
+    "<div style=\"background:linear-gradient(135deg,#1b66b3 0%,#2078c9 55%,#1d6f42 100%);border-radius:14px;padding:22px 28px;color:#fff;box-shadow:0 6px 20px rgba(15,23,42,.15);display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;\">" +
+      "<div style=\"display:flex;align-items:center;gap:18px;flex-wrap:wrap;\">" +
+        "<div style=\"width:54px;height:54px;border-radius:12px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:28px;backdrop-filter:blur(6px);\">🚿</div>" +
+        "<div>" +
+          "<div style=\"font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;opacity:.85;\">Gesamt bisher</div>" +
+          "<div style=\"display:flex;align-items:baseline;gap:10px;margin-top:3px;\">" +
+            "<div style=\"font-size:42px;font-weight:900;line-height:1;letter-spacing:-1px;font-variant-numeric:tabular-nums;\">" + washCount + "</div>" +
+            "<div style=\"font-size:15px;font-weight:700;opacity:.9;\">Waschungen</div>" +
+          "</div>" +
+        "</div>" +
+      "</div>" +
+      "<div style=\"display:flex;gap:10px;flex-wrap:wrap;\">" +
+        "<div style=\"padding:9px 14px;background:rgba(255,255,255,.14);border-radius:10px;border:1px solid rgba(255,255,255,.22);min-width:96px;text-align:center;\">" +
+          "<div style=\"font-size:22px;font-weight:900;line-height:1;font-variant-numeric:tabular-nums;\">" + driverCount + "</div>" +
+          "<div style=\"font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;opacity:.85;margin-top:4px;\">Fahrer</div>" +
+        "</div>" +
+        "<div style=\"padding:9px 14px;background:rgba(255,255,255,.14);border-radius:10px;border:1px solid rgba(255,255,255,.22);min-width:96px;text-align:center;\">" +
+          "<div style=\"font-size:22px;font-weight:900;line-height:1;font-variant-numeric:tabular-nums;\">" + lkwCount + "</div>" +
+          "<div style=\"font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;opacity:.85;margin-top:4px;\">LKW</div>" +
+        "</div>" +
+      "</div>" +
+    "</div>";
+}
+
+// Hook: nach fwInitOverview / fwRenderOverview auch Rangliste + Banner rendern
 (function(){
   var _origInit = window.fwInitOverview;
   window.fwInitOverview = function(){
     if(_origInit) _origInit.apply(this, arguments);
     fwRenderRanking();
+    fwRenderTotalBanner();
   };
   var _origRender = window.fwRenderOverview;
   window.fwRenderOverview = function(){
     if(_origRender) _origRender.apply(this, arguments);
     fwRenderRanking();
+    fwRenderTotalBanner();
   };
 })();
 """
@@ -2603,6 +2654,9 @@ iframe.active{{display:block}}
           </div>
         </div>
       </div>
+
+      <!-- ── Gesamt-Banner ──────────────────────────────────────────────── -->
+      <div id="fw-total-banner" style="margin-bottom:14px"></div>
 
       <!-- ── Übersicht-Karte ───────────────────────────────────────────────── -->
       <div style="background:#fff;border:1px solid #d7dee7;border-radius:12px;box-shadow:0 2px 8px rgba(15,23,42,.06);overflow:hidden;margin-bottom:14px">
