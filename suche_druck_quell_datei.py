@@ -2601,11 +2601,104 @@ function verstossTimeKey(name, isoDay) {
   return String(name || "").trim().toLowerCase() + "|" + String(isoDay || "").trim();
 }
 
+function verstossParseDeDateTime(value) {
+  var s = String(value || "").trim();
+  var m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), Number(m[4]), Number(m[5]), 0, 0).getTime();
+}
+
+function verstossShortTimeFromMs(ms) {
+  if (!Number.isFinite(ms)) return "";
+  var d = new Date(ms);
+  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+
 function verstossTimeFor(driverName, violation) {
-  var data = (typeof ZEITERFASSUNG_DATA !== "undefined" && ZEITERFASSUNG_DATA && ZEITERFASSUNG_DATA.by_key) ? ZEITERFASSUNG_DATA.by_key : {};
   var day = String((violation && violation.date_sort) || "").substring(0, 10);
   if (!day) return null;
-  return data[verstossTimeKey(driverName, day)] || null;
+
+  var zdata = (typeof ZEITERFASSUNG_DATA !== "undefined" && ZEITERFASSUNG_DATA) ? ZEITERFASSUNG_DATA : {};
+  var byKey = zdata.by_key || {};
+  var fallback = byKey[verstossTimeKey(driverName, day)] || null;
+
+  var vStart = verstossParseDeDateTime(violation && violation.start);
+  var vEnd = verstossParseDeDateTime(violation && violation.end);
+  if (!Number.isFinite(vStart) || !Number.isFinite(vEnd) || vEnd <= vStart) return fallback;
+
+  var personKey = String(driverName || "").trim().toLowerCase();
+  var segments = ((zdata.by_person || {})[personKey] || []).filter(function(s) {
+    return Number.isFinite(Number(s.start_ms)) && Number.isFinite(Number(s.end_ms));
+  });
+
+  if (!segments.length) return fallback;
+
+  // Bei Schichten über 0 Uhr darf nicht der ganze Kalendertag genommen werden.
+  // Deshalb werden nur Zeitsegmente verwendet, die in den Verstoßzeitraum fallen.
+  var overlap = segments.filter(function(s) {
+    var a = Number(s.start_ms), b = Number(s.end_ms);
+    return a < vEnd && b > vStart;
+  });
+
+  if (!overlap.length) return fallback;
+
+  // Falls ein Tag mehrere Segmente hat (z. B. 00:46 und 22:40), nimm bei
+  // Nachtverstößen das Segment, das nah am Verstoßbeginn startet, statt 00:46.
+  var nearStart = overlap.filter(function(s) {
+    var a = Number(s.start_ms);
+    return a >= (vStart - 2 * 60 * 60 * 1000);
+  });
+  if (nearStart.length) {
+    overlap = nearStart.concat(segments.filter(function(s) {
+      var a = Number(s.start_ms), b = Number(s.end_ms);
+      return a >= vStart && a < vEnd && b > vStart && nearStart.indexOf(s) < 0;
+    }));
+  }
+
+  overlap.sort(function(a, b) { return Number(a.start_ms) - Number(b.start_ms); });
+
+  var startMs = Number(overlap[0].start_ms);
+  var endMs = Number(overlap[0].end_ms);
+  var gross = 0;
+  var pause = 0;
+  var lkws = [];
+
+  overlap.forEach(function(s) {
+    var dur = Number(s.duration);
+    if (Number.isFinite(dur) && dur > 0) {
+      gross += Math.round(dur);
+    } else {
+      var a = Number(s.start_ms);
+      var b = Number(s.end_ms);
+      if (Number.isFinite(a) && Number.isFinite(b) && b > a) gross += Math.round((b - a) / 60000);
+    }
+    startMs = Math.min(startMs, Number(s.start_ms));
+    endMs = Math.max(endMs, Number(s.end_ms));
+
+    var p = Number(s.pause || 0);
+    if (Number.isFinite(p) && p > 0) pause += p;
+
+    String(s.lkw || "").split(",").forEach(function(part) {
+      part = part.trim();
+      if (part && lkws.indexOf(part) < 0) lkws.push(part);
+    });
+  });
+
+  // Wenn Pause durch segmentierte Tageszeilen doppelt oder falsch wirkt:
+  // Arbeitszeit nie negativ und nicht größer als Bruttozeit.
+  pause = Math.max(0, Math.min(pause, gross));
+  var work = Math.max(0, gross - pause);
+
+  return {
+    person: driverName,
+    date: day,
+    beginn: verstossShortTimeFromMs(startMs),
+    ende: verstossShortTimeFromMs(endMs),
+    arbeitszeit: work,
+    pause: pause || (fallback && fallback.pause) || null,
+    ruhezeit: (fallback && fallback.ruhezeit) || null,
+    lkw: lkws.join(", ") || (fallback && fallback.lkw) || ""
+  };
 }
 
 function verstossVal(v) {
@@ -4757,6 +4850,25 @@ def parse_zeiterfassung_csv(uploaded_file) -> str:
     def _key(name, iso_day):
         return f"{_clean(name).lower()}|{iso_day}"
 
+    def _minutes_of_day(t):
+        t = _time(t)
+        m = re.match(r"^(\d{1,2}):(\d{2})$", t or "")
+        if not m:
+            return None
+        return int(m.group(1)) * 60 + int(m.group(2))
+
+    def _date_obj(iso_day):
+        try:
+            return datetime.datetime.strptime(iso_day, "%Y-%m-%d").date()
+        except Exception:
+            return None
+
+    def _split_times(v):
+        s = _clean(v)
+        if not s:
+            return []
+        return [_time(x.strip()) for x in s.split(",") if _time(x.strip())]
+
     try:
         reader = _csv.DictReader(_SIO(text), delimiter=";", quotechar='"')
     except Exception as e:
@@ -4764,6 +4876,7 @@ def parse_zeiterfassung_csv(uploaded_file) -> str:
         return empty
 
     by_key = {}
+    by_person = {}
     total = 0
 
     for row in reader:
@@ -4796,6 +4909,54 @@ def parse_zeiterfassung_csv(uploaded_file) -> str:
             "lkw": lkw,
         }
 
+        # Segmentliste je Person für sauberen Abgleich über Mitternacht.
+        # Wichtig bei Zeilen wie "00:46, 22:40" bis "24:00, 24:00":
+        # Für Nachtverstöße wird später das Segment nahe dem Verstoßbeginn genommen,
+        # damit nicht fälschlich 00:46 bis 24:00 angezeigt wird.
+        base_day = _date_obj(iso_day)
+        begins = _split_times(norm.get("Beginn") or lower.get("beginn"))
+        ends = _split_times(norm.get("Ende") or lower.get("ende"))
+        if base_day and begins and ends:
+            if len(ends) < len(begins):
+                ends += [ends[-1]] * (len(begins) - len(ends))
+            total_segments = []
+            for idx, btxt in enumerate(begins):
+                etxt = ends[idx] if idx < len(ends) else ends[-1]
+                bmin = _minutes_of_day(btxt)
+                emin = _minutes_of_day(etxt)
+                if bmin is None or emin is None:
+                    continue
+                start_dt = datetime.datetime.combine(base_day, datetime.time.min) + datetime.timedelta(minutes=bmin)
+                end_dt = datetime.datetime.combine(base_day, datetime.time.min) + datetime.timedelta(minutes=emin)
+                if emin >= 1440:
+                    end_dt = datetime.datetime.combine(base_day, datetime.time.min) + datetime.timedelta(days=1)
+                elif end_dt <= start_dt:
+                    end_dt += datetime.timedelta(days=1)
+                duration = int(round((end_dt - start_dt).total_seconds() / 60))
+                if duration <= 0:
+                    continue
+                total_segments.append((idx, btxt, etxt, start_dt, end_dt, duration))
+
+            if total_segments:
+                # Pausen nur dem längsten Segment zuordnen. Das verhindert doppelte Pausen,
+                # wenn ein Tag in mehrere Teilsegmente getrennt ist.
+                longest_idx = max(range(len(total_segments)), key=lambda i: total_segments[i][5])
+                person_key = _clean(name).lower()
+                by_person.setdefault(person_key, [])
+                for i, (idx, btxt, etxt, start_dt, end_dt, duration) in enumerate(total_segments):
+                    seg_pause = pause if i == longest_idx else 0
+                    by_person[person_key].append({
+                        "date": iso_day,
+                        "beginn": btxt,
+                        "ende": etxt,
+                        "start_ms": int(start_dt.timestamp() * 1000),
+                        "end_ms": int(end_dt.timestamp() * 1000),
+                        "duration": duration,
+                        "pause": seg_pause,
+                        "ruhezeit": ruhezeit,
+                        "lkw": lkw,
+                    })
+
         if key not in by_key:
             by_key[key] = rec
             continue
@@ -4824,7 +4985,7 @@ def parse_zeiterfassung_csv(uploaded_file) -> str:
                     lkws.append(part)
         old["lkw"] = ", ".join(lkws)
 
-    return json.dumps({"by_key": by_key, "total_rows": total, "matched_rows": len(by_key)}, ensure_ascii=False)
+    return json.dumps({"by_key": by_key, "by_person": by_person, "total_rows": total, "matched_rows": len(by_key)}, ensure_ascii=False)
 
 
 def parse_verstoss_csv(uploaded_file) -> str:
