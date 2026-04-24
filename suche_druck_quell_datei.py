@@ -2569,6 +2569,8 @@ function fwExportLkwPdf(lkwName) {
 var _vsTab = "alle";           // alle | offen | belehrt
 var _vsSearchQ = "";
 var _vsOpenDriver = null;      // welcher Fahrer ist aufgeklappt
+var _vsSortKey = "offen";      // name | count | offen | belehrt | dp | cp
+var _vsSortDir = "desc";       // asc | desc
 
 function verstossEsc(v) {
   return String(v == null ? "" : v)
@@ -2613,6 +2615,39 @@ function verstossToggleDriver(name) {
   verstossRender();
 }
 
+function verstossSort(key) {
+  if (_vsSortKey === key) {
+    _vsSortDir = (_vsSortDir === "asc") ? "desc" : "asc";
+  } else {
+    _vsSortKey = key;
+    // Zahlen-Spalten: default desc (größte oben), Name: default asc
+    _vsSortDir = (key === "name") ? "asc" : "desc";
+  }
+  verstossRender();
+}
+
+function verstossApplySort(list) {
+  var key = _vsSortKey;
+  var dir = _vsSortDir === "asc" ? 1 : -1;
+  function val(d) {
+    switch (key) {
+      case "name":    return (d.name || "").toLowerCase();
+      case "count":   return d.count || 0;
+      case "offen":   return d.count_open || 0;
+      case "belehrt": return d.count_instructed || 0;
+      case "dp":      return d.sum_driver_penalty || 0;
+      case "cp":      return d.sum_company_penalty || 0;
+      default:        return 0;
+    }
+  }
+  list.sort(function(a, b) {
+    var va = val(a), vb = val(b);
+    if (typeof va === "string") return va.localeCompare(vb, "de") * dir;
+    return (va - vb) * dir;
+  });
+  return list;
+}
+
 function verstossGetDrivers() {
   var data = (VERSTOSS_DATA && Array.isArray(VERSTOSS_DATA.drivers)) ? VERSTOSS_DATA.drivers : [];
   var list = data.slice();
@@ -2647,7 +2682,7 @@ function verstossGetDrivers() {
     });
   }
 
-  return list;
+  return verstossApplySort(list);
 }
 
 function verstossRenderTabs() {
@@ -2710,117 +2745,119 @@ function verstossRender() {
     return;
   }
 
-  var html = "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:12px;'>";
+  // Sort-Header-Helfer: erzeugt ein <th> mit Klick-Handler und Pfeil bei aktiver Spalte
+  function sortableTh(key, label, align) {
+    var active = _vsSortKey === key;
+    var arrow = active ? (_vsSortDir === "asc" ? " \u25B2" : " \u25BC") : "";
+    var color = active ? "#fbbf24" : "#fff";
+    return "<th onclick='verstossSort(\"" + key + "\")' "
+         + "style='padding:10px 10px;text-align:" + (align || "left") + ";"
+         + "color:" + color + ";font-size:10.5px;font-weight:800;letter-spacing:.4px;"
+         + "text-transform:uppercase;cursor:pointer;user-select:none;"
+         + "border-right:1px solid rgba(255,255,255,.12);white-space:nowrap;"
+         + "background:" + (active ? "#0f2847" : "transparent") + ";'"
+         + "title='Klicken zum Sortieren'>"
+         + verstossEsc(label) + arrow + "</th>";
+  }
 
-  drivers.forEach(function(d) {
+  var html = "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;overflow:hidden;'>";
+  html += "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
+  html += "<thead><tr style='background:linear-gradient(180deg,#1e3a5f 0%,#0f2847 100%);position:sticky;top:0;z-index:3;box-shadow:0 2px 4px rgba(0,0,0,.1);'>";
+  html += "<th style='padding:10px 8px;width:28px;'></th>"; // expand icon column
+  html += sortableTh("name",    "Fahrer",         "left");
+  html += sortableTh("count",   "Verstöße",       "right");
+  html += sortableTh("offen",   "Offen",          "right");
+  html += sortableTh("belehrt", "Belehrt",        "right");
+  html += sortableTh("dp",      "Bußgeld Fahrer", "right");
+  html += sortableTh("cp",      "Bußgeld Firma",  "right");
+  html += "</tr></thead><tbody>";
+
+  drivers.forEach(function(d, i) {
     var isOpen = (_vsOpenDriver === d.name);
-    var hasOpen = d.verstoesse.some(function(v) { return !v.instructed; });
+    var hasOpen = (d.count_open || 0) > 0;
+    var bg = isOpen ? "#fef9ee" : (i % 2 === 0 ? "#fff" : "#f8fafc");
+    var leftBorder = hasOpen ? "4px solid #dc2626" : "4px solid #16a34a";
 
-    // Card shell
-    html += "<div style='background:#fff;border:2px solid " + (hasOpen ? "#dc2626" : "#16a34a") + ";"
-          + "border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.06);overflow:hidden;'>";
-
-    // Header (clickable)
-    html += "<div onclick='verstossToggleDriver(" + JSON.stringify(d.name) + ")' "
-          + "style='padding:12px 16px;cursor:pointer;background:" + (isOpen ? "#fef2f2" : "#fff") + ";"
-          + "transition:background .15s;'>";
-
-    html += "<div style='display:flex;align-items:center;justify-content:space-between;gap:10px;'>";
-    html += "<div style='flex:1;min-width:0;'>";
-    html += "<div style='font-weight:900;font-size:14px;color:#0b1220;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>"
-          + verstossEsc(d.name) + "</div>";
-    html += "<div style='margin-top:4px;display:flex;gap:5px;flex-wrap:wrap;'>";
-    if (d.count_open > 0 && _vsTab !== "belehrt") {
-      html += "<span style='background:#fee2e2;color:#991b1b;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:800;'>"
-            + d.count_open + " offen</span>";
+    // Haupt-Zeile
+    html += "<tr onclick='verstossToggleDriver(" + JSON.stringify(d.name) + ")' "
+          + "style='background:" + bg + ";border-bottom:1px solid #eef2f7;cursor:pointer;border-left:" + leftBorder + ";transition:background .12s;' "
+          + "onmouseover=\"this.style.background='#eff6ff'\" onmouseout=\"this.style.background='" + bg + "'\">";
+    // Expand-Chevron
+    html += "<td style='padding:8px 0 8px 8px;color:#94a3b8;font-size:10px;text-align:center;'>"
+          + (isOpen ? "&#9660;" : "&#9654;") + "</td>";
+    // Fahrer
+    html += "<td style='padding:8px 10px;font-weight:800;color:#0f172a;'>" + verstossEsc(d.name) + "</td>";
+    // Verstöße gesamt
+    html += "<td style='padding:8px 10px;text-align:right;font-weight:900;color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + d.count + "</td>";
+    // Offen
+    html += "<td style='padding:8px 10px;text-align:right;font-variant-numeric:tabular-nums;'>";
+    if ((d.count_open || 0) > 0) {
+      html += "<span style='background:#fee2e2;color:#991b1b;border-radius:4px;padding:2px 9px;font-size:11px;font-weight:800;'>" + d.count_open + "</span>";
+    } else {
+      html += "<span style='color:#cbd5e1;'>0</span>";
     }
-    if (d.count_instructed > 0 && _vsTab !== "offen") {
-      html += "<span style='background:#dcfce7;color:#166534;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:800;'>"
-            + d.count_instructed + " belehrt</span>";
+    html += "</td>";
+    // Belehrt
+    html += "<td style='padding:8px 10px;text-align:right;font-variant-numeric:tabular-nums;'>";
+    if ((d.count_instructed || 0) > 0) {
+      html += "<span style='background:#dcfce7;color:#166534;border-radius:4px;padding:2px 9px;font-size:11px;font-weight:800;'>" + d.count_instructed + "</span>";
+    } else {
+      html += "<span style='color:#cbd5e1;'>0</span>";
     }
-    html += "</div>";
-    html += "</div>";
-    // Big count
-    html += "<div style='text-align:right;flex-shrink:0;'>";
-    html += "<div style='font-size:26px;font-weight:900;color:" + (hasOpen ? "#dc2626" : "#16a34a") + ";line-height:1;'>"
-          + d.count + "</div>";
-    html += "<div style='font-size:9px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.3px;'>Verstöße</div>";
-    html += "</div>";
-    html += "</div>";
+    html += "</td>";
+    // Bußgeld Fahrer
+    html += "<td style='padding:8px 10px;text-align:right;font-weight:800;color:" + ((d.sum_driver_penalty || 0) > 0 ? "#dc2626" : "#cbd5e1") + ";font-variant-numeric:tabular-nums;white-space:nowrap;'>"
+          + verstossFmtEuro(d.sum_driver_penalty) + "</td>";
+    // Bußgeld Firma
+    html += "<td style='padding:8px 10px;text-align:right;font-weight:800;color:" + ((d.sum_company_penalty || 0) > 0 ? "#b45309" : "#cbd5e1") + ";font-variant-numeric:tabular-nums;white-space:nowrap;'>"
+          + verstossFmtEuro(d.sum_company_penalty) + "</td>";
+    html += "</tr>";
 
-    // Summe row
-    html += "<div style='margin-top:10px;display:flex;gap:10px;font-size:11px;'>";
-    html += "<div style='flex:1;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:5px 8px;'>";
-    html += "<div style='font-size:9px;color:#991b1b;font-weight:700;text-transform:uppercase;'>Bußgeld Fahrer</div>";
-    html += "<div style='font-size:13px;color:#dc2626;font-weight:900;'>" + verstossFmtEuro(d.sum_driver_penalty) + "</div>";
-    html += "</div>";
-    html += "<div style='flex:1;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:5px 8px;'>";
-    html += "<div style='font-size:9px;color:#92400e;font-weight:700;text-transform:uppercase;'>Bußgeld Firma</div>";
-    html += "<div style='font-size:13px;color:#b45309;font-weight:900;'>" + verstossFmtEuro(d.sum_company_penalty) + "</div>";
-    html += "</div>";
-    html += "</div>";
-
-    // Expand hint
-    html += "<div style='margin-top:6px;font-size:10px;color:#64748b;text-align:center;font-weight:600;'>"
-          + (isOpen ? "&#9650; einklappen" : "&#9660; Details anzeigen") + "</div>";
-
-    html += "</div>"; // end header (clickable)
-
-    // Details
+    // Detail-Zeile (aufgeklappt) – volle Breite mit eingebetteter Tabelle
     if (isOpen) {
-      html += "<div style='border-top:1px solid #e2e8f0;background:#f8fafc;max-height:440px;overflow-y:auto;'>";
-      // Violation-type summary
+      html += "<tr style='background:#f8fafc;border-bottom:1px solid #eef2f7;'>";
+      html += "<td colspan='7' style='padding:0;'>";
+      html += "<div style='padding:12px 18px 16px 22px;'>";
+
+      // Verstoßarten-Chips
       if (d.types && d.types.length) {
-        html += "<div style='padding:10px 14px;border-bottom:1px solid #e2e8f0;'>";
-        html += "<div style='font-size:9px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;'>Verstoßarten</div>";
-        html += "<div style='display:flex;flex-wrap:wrap;gap:4px;'>";
+        html += "<div style='display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;'>";
+        html += "<span style='font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;'>Verstoßarten:</span>";
         d.types.forEach(function(t) {
-          html += "<span style='background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:2px 7px;font-size:10px;'>"
+          html += "<span style='background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:2px 8px;font-size:10.5px;'>"
                 + verstossEsc(t[0]) + " <b style='color:#dc2626;margin-left:3px;'>" + t[1] + "</b></span>";
         });
-        html += "</div></div>";
+        html += "</div>";
       }
-      // Table of violations
+
+      // Einzel-Verstöße
+      html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;max-height:400px;overflow-y:auto;'>";
       html += "<table style='width:100%;border-collapse:collapse;font-size:11px;'>";
-      html += "<thead><tr style='background:#1e3a5f;color:#fff;position:sticky;top:0;z-index:1;'>";
-      ["Zeitraum", "Verstoß", "Abw.", "Fahrer", "Firma", "Belehrt"].forEach(function(h, idx) {
-        var align = (idx >= 2 && idx <= 4) ? "right" : "left";
-        html += "<th style='padding:6px 8px;text-align:" + align + ";font-size:10px;font-weight:800;letter-spacing:.3px;'>"
+      html += "<thead><tr style='background:#475569;color:#fff;position:sticky;top:0;'>";
+      ["Start", "Ende", "Verstoß", "Abw.", "Fahrer", "Firma", "Belehrt"].forEach(function(h, idx) {
+        var align = (idx >= 3 && idx <= 5) ? "right" : "left";
+        html += "<th style='padding:6px 8px;text-align:" + align + ";font-size:10px;font-weight:800;letter-spacing:.3px;white-space:nowrap;'>"
               + h + "</th>";
       });
       html += "</tr></thead><tbody>";
 
-      d.verstoesse.forEach(function(v, i) {
-        var bg = i % 2 === 0 ? "#fff" : "#f8fafc";
+      d.verstoesse.forEach(function(v, j) {
+        var jbg = j % 2 === 0 ? "#fff" : "#f8fafc";
         var instructed = !!v.instructed;
-        html += "<tr style='background:" + bg + ";border-bottom:1px solid #eef2f7;'>";
-        // Zeitraum
-        html += "<td style='padding:6px 8px;color:#0f172a;font-weight:600;white-space:nowrap;'>";
-        html += "<div>" + verstossEsc(v.start) + "</div>";
-        html += "<div style='color:#94a3b8;font-size:10px;'>bis " + verstossEsc(v.end) + "</div>";
+        html += "<tr style='background:" + jbg + ";border-bottom:1px solid #eef2f7;'>";
+        html += "<td style='padding:5px 8px;color:#0f172a;font-weight:600;white-space:nowrap;'>" + verstossEsc(v.start) + "</td>";
+        html += "<td style='padding:5px 8px;color:#64748b;white-space:nowrap;'>" + verstossEsc(v.end) + "</td>";
+        html += "<td style='padding:5px 8px;color:#334155;'>";
+        html += "<span style='font-weight:600;'>" + verstossEsc(v.violation || "\u2014") + "</span>";
+        if (v.law) html += " <span style='color:#94a3b8;font-size:10px;'>(" + verstossEsc(v.law) + ")</span>";
         html += "</td>";
-        // Verstoß
-        html += "<td style='padding:6px 8px;color:#334155;'>";
-        html += "<div style='font-weight:600;'>" + verstossEsc(v.violation || "\u2014") + "</div>";
-        if (v.law) {
-          html += "<div style='color:#94a3b8;font-size:10px;margin-top:2px;'>" + verstossEsc(v.law) + "</div>";
-        }
-        html += "</td>";
-        // Diff
-        html += "<td style='padding:6px 8px;text-align:right;color:" + (v.diff > 0 ? "#dc2626" : "#64748b")
-              + ";font-weight:700;white-space:nowrap;'>";
-        html += v.diff ? verstossFmtMin(v.diff) : "\u2014";
-        html += "</td>";
-        // Fahrer-Penalty
-        html += "<td style='padding:6px 8px;text-align:right;font-weight:700;color:" + (v.driver_penalty > 0 ? "#dc2626" : "#cbd5e1") + ";white-space:nowrap;'>";
-        html += v.driver_penalty > 0 ? verstossFmtEuro(v.driver_penalty) : "\u2014";
-        html += "</td>";
-        // Firma-Penalty
-        html += "<td style='padding:6px 8px;text-align:right;font-weight:700;color:" + (v.company_penalty > 0 ? "#b45309" : "#cbd5e1") + ";white-space:nowrap;'>";
-        html += v.company_penalty > 0 ? verstossFmtEuro(v.company_penalty) : "\u2014";
-        html += "</td>";
-        // Instructed
-        html += "<td style='padding:6px 8px;white-space:nowrap;'>";
+        html += "<td style='padding:5px 8px;text-align:right;color:" + (v.diff > 0 ? "#dc2626" : "#64748b") + ";font-weight:700;white-space:nowrap;'>"
+              + (v.diff ? verstossFmtMin(v.diff) : "\u2014") + "</td>";
+        html += "<td style='padding:5px 8px;text-align:right;font-weight:700;color:" + (v.driver_penalty > 0 ? "#dc2626" : "#cbd5e1") + ";white-space:nowrap;'>"
+              + (v.driver_penalty > 0 ? verstossFmtEuro(v.driver_penalty) : "\u2014") + "</td>";
+        html += "<td style='padding:5px 8px;text-align:right;font-weight:700;color:" + (v.company_penalty > 0 ? "#b45309" : "#cbd5e1") + ";white-space:nowrap;'>"
+              + (v.company_penalty > 0 ? verstossFmtEuro(v.company_penalty) : "\u2014") + "</td>";
+        html += "<td style='padding:5px 8px;white-space:nowrap;'>";
         if (instructed) {
           html += "<span title='" + verstossEsc(v.instruction_date + " · " + v.instruction_by)
                 + "' style='background:#dcfce7;color:#166534;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:800;'>&#10003; "
@@ -2831,14 +2868,14 @@ function verstossRender() {
         html += "</td>";
         html += "</tr>";
       });
-      html += "</tbody></table>";
-      html += "</div>"; // end details scroll
-    }
 
-    html += "</div>"; // end card
+      html += "</tbody></table></div>";
+      html += "</div>"; // end detail padding
+      html += "</td></tr>";
+    }
   });
 
-  html += "</div>";
+  html += "</tbody></table></div>";
   body.innerHTML = html;
 }
 
