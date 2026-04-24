@@ -2614,6 +2614,16 @@ function verstossShortTimeFromMs(ms) {
   return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
 }
 
+function verstossShortDateTimeFromMs(ms) {
+  if (!Number.isFinite(ms)) return "";
+  var d = new Date(ms);
+  return String(d.getDate()).padStart(2, "0") + "."
+    + String(d.getMonth() + 1).padStart(2, "0") + "."
+    + d.getFullYear() + " "
+    + String(d.getHours()).padStart(2, "0") + ":"
+    + String(d.getMinutes()).padStart(2, "0");
+}
+
 function verstossTimeFor(driverName, violation) {
   var day = String((violation && violation.date_sort) || "").substring(0, 10);
   if (!day) return null;
@@ -2692,8 +2702,8 @@ function verstossTimeFor(driverName, violation) {
   return {
     person: driverName,
     date: day,
-    beginn: verstossShortTimeFromMs(startMs),
-    ende: verstossShortTimeFromMs(endMs),
+    beginn: verstossShortDateTimeFromMs(startMs),
+    ende: verstossShortDateTimeFromMs(endMs),
     arbeitszeit: work,
     pause: pause || (fallback && fallback.pause) || null,
     ruhezeit: (fallback && fallback.ruhezeit) || null,
@@ -2910,7 +2920,7 @@ function verstossRender() {
       html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;max-height:400px;overflow-y:auto;'>";
       html += "<table style='width:100%;border-collapse:collapse;font-size:11px;'>";
       html += "<thead><tr style='background:#475569;color:#fff;position:sticky;top:0;'>";
-      ["Start", "Ende", "Verstoß", "Soll", "Ist", "Differenz", "Beginn", "Ende ZE", "Arbeitszeit", "Pause", "Ruhezeit", "LKW", "Fahrer", "Firma"].forEach(function(h, idx) {
+      ["Start", "Ende", "Verstoß", "Soll", "Ist", "Differenz", "Beginn ZE", "Ende ZE", "Arbeitszeit", "Pause", "Ruhezeit", "LKW", "Fahrer", "Firma"].forEach(function(h, idx) {
         var align = ([3,4,5,8,9,10,12,13].indexOf(idx) >= 0) ? "right" : "left";
         html += "<th style='padding:6px 8px;text-align:" + align + ";font-size:10px;font-weight:800;letter-spacing:.3px;white-space:nowrap;'>"
               + h + "</th>";
@@ -3015,7 +3025,7 @@ function verstossPdfOne(name) {
     + "<th style='text-align:right'>Soll</th>"
     + "<th style='text-align:right'>Ist</th>"
     + "<th style='text-align:right'>Differenz</th>"
-    + "<th>Beginn</th><th>Ende ZE</th>"
+    + "<th>Beginn ZE</th><th>Ende ZE</th>"
     + "<th style='text-align:right'>Arbeitszeit</th>"
     + "<th style='text-align:right'>Pause</th>"
     + "<th style='text-align:right'>Ruhezeit</th>"
