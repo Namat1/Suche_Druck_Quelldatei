@@ -2171,7 +2171,7 @@ def parse_fahrer_excel(dateien: list) -> str:
     return _json.dumps(result, ensure_ascii=False)
 
 
-def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', last_updated: str = "") -> str:
+def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', zeiterfassung_json: str = '{"by_key":{},"total_rows":0}', last_updated: str = "") -> str:
     try:
         _logo_up = st.session_state.get("g_logo")
     except Exception:
@@ -2597,6 +2597,29 @@ function verstossFmtMin(n) {
   return sign + h + " Std. " + m + " Min.";
 }
 
+function verstossTimeKey(name, isoDay) {
+  return String(name || "").trim().toLowerCase() + "|" + String(isoDay || "").trim();
+}
+
+function verstossTimeFor(driverName, violation) {
+  var data = (typeof ZEITERFASSUNG_DATA !== "undefined" && ZEITERFASSUNG_DATA && ZEITERFASSUNG_DATA.by_key) ? ZEITERFASSUNG_DATA.by_key : {};
+  var day = String((violation && violation.date_sort) || "").substring(0, 10);
+  if (!day) return null;
+  return data[verstossTimeKey(driverName, day)] || null;
+}
+
+function verstossVal(v) {
+  return (v === null || v === undefined || v === "") ? "\u2014" : verstossEsc(v);
+}
+
+function verstossTimeMin(v) {
+  return (v === null || v === undefined || v === "") ? "\u2014" : verstossFmtMin(v);
+}
+
+function verstossLkw(v) {
+  return v && v.lkw ? verstossEsc(v.lkw) : "\u2014";
+}
+
 function verstossInit() {
   verstossRender();
 }
@@ -2681,7 +2704,10 @@ function verstossRender() {
         "<b>" + drivers.length + "</b> Fahrer &middot; "
       + "<b>" + totV + "</b> Verstöße &middot; "
       + "Fahrer <b style='color:#dc2626;'>" + verstossFmtEuro(totDP) + "</b> &middot; "
-      + "Firma <b style='color:#b45309;'>" + verstossFmtEuro(totCP) + "</b>";
+      + "Firma <b style='color:#b45309;'>" + verstossFmtEuro(totCP) + "</b>"
+      + ((typeof ZEITERFASSUNG_DATA !== "undefined" && ZEITERFASSUNG_DATA && ZEITERFASSUNG_DATA.total_rows)
+          ? " &middot; Zeiterfassung <b>" + ZEITERFASSUNG_DATA.total_rows + "</b> Zeilen"
+          : "");
   }
 
   if (!drivers.length) {
@@ -2791,8 +2817,8 @@ function verstossRender() {
       html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;max-height:400px;overflow-y:auto;'>";
       html += "<table style='width:100%;border-collapse:collapse;font-size:11px;'>";
       html += "<thead><tr style='background:#475569;color:#fff;position:sticky;top:0;'>";
-      ["Start", "Ende", "Verstoß", "Soll", "Ist", "Differenz", "Fahrer", "Firma"].forEach(function(h, idx) {
-        var align = (idx >= 3 && idx <= 7) ? "right" : "left";
+      ["Start", "Ende", "Verstoß", "Soll", "Ist", "Differenz", "Beginn", "Ende ZE", "Arbeitszeit", "Pause", "Ruhezeit", "LKW", "Fahrer", "Firma"].forEach(function(h, idx) {
+        var align = ([3,4,5,8,9,10,12,13].indexOf(idx) >= 0) ? "right" : "left";
         html += "<th style='padding:6px 8px;text-align:" + align + ";font-size:10px;font-weight:800;letter-spacing:.3px;white-space:nowrap;'>"
               + h + "</th>";
       });
@@ -2813,6 +2839,13 @@ function verstossRender() {
               + verstossFmtMin(v.ist) + "</td>";
         html += "<td style='padding:5px 8px;text-align:right;color:" + (v.diff > 0 ? "#dc2626" : "#64748b") + ";font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
               + verstossFmtMin(v.diff) + "</td>";
+        var z = verstossTimeFor(d.name, v);
+        html += "<td style='padding:5px 8px;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + verstossVal(z && z.beginn) + "</td>";
+        html += "<td style='padding:5px 8px;color:#64748b;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + verstossVal(z && z.ende) + "</td>";
+        html += "<td style='padding:5px 8px;text-align:right;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + verstossTimeMin(z && z.arbeitszeit) + "</td>";
+        html += "<td style='padding:5px 8px;text-align:right;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + verstossTimeMin(z && z.pause) + "</td>";
+        html += "<td style='padding:5px 8px;text-align:right;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + verstossTimeMin(z && z.ruhezeit) + "</td>";
+        html += "<td style='padding:5px 8px;color:#334155;font-weight:700;white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis;' title='" + verstossLkw(z) + "'>" + verstossLkw(z) + "</td>";
         html += "<td style='padding:5px 8px;text-align:right;font-weight:700;color:" + (v.driver_penalty > 0 ? "#dc2626" : "#cbd5e1") + ";white-space:nowrap;'>"
               + (v.driver_penalty > 0 ? verstossFmtEuro(v.driver_penalty) : "\u2014") + "</td>";
         html += "<td style='padding:5px 8px;text-align:right;font-weight:700;color:" + (v.company_penalty > 0 ? "#b45309" : "#cbd5e1") + ";white-space:nowrap;'>"
@@ -2889,6 +2922,11 @@ function verstossPdfOne(name) {
     + "<th style='text-align:right'>Soll</th>"
     + "<th style='text-align:right'>Ist</th>"
     + "<th style='text-align:right'>Differenz</th>"
+    + "<th>Beginn</th><th>Ende ZE</th>"
+    + "<th style='text-align:right'>Arbeitszeit</th>"
+    + "<th style='text-align:right'>Pause</th>"
+    + "<th style='text-align:right'>Ruhezeit</th>"
+    + "<th>LKW</th>"
     + "<th style='text-align:right'>Fahrer</th>"
     + "<th style='text-align:right'>Firma</th>"
     + "</tr></thead><tbody>";
@@ -2904,7 +2942,14 @@ function verstossPdfOne(name) {
       + "<td style='text-align:right;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
       + verstossFmtMin(v.ist) + "</td>"
       + "<td style='text-align:right;color:" + (v.diff > 0 ? "#dc2626" : "#64748b") + ";font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
-      + verstossFmtMin(v.diff) + "</td>"
+      + verstossFmtMin(v.diff) + "</td>";
+    var z = verstossTimeFor(d.name, v);
+    body += "<td style='white-space:nowrap;font-weight:700;'>" + verstossVal(z && z.beginn) + "</td>"
+      + "<td style='white-space:nowrap;color:#64748b;'>" + verstossVal(z && z.ende) + "</td>"
+      + "<td style='text-align:right;white-space:nowrap;font-weight:700;font-variant-numeric:tabular-nums;'>" + verstossTimeMin(z && z.arbeitszeit) + "</td>"
+      + "<td style='text-align:right;white-space:nowrap;font-weight:700;font-variant-numeric:tabular-nums;'>" + verstossTimeMin(z && z.pause) + "</td>"
+      + "<td style='text-align:right;white-space:nowrap;font-weight:700;font-variant-numeric:tabular-nums;'>" + verstossTimeMin(z && z.ruhezeit) + "</td>"
+      + "<td style='white-space:nowrap;font-weight:700;'>" + verstossLkw(z) + "</td>"
       + "<td style='text-align:right;color:" + (v.driver_penalty > 0 ? "#dc2626" : "#cbd5e1") + ";font-weight:700;white-space:nowrap;'>"
       + (v.driver_penalty > 0 ? verstossFmtEuro(v.driver_penalty) : "\u2014") + "</td>"
       + "<td style='text-align:right;color:" + (v.company_penalty > 0 ? "#b45309" : "#cbd5e1") + ";font-weight:700;white-space:nowrap;'>"
@@ -3715,6 +3760,7 @@ var ZULAGE_XLSX_FUENGERS    = "{zulage_xlsx_fuengers}";
 var DRITTKUNDEN_DATA        = {drittkunden_json};
 var ZULAGE_XLSX_DRITTKUNDEN = "{zulage_xlsx_drittkunden}";
 var VERSTOSS_DATA           = {verstoss_json};
+var ZEITERFASSUNG_DATA      = {zeiterfassung_json};
 
 
 
@@ -4654,6 +4700,133 @@ def parse_telefon_excel(up) -> str:
 
 
 
+
+def parse_zeiterfassung_csv(uploaded_file) -> str:
+    """Parst die Zeiterfassungs-CSV und erzeugt einen Lookup je Fahrer + Datum."""
+    import csv as _csv
+    from io import StringIO as _SIO
+
+    empty = json.dumps({"by_key": {}, "total_rows": 0, "matched_rows": 0}, ensure_ascii=False)
+    payload = read_upload_bytes(uploaded_file)
+    if not payload:
+        return empty
+
+    text = None
+    for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+        try:
+            text = payload.decode(enc)
+            break
+        except Exception:
+            continue
+    if text is None:
+        return empty
+    if text.startswith("\ufeff"):
+        text = text[1:]
+
+    def _clean(v):
+        s = "" if v is None else str(v).strip()
+        return "" if s.lower() in ("nan", "none") else s
+
+    def _to_int(v):
+        s = _clean(v)
+        if not s:
+            return None
+        # Werte kommen in der Datei in Minuten, teils mit deutschem Dezimalformat.
+        try:
+            return int(round(float(s.replace(".", "").replace(",", "."))))
+        except Exception:
+            return None
+
+    def _iso_date(v):
+        s = _clean(v)
+        m = re.match(r"^(\d{2})\.(\d{2})\.(\d{4})", s)
+        if m:
+            return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+        m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
+        if m:
+            return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+        return ""
+
+    def _time(v):
+        s = _clean(v)
+        m = re.match(r"^(\d{1,2}):(\d{2})", s)
+        if m:
+            return f"{int(m.group(1)):02d}:{m.group(2)}"
+        return s
+
+    def _key(name, iso_day):
+        return f"{_clean(name).lower()}|{iso_day}"
+
+    try:
+        reader = _csv.DictReader(_SIO(text), delimiter=";", quotechar='"')
+    except Exception as e:
+        st.warning(f"Zeiterfassungs-CSV konnte nicht gelesen werden: {e}")
+        return empty
+
+    by_key = {}
+    total = 0
+
+    for row in reader:
+        total += 1
+        norm = {(k or "").strip().lstrip("\ufeff"): v for k, v in row.items()}
+        # Zusätzlich kleingeschriebene Suche, falls Überschriften anders geschrieben sind.
+        lower = {k.lower(): v for k, v in norm.items()}
+
+        name = _clean(norm.get("Person") or lower.get("person"))
+        iso_day = _iso_date(norm.get("Datum") or lower.get("datum"))
+        if not name or not iso_day:
+            continue
+
+        beginn = _time(norm.get("Beginn") or lower.get("beginn"))
+        ende = _time(norm.get("Ende") or lower.get("ende"))
+        arbeitszeit = _to_int(norm.get("gewertete Arbeitszeit") or lower.get("gewertete arbeitszeit") or norm.get("gebuchte Arbeitszeit") or lower.get("gebuchte arbeitszeit"))
+        pause = _to_int(norm.get("gewertete Pause") or lower.get("gewertete pause") or norm.get("gebuchte Pausen") or lower.get("gebuchte pausen"))
+        ruhezeit = _to_int(norm.get("Ruhezeit") or lower.get("ruhezeit"))
+        lkw = _clean(norm.get("Terminal") or lower.get("terminal"))
+
+        key = _key(name, iso_day)
+        rec = {
+            "person": name,
+            "date": iso_day,
+            "beginn": beginn,
+            "ende": ende,
+            "arbeitszeit": arbeitszeit,
+            "pause": pause,
+            "ruhezeit": ruhezeit,
+            "lkw": lkw,
+        }
+
+        if key not in by_key:
+            by_key[key] = rec
+            continue
+
+        # Falls es mehrere Zeilen pro Fahrer/Tag gibt: sinnvoll zusammenführen.
+        old = by_key[key]
+        times = [t for t in [old.get("beginn"), beginn] if t]
+        if times:
+            old["beginn"] = min(times)
+        times = [t for t in [old.get("ende"), ende] if t]
+        if times:
+            old["ende"] = max(times)
+
+        for field in ("arbeitszeit", "pause"):
+            vals = [v for v in [old.get(field), rec.get(field)] if isinstance(v, int)]
+            old[field] = sum(vals) if vals else old.get(field)
+
+        if old.get("ruhezeit") is None and rec.get("ruhezeit") is not None:
+            old["ruhezeit"] = rec.get("ruhezeit")
+
+        lkws = []
+        for value in (old.get("lkw"), lkw):
+            for part in str(value or "").split(","):
+                part = part.strip()
+                if part and part not in lkws:
+                    lkws.append(part)
+        old["lkw"] = ", ".join(lkws)
+
+    return json.dumps({"by_key": by_key, "total_rows": total, "matched_rows": len(by_key)}, ensure_ascii=False)
+
+
 def parse_verstoss_csv(uploaded_file) -> str:
     """Parst die Digitacho-Verstoßauswertungs-CSV (Semikolon-getrennt) und aggregiert pro Fahrer."""
     import csv as _csv
@@ -5175,6 +5348,29 @@ elif st.session_state.get("verstoss_json"):
     st.caption("✅ Verstoßauswertung bereits geladen")
 
 
+zeiterfassung_up = st.file_uploader(
+    "🕒 Zeiterfassung zur Verstoßauswertung (CSV, optional)",
+    type=["csv"],
+    key="zeiterfassung_upload_v1"
+)
+if zeiterfassung_up:
+    zeiterfassung_sig = upload_signature(zeiterfassung_up)
+    if st.session_state.get("zeiterfassung_sig") != zeiterfassung_sig:
+        with st.spinner("Verarbeite Zeiterfassungs-CSV …"):
+            st.session_state.zeiterfassung_json = parse_zeiterfassung_csv(zeiterfassung_up)
+            st.session_state.zeiterfassung_sig = zeiterfassung_sig
+    try:
+        _ze = json.loads(st.session_state.zeiterfassung_json)
+        st.caption(
+            f"✅ Zeiterfassung geladen · {_ze.get('total_rows', 0)} Zeilen · "
+            f"{_ze.get('matched_rows', 0)} Fahrer-Tage"
+        )
+    except Exception:
+        st.caption("✅ Zeiterfassung geladen")
+elif st.session_state.get("zeiterfassung_json"):
+    st.caption("✅ Zeiterfassung bereits geladen")
+
+
 # ── Download ──────────────────────────────────────────────────────────────────
 st.divider()
 ready = [inst for inst in st.session_state.instances if inst["suche_html"] and inst["druck_html"]]
@@ -5206,6 +5402,7 @@ if ready:
             zulage_xlsx_drittkunden=zulage_xlsx_drittkunden,
             fahrzeugwaesche_json=st.session_state.get("fahrzeugwaesche_json", "[]"),
             verstoss_json=st.session_state.get("verstoss_json", '{"drivers":[],"total_violations":0}'),
+            zeiterfassung_json=st.session_state.get("zeiterfassung_json", '{"by_key":{},"total_rows":0}'),
             last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
         )
     st.download_button(
