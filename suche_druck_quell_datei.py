@@ -2566,10 +2566,9 @@ function fwExportLkwPdf(lkwName) {
     # ── Verstoßauswertung (eigener raw-string, damit keine Escape-Hölle) ─────
     verstoss_js_code = r"""
 // ── Verstoßauswertung ────────────────────────────────────────────────────────
-var _vsTab = "alle";           // alle | offen | belehrt
 var _vsSearchQ = "";
 var _vsOpenDriver = null;      // welcher Fahrer ist aufgeklappt
-var _vsSortKey = "offen";      // name | count | offen | belehrt | dp | cp
+var _vsSortKey = "letzter";    // name | count | letzter | dp | cp
 var _vsSortDir = "desc";       // asc | desc
 
 function verstossEsc(v) {
@@ -2604,12 +2603,6 @@ function verstossFilter(q) {
   verstossRender();
 }
 
-function verstossSetTab(tab) {
-  _vsTab = tab || "alle";
-  _vsOpenDriver = null;
-  verstossRender();
-}
-
 function verstossToggleDriver(name) {
   _vsOpenDriver = (_vsOpenDriver === name) ? null : name;
   verstossRender();
@@ -2633,8 +2626,7 @@ function verstossApplySort(list) {
     switch (key) {
       case "name":    return (d.name || "").toLowerCase();
       case "count":   return d.count || 0;
-      case "offen":   return d.count_open || 0;
-      case "belehrt": return d.count_instructed || 0;
+      case "letzter": return (d.verstoesse && d.verstoesse[0]) ? (d.verstoesse[0].date_sort || "") : "";
       case "dp":      return d.sum_driver_penalty || 0;
       case "cp":      return d.sum_company_penalty || 0;
       default:        return 0;
@@ -2652,29 +2644,6 @@ function verstossGetDrivers() {
   var data = (VERSTOSS_DATA && Array.isArray(VERSTOSS_DATA.drivers)) ? VERSTOSS_DATA.drivers : [];
   var list = data.slice();
 
-  // Tab filter
-  if (_vsTab === "offen") {
-    list = list.map(function(d) {
-      var v = d.verstoesse.filter(function(x) { return !x.instructed; });
-      return Object.assign({}, d, {
-        verstoesse: v,
-        count: v.length,
-        sum_driver_penalty: v.reduce(function(s, x) { return s + (x.driver_penalty || 0); }, 0),
-        sum_company_penalty: v.reduce(function(s, x) { return s + (x.company_penalty || 0); }, 0)
-      });
-    }).filter(function(d) { return d.count > 0; });
-  } else if (_vsTab === "belehrt") {
-    list = list.map(function(d) {
-      var v = d.verstoesse.filter(function(x) { return x.instructed; });
-      return Object.assign({}, d, {
-        verstoesse: v,
-        count: v.length,
-        sum_driver_penalty: v.reduce(function(s, x) { return s + (x.driver_penalty || 0); }, 0),
-        sum_company_penalty: v.reduce(function(s, x) { return s + (x.company_penalty || 0); }, 0)
-      });
-    }).filter(function(d) { return d.count > 0; });
-  }
-
   // Search
   if (_vsSearchQ) {
     list = list.filter(function(d) {
@@ -2685,38 +2654,10 @@ function verstossGetDrivers() {
   return verstossApplySort(list);
 }
 
-function verstossRenderTabs() {
-  var el = document.getElementById("verstoss-tabs");
-  if (!el) return;
-  var data = (VERSTOSS_DATA && Array.isArray(VERSTOSS_DATA.drivers)) ? VERSTOSS_DATA.drivers : [];
-  var totAlle = 0, totOffen = 0, totBelehrt = 0;
-  data.forEach(function(d) {
-    d.verstoesse.forEach(function(v) {
-      totAlle++;
-      if (v.instructed) totBelehrt++; else totOffen++;
-    });
-  });
-  function tabBtn(id, label, count, color) {
-    var active = _vsTab === id;
-    return "<button onclick='verstossSetTab(\"" + id + "\")' style='padding:7px 14px;border-radius:8px;"
-      + "border:1.5px solid " + (active ? color : "#cbd5e1") + ";"
-      + "background:" + (active ? color : "#fff") + ";"
-      + "color:" + (active ? "#fff" : "#475569") + ";"
-      + "font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;'>"
-      + label + " <b style='margin-left:4px;'>" + count + "</b></button>";
-  }
-  el.innerHTML =
-      tabBtn("alle",    "Alle",    totAlle,    "#1b66b3")
-    + tabBtn("offen",   "Offen",   totOffen,   "#dc2626")
-    + tabBtn("belehrt", "Belehrt", totBelehrt, "#16a34a");
-}
-
 function verstossRender() {
   var body  = document.getElementById("verstoss-body");
   var stats = document.getElementById("verstoss-stats");
   if (!body) return;
-
-  verstossRenderTabs();
 
   var data = (VERSTOSS_DATA && Array.isArray(VERSTOSS_DATA.drivers)) ? VERSTOSS_DATA.drivers : [];
   if (!data.length) {
@@ -2741,7 +2682,7 @@ function verstossRender() {
 
   if (!drivers.length) {
     body.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>"
-      + "Keine Fahrer für diesen Filter.</div>";
+      + "Kein Fahrer für diese Suche.</div>";
     return;
   }
 
@@ -2766,17 +2707,34 @@ function verstossRender() {
   html += "<th style='padding:10px 8px;width:28px;'></th>"; // expand icon column
   html += sortableTh("name",    "Fahrer",         "left");
   html += sortableTh("count",   "Verstöße",       "right");
-  html += sortableTh("offen",   "Offen",          "right");
-  html += sortableTh("belehrt", "Belehrt",        "right");
+  html += sortableTh("letzter", "Letzter Verstoß","left");
   html += sortableTh("dp",      "Bußgeld Fahrer", "right");
   html += sortableTh("cp",      "Bußgeld Firma",  "right");
   html += "</tr></thead><tbody>";
 
+  // "Neu" = Verstoß in den letzten 14 Tagen (ab heute)
+  var _nowMs = Date.now();
+  var _twoWeeksMs = 14 * 24 * 60 * 60 * 1000;
+
   drivers.forEach(function(d, i) {
     var isOpen = (_vsOpenDriver === d.name);
-    var hasOpen = (d.count_open || 0) > 0;
     var bg = isOpen ? "#fef9ee" : (i % 2 === 0 ? "#fff" : "#f8fafc");
-    var leftBorder = hasOpen ? "4px solid #dc2626" : "4px solid #16a34a";
+
+    // Letzter Verstoß — erste Eintrag (Liste ist schon neueste zuerst sortiert)
+    var last = (d.verstoesse && d.verstoesse[0]) ? d.verstoesse[0] : null;
+    var lastStart = last ? last.start : "";
+    var lastSort  = last ? last.date_sort : "";
+    var isRecent = false;
+    if (lastSort) {
+      // "YYYY-MM-DD HH:MM" -> Date
+      var parts = lastSort.split(/[- :]/);
+      if (parts.length >= 3) {
+        var ts = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]),
+                          parseInt(parts[3] || 0), parseInt(parts[4] || 0)).getTime();
+        isRecent = (!isNaN(ts) && (_nowMs - ts) < _twoWeeksMs && (_nowMs - ts) >= 0);
+      }
+    }
+    var leftBorder = isRecent ? "4px solid #dc2626" : "4px solid transparent";
 
     // Haupt-Zeile
     html += "<tr onclick='verstossToggleDriver(" + JSON.stringify(d.name) + ")' "
@@ -2789,22 +2747,11 @@ function verstossRender() {
     html += "<td style='padding:8px 10px;font-weight:800;color:#0f172a;'>" + verstossEsc(d.name) + "</td>";
     // Verstöße gesamt
     html += "<td style='padding:8px 10px;text-align:right;font-weight:900;color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + d.count + "</td>";
-    // Offen
-    html += "<td style='padding:8px 10px;text-align:right;font-variant-numeric:tabular-nums;'>";
-    if ((d.count_open || 0) > 0) {
-      html += "<span style='background:#fee2e2;color:#991b1b;border-radius:4px;padding:2px 9px;font-size:11px;font-weight:800;'>" + d.count_open + "</span>";
-    } else {
-      html += "<span style='color:#cbd5e1;'>0</span>";
-    }
-    html += "</td>";
-    // Belehrt
-    html += "<td style='padding:8px 10px;text-align:right;font-variant-numeric:tabular-nums;'>";
-    if ((d.count_instructed || 0) > 0) {
-      html += "<span style='background:#dcfce7;color:#166534;border-radius:4px;padding:2px 9px;font-size:11px;font-weight:800;'>" + d.count_instructed + "</span>";
-    } else {
-      html += "<span style='color:#cbd5e1;'>0</span>";
-    }
-    html += "</td>";
+    // Letzter Verstoß
+    html += "<td style='padding:8px 10px;color:" + (isRecent ? "#dc2626" : "#475569") + ";font-weight:" + (isRecent ? "800" : "600") + ";white-space:nowrap;font-variant-numeric:tabular-nums;'>"
+          + verstossEsc(lastStart || "\u2014")
+          + (isRecent ? " <span style='background:#fee2e2;color:#991b1b;border-radius:3px;padding:1px 6px;font-size:9px;margin-left:4px;'>NEU</span>" : "")
+          + "</td>";
     // Bußgeld Fahrer
     html += "<td style='padding:8px 10px;text-align:right;font-weight:800;color:" + ((d.sum_driver_penalty || 0) > 0 ? "#dc2626" : "#cbd5e1") + ";font-variant-numeric:tabular-nums;white-space:nowrap;'>"
           + verstossFmtEuro(d.sum_driver_penalty) + "</td>";
@@ -2813,16 +2760,26 @@ function verstossRender() {
           + verstossFmtEuro(d.sum_company_penalty) + "</td>";
     html += "</tr>";
 
-    // Detail-Zeile (aufgeklappt) – volle Breite mit eingebetteter Tabelle
+    // Detail-Zeile (aufgeklappt)
     if (isOpen) {
       html += "<tr style='background:#f8fafc;border-bottom:1px solid #eef2f7;'>";
-      html += "<td colspan='7' style='padding:0;'>";
+      html += "<td colspan='6' style='padding:0;'>";
       html += "<div style='padding:12px 18px 16px 22px;'>";
+
+      // Detail-Header mit PDF-Button
+      html += "<div style='display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;'>";
+      html += "<span style='font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;'>"
+            + d.count + " Verstöße &middot; neueste zuerst</span>";
+      html += "<button onclick='event.stopPropagation();verstossPdfOne(" + JSON.stringify(d.name) + ")' "
+            + "style='margin-left:auto;padding:6px 14px;background:linear-gradient(180deg,#ef4444 0%,#dc2626 100%);color:#fff;border:none;border-radius:6px;"
+            + "font-weight:800;font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 1px 3px rgba(220,38,38,.28);'>"
+            + "&#128196; PDF drucken</button>";
+      html += "</div>";
 
       // Verstoßarten-Chips
       if (d.types && d.types.length) {
         html += "<div style='display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;'>";
-        html += "<span style='font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;'>Verstoßarten:</span>";
+        html += "<span style='font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;'>Arten:</span>";
         d.types.forEach(function(t) {
           html += "<span style='background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:2px 8px;font-size:10.5px;'>"
                 + verstossEsc(t[0]) + " <b style='color:#dc2626;margin-left:3px;'>" + t[1] + "</b></span>";
@@ -2834,7 +2791,7 @@ function verstossRender() {
       html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;max-height:400px;overflow-y:auto;'>";
       html += "<table style='width:100%;border-collapse:collapse;font-size:11px;'>";
       html += "<thead><tr style='background:#475569;color:#fff;position:sticky;top:0;'>";
-      ["Start", "Ende", "Verstoß", "Abw.", "Fahrer", "Firma", "Belehrt"].forEach(function(h, idx) {
+      ["Start", "Ende", "Verstoß", "Abw.", "Fahrer", "Firma"].forEach(function(h, idx) {
         var align = (idx >= 3 && idx <= 5) ? "right" : "left";
         html += "<th style='padding:6px 8px;text-align:" + align + ";font-size:10px;font-weight:800;letter-spacing:.3px;white-space:nowrap;'>"
               + h + "</th>";
@@ -2843,7 +2800,6 @@ function verstossRender() {
 
       d.verstoesse.forEach(function(v, j) {
         var jbg = j % 2 === 0 ? "#fff" : "#f8fafc";
-        var instructed = !!v.instructed;
         html += "<tr style='background:" + jbg + ";border-bottom:1px solid #eef2f7;'>";
         html += "<td style='padding:5px 8px;color:#0f172a;font-weight:600;white-space:nowrap;'>" + verstossEsc(v.start) + "</td>";
         html += "<td style='padding:5px 8px;color:#64748b;white-space:nowrap;'>" + verstossEsc(v.end) + "</td>";
@@ -2857,15 +2813,6 @@ function verstossRender() {
               + (v.driver_penalty > 0 ? verstossFmtEuro(v.driver_penalty) : "\u2014") + "</td>";
         html += "<td style='padding:5px 8px;text-align:right;font-weight:700;color:" + (v.company_penalty > 0 ? "#b45309" : "#cbd5e1") + ";white-space:nowrap;'>"
               + (v.company_penalty > 0 ? verstossFmtEuro(v.company_penalty) : "\u2014") + "</td>";
-        html += "<td style='padding:5px 8px;white-space:nowrap;'>";
-        if (instructed) {
-          html += "<span title='" + verstossEsc(v.instruction_date + " · " + v.instruction_by)
-                + "' style='background:#dcfce7;color:#166534;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:800;'>&#10003; "
-                + verstossEsc(v.instruction_date) + "</span>";
-        } else {
-          html += "<span style='background:#fee2e2;color:#991b1b;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:800;'>OFFEN</span>";
-        }
-        html += "</td>";
         html += "</tr>";
       });
 
@@ -2879,125 +2826,97 @@ function verstossRender() {
   body.innerHTML = html;
 }
 
-function verstossExportExcel() {
-  if (!window.XLSX) { alert("XLSX nicht geladen."); return; }
-  var drivers = verstossGetDrivers();
-  if (!drivers.length) { alert("Keine Daten zum Exportieren."); return; }
+function verstossPdfOne(name) {
+  var data = (VERSTOSS_DATA && Array.isArray(VERSTOSS_DATA.drivers)) ? VERSTOSS_DATA.drivers : [];
+  var d = null;
+  for (var i = 0; i < data.length; i++) {
+    if (data[i].name === name) { d = data[i]; break; }
+  }
+  if (!d) { alert("Fahrer nicht gefunden."); return; }
 
-  var wb = XLSX.utils.book_new();
-
-  // Summary sheet
-  var sum_data = [["Fahrer", "Verstöße", "Offen", "Belehrt", "Bußgeld Fahrer (EUR)", "Bußgeld Firma (EUR)"]];
-  drivers.forEach(function(d) {
-    sum_data.push([
-      d.name, d.count, d.count_open || 0, d.count_instructed || 0,
-      d.sum_driver_penalty || 0, d.sum_company_penalty || 0
-    ]);
-  });
-  var ws1 = XLSX.utils.aoa_to_sheet(sum_data);
-  ws1["!cols"] = [{wch:32},{wch:10},{wch:10},{wch:10},{wch:20},{wch:20}];
-  XLSX.utils.book_append_sheet(wb, ws1, "Übersicht");
-
-  // Detail sheet
-  var det_data = [["Fahrer","Start","Ende","Verstoß","Gesetz","Soll","Ist","Diff (min)","Bußgeld Fahrer","Bußgeld Firma","Belehrung am","Durch","Bemerkung"]];
-  drivers.forEach(function(d) {
-    d.verstoesse.forEach(function(v) {
-      det_data.push([
-        d.name, v.start, v.end, v.violation, v.law,
-        v.target, v.ist, v.diff,
-        v.driver_penalty, v.company_penalty,
-        v.instruction_date, v.instruction_by, v.remark
-      ]);
-    });
-  });
-  var ws2 = XLSX.utils.aoa_to_sheet(det_data);
-  ws2["!cols"] = [{wch:28},{wch:18},{wch:18},{wch:40},{wch:28},{wch:8},{wch:8},{wch:10},{wch:14},{wch:14},{wch:16},{wch:22},{wch:30}];
-  XLSX.utils.book_append_sheet(wb, ws2, "Detail");
-
-  var tabLabel = _vsTab === "offen" ? "Offen" : _vsTab === "belehrt" ? "Belehrt" : "Alle";
-  XLSX.writeFile(wb, "Verstoßauswertung_" + tabLabel + ".xlsx");
-}
-
-function verstossPdf() {
-  var drivers = verstossGetDrivers();
-  if (!drivers.length) { alert("Keine Daten zum Exportieren."); return; }
-
-  var totV  = drivers.reduce(function(s, d) { return s + d.count; }, 0);
-  var totDP = drivers.reduce(function(s, d) { return s + (d.sum_driver_penalty || 0); }, 0);
-  var totCP = drivers.reduce(function(s, d) { return s + (d.sum_company_penalty || 0); }, 0);
   var today = new Date().toLocaleDateString("de-DE", {day:"2-digit",month:"long",year:"numeric"});
-  var tabLabel = _vsTab === "offen" ? "Offene Verstöße" : _vsTab === "belehrt" ? "Belehrte Verstöße" : "Alle Verstöße";
 
-  var css = "@page{size:A4 portrait;margin:10mm}"
+  var css = "@page{size:A4 portrait;margin:12mm}"
     + "*{box-sizing:border-box;margin:0;padding:0}"
-    + "body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;font-size:8pt}"
-    + ".cover{text-align:center;padding:10mm 0 6mm;border-bottom:3px solid #dc2626;margin-bottom:6mm}"
-    + ".cover h1{font-size:18pt;color:#dc2626;font-weight:900;margin-bottom:2mm}"
-    + ".sub{font-size:10pt;color:#64748b}"
-    + ".kpi{display:flex;gap:6mm;justify-content:center;margin-top:4mm;flex-wrap:wrap}"
-    + ".kpi>div{border:1px solid #e2e8f0;border-radius:3mm;padding:3mm 5mm;background:#f8fafc;min-width:30mm}"
-    + ".kpi .num{font-size:14pt;font-weight:900;color:#dc2626}"
-    + ".kpi .lbl{font-size:7pt;color:#64748b;text-transform:uppercase;letter-spacing:.3px}"
-    + ".db{page-break-inside:avoid;margin-bottom:5mm;border:1px solid #e2e8f0;border-radius:2mm;overflow:hidden}"
-    + ".dh{background:#1e3a5f;color:#fff;padding:2mm 4mm;display:flex;align-items:center;gap:4mm}"
-    + ".dn{font-size:10pt;font-weight:900;flex:1}"
-    + ".dc{font-size:13pt;font-weight:900}"
-    + ".dsum{display:flex;gap:4mm;padding:2mm 4mm;background:#f8fafc;font-size:7pt;border-bottom:1px solid #e2e8f0}"
-    + ".dsum span{font-weight:700}"
-    + "table{width:100%;border-collapse:collapse;font-size:7pt}"
+    + "body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;font-size:9pt}"
+    + ".head{border-bottom:3px solid #dc2626;padding-bottom:4mm;margin-bottom:6mm}"
+    + ".head h1{font-size:20pt;color:#dc2626;font-weight:900;margin-bottom:1mm}"
+    + ".head .name{font-size:14pt;font-weight:800;color:#0f172a;margin-top:2mm}"
+    + ".head .sub{font-size:9pt;color:#64748b;margin-top:1mm}"
+    + ".kpi{display:flex;gap:4mm;margin:5mm 0;flex-wrap:wrap}"
+    + ".kpi>div{flex:1;min-width:32mm;border:1px solid #e2e8f0;border-radius:2mm;padding:3mm 4mm;background:#f8fafc}"
+    + ".kpi .num{font-size:14pt;font-weight:900}"
+    + ".kpi .lbl{font-size:7pt;color:#64748b;text-transform:uppercase;letter-spacing:.3px;margin-top:1mm}"
+    + ".types{margin:4mm 0;padding:3mm 4mm;background:#f8fafc;border:1px solid #e2e8f0;border-radius:2mm}"
+    + ".types .tl{font-size:7pt;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2mm}"
+    + ".types .tc{display:inline-block;background:#fff;border:1px solid #e2e8f0;border-radius:1mm;padding:0.8mm 2mm;margin:0.8mm 0.8mm 0 0;font-size:8pt}"
+    + "table{width:100%;border-collapse:collapse;font-size:8pt;margin-top:2mm}"
     + "thead tr{background:#1e3a5f;color:#fff}"
-    + "thead th{padding:1.5mm 2mm;font-weight:800;text-align:left;font-size:6.5pt;text-transform:uppercase;letter-spacing:.3px}"
-    + "tbody td{padding:1.2mm 2mm;border-bottom:1px solid #eef2f7}"
+    + "thead th{padding:2mm 2.5mm;font-weight:800;text-align:left;font-size:7pt;text-transform:uppercase;letter-spacing:.3px}"
+    + "tbody td{padding:1.6mm 2.5mm;border-bottom:1px solid #eef2f7}"
     + "tbody tr:nth-child(even){background:#f8fafc}"
-    + ".open{background:#fee2e2;color:#991b1b;padding:0.5mm 1.5mm;border-radius:1mm;font-size:6pt;font-weight:800}"
-    + ".ok{background:#dcfce7;color:#166534;padding:0.5mm 1.5mm;border-radius:1mm;font-size:6pt;font-weight:800}"
-    + ".ft{text-align:right;color:#94a3b8;font-size:6pt;margin-top:1mm;padding:1mm 3mm;border-top:1px solid #f1f5f9}";
+    + ".ft{margin-top:6mm;padding-top:3mm;border-top:1px solid #e2e8f0;font-size:7pt;color:#94a3b8;display:flex;justify-content:space-between}"
+    + ".sig{margin-top:10mm}"
+    + ".sig .line{border-top:1px solid #94a3b8;width:70mm;padding-top:1.5mm;font-size:7pt;color:#64748b}";
 
-  var body = "<div class='cover'><div style='font-size:22pt;margin-bottom:2mm;'>&#9888;</div>"
-    + "<h1>Verstoßauswertung</h1>"
-    + "<div class='sub'>NordFrischeCenter &middot; " + tabLabel + " &middot; " + today + "</div>"
-    + "<div class='kpi'>"
-    +   "<div><div class='num'>" + drivers.length + "</div><div class='lbl'>Fahrer</div></div>"
-    +   "<div><div class='num'>" + totV + "</div><div class='lbl'>Verstöße</div></div>"
-    +   "<div><div class='num'>" + verstossFmtEuro(totDP) + "</div><div class='lbl'>Fahrer Bußgeld</div></div>"
-    +   "<div><div class='num'>" + verstossFmtEuro(totCP) + "</div><div class='lbl'>Firma Bußgeld</div></div>"
-    + "</div></div>";
+  var body = "<div class='head'>"
+    + "<h1>&#9888; Verstoßauswertung</h1>"
+    + "<div class='name'>" + verstossEsc(d.name) + "</div>"
+    + "<div class='sub'>NordFrischeCenter &middot; Stand: " + today + "</div>"
+    + "</div>";
 
-  drivers.forEach(function(d) {
-    body += "<div class='db'>";
-    body += "<div class='dh'><span class='dn'>" + verstossEsc(d.name) + "</span>"
-          + "<span class='dc'>" + d.count + " Verstöße</span></div>";
-    body += "<div class='dsum'>"
-          + "<span>Offen: " + (d.count_open || 0) + "</span>"
-          + "<span>Belehrt: " + (d.count_instructed || 0) + "</span>"
-          + "<span style='color:#dc2626;'>Fahrer: " + verstossFmtEuro(d.sum_driver_penalty) + "</span>"
-          + "<span style='color:#b45309;'>Firma: " + verstossFmtEuro(d.sum_company_penalty) + "</span>"
-          + "</div>";
-    body += "<table><thead><tr><th>Start</th><th>Ende</th><th>Verstoß</th><th style='text-align:right'>Abw.</th><th style='text-align:right'>Fahrer</th><th style='text-align:right'>Firma</th><th>Status</th></tr></thead><tbody>";
-    d.verstoesse.forEach(function(v) {
-      body += "<tr>";
-      body += "<td>" + verstossEsc(v.start) + "</td>";
-      body += "<td>" + verstossEsc(v.end) + "</td>";
-      body += "<td><div style='font-weight:600;'>" + verstossEsc(v.violation) + "</div>"
-            + "<div style='color:#94a3b8;font-size:6pt;'>" + verstossEsc(v.law) + "</div></td>";
-      body += "<td style='text-align:right;color:" + (v.diff > 0 ? "#dc2626" : "#64748b") + ";font-weight:700;'>"
-            + (v.diff ? verstossFmtMin(v.diff) : "\u2014") + "</td>";
-      body += "<td style='text-align:right;color:" + (v.driver_penalty > 0 ? "#dc2626" : "#cbd5e1") + ";font-weight:700;'>"
-            + (v.driver_penalty > 0 ? verstossFmtEuro(v.driver_penalty) : "\u2014") + "</td>";
-      body += "<td style='text-align:right;color:" + (v.company_penalty > 0 ? "#b45309" : "#cbd5e1") + ";font-weight:700;'>"
-            + (v.company_penalty > 0 ? verstossFmtEuro(v.company_penalty) : "\u2014") + "</td>";
-      body += "<td>" + (v.instructed
-                        ? "<span class='ok'>&#10003; " + verstossEsc(v.instruction_date) + "</span>"
-                        : "<span class='open'>OFFEN</span>") + "</td>";
-      body += "</tr>";
+  body += "<div class='kpi'>"
+    + "<div><div class='num' style='color:#1e3a5f;'>" + d.count + "</div><div class='lbl'>Verstöße gesamt</div></div>"
+    + "<div><div class='num' style='color:#dc2626;'>" + verstossFmtEuro(d.sum_driver_penalty) + "</div><div class='lbl'>Bußgeld Fahrer</div></div>"
+    + "<div><div class='num' style='color:#b45309;'>" + verstossFmtEuro(d.sum_company_penalty) + "</div><div class='lbl'>Bußgeld Firma</div></div>"
+    + "</div>";
+
+  if (d.types && d.types.length) {
+    body += "<div class='types'>"
+      + "<div class='tl'>Verstoßarten</div>";
+    d.types.forEach(function(t) {
+      body += "<span class='tc'>" + verstossEsc(t[0]) + " <b style='color:#dc2626;margin-left:2pt;'>" + t[1] + "</b></span>";
     });
-    body += "</tbody></table>";
-    body += "<div class='ft'>NordFrischeCenter &middot; Verstoßauswertung &middot; " + verstossEsc(d.name) + "</div>";
     body += "</div>";
-  });
+  }
 
+  body += "<table><thead><tr>"
+    + "<th>Start</th><th>Ende</th><th>Verstoß / Gesetz</th>"
+    + "<th style='text-align:right'>Abw.</th>"
+    + "<th style='text-align:right'>Fahrer</th>"
+    + "<th style='text-align:right'>Firma</th>"
+    + "</tr></thead><tbody>";
+  d.verstoesse.forEach(function(v) {
+    body += "<tr>"
+      + "<td style='white-space:nowrap;font-weight:600;'>" + verstossEsc(v.start) + "</td>"
+      + "<td style='white-space:nowrap;color:#64748b;'>" + verstossEsc(v.end) + "</td>"
+      + "<td><div style='font-weight:600;'>" + verstossEsc(v.violation || "\u2014") + "</div>"
+      + (v.law ? "<div style='color:#94a3b8;font-size:6.5pt;'>" + verstossEsc(v.law) + "</div>" : "")
+      + "</td>"
+      + "<td style='text-align:right;color:" + (v.diff > 0 ? "#dc2626" : "#64748b") + ";font-weight:700;white-space:nowrap;'>"
+      + (v.diff ? verstossFmtMin(v.diff) : "\u2014") + "</td>"
+      + "<td style='text-align:right;color:" + (v.driver_penalty > 0 ? "#dc2626" : "#cbd5e1") + ";font-weight:700;white-space:nowrap;'>"
+      + (v.driver_penalty > 0 ? verstossFmtEuro(v.driver_penalty) : "\u2014") + "</td>"
+      + "<td style='text-align:right;color:" + (v.company_penalty > 0 ? "#b45309" : "#cbd5e1") + ";font-weight:700;white-space:nowrap;'>"
+      + (v.company_penalty > 0 ? verstossFmtEuro(v.company_penalty) : "\u2014") + "</td>"
+      + "</tr>";
+  });
+  body += "</tbody></table>";
+
+  // Unterschrift
+  body += "<div style='display:flex;gap:12mm;margin-top:14mm;'>"
+    + "<div class='sig'><div class='line'>Datum, Unterschrift Fahrer</div></div>"
+    + "<div class='sig'><div class='line'>Datum, Unterschrift Disposition</div></div>"
+    + "</div>";
+
+  body += "<div class='ft'>"
+    + "<span>NordFrischeCenter &middot; Verstoßauswertung</span>"
+    + "<span>" + verstossEsc(d.name) + "</span>"
+    + "</div>";
+
+  var safeName = String(d.name).replace(/[\\\/:*?"<>|]+/g, "_");
   var w = window.open("", "_blank", "width=900,height=800");
-  w.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Verstoßauswertung</title><style>" + css + "</style></head><body>" + body + "</body></html>");
+  w.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Verstoß - " + verstossEsc(d.name) + "</title><style>" + css + "</style></head><body>" + body + "</body></html>");
   w.document.close();
   w.focus();
   setTimeout(function() { w.print(); }, 500);
@@ -3409,11 +3328,8 @@ iframe.active{{display:block}}
         <input id="verstoss-search" placeholder="Fahrer suchen..." oninput="verstossFilter(this.value)"
           style="flex:1;min-width:160px;max-width:300px;padding:8px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#fff;transition:border .15s;color:#0f172a;"
           onfocus="this.style.borderColor='#dc2626'" onblur="this.style.borderColor='#cbd5e1'">
-        <span id="verstoss-stats" style="font-size:12px;font-weight:700;color:#64748b;"></span>
-        <button onclick="verstossExportExcel()" style="margin-left:auto;padding:6px 14px;background:#1d6f42;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;">&#128196; Excel</button>
-        <button onclick="verstossPdf()" style="padding:6px 14px;background:linear-gradient(180deg,#ef4444 0%,#dc2626 100%);color:#fff;border:none;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;">&#128196; PDF</button>
+        <span id="verstoss-stats" style="font-size:12px;font-weight:700;color:#64748b;margin-left:auto;"></span>
       </div>
-      <div id="verstoss-tabs" style="display:flex;gap:6px;padding:0 0 10px 0;flex-wrap:wrap;flex-shrink:0;"></div>
       <div id="verstoss-body" style="flex:1;overflow-y:auto;padding:4px 2px 30px 2px;">
         <div style="color:#94a3b8;padding:60px;text-align:center;font-size:14px;">Keine Verstoßdaten &ndash; bitte CSV in Streamlit hochladen.</div>
       </div>
@@ -4857,8 +4773,10 @@ def parse_verstoss_csv(uploaded_file) -> str:
         d["types"] = sorted(d["types"].items(), key=lambda kv: (-kv[1], kv[0]))
         drivers.append(d)
 
-    # Fahrer sortieren: zuerst nach offenen (desc), dann nach Gesamtzahl (desc), dann Name
-    drivers.sort(key=lambda x: (-x["count_open"], -x["count"], x["name"]))
+    # Fahrer sortieren: neuester Verstoß zuerst (Default der UI-Sortierung)
+    def _last_sort(d):
+        return d["verstoesse"][0].get("date_sort", "") if d["verstoesse"] else ""
+    drivers.sort(key=lambda x: (_last_sort(x), x["name"]), reverse=True)
 
     total = sum(d["count"] for d in drivers)
     return json.dumps({"drivers": drivers, "total_violations": total}, ensure_ascii=False)
@@ -5235,13 +5153,10 @@ if verstoss_up:
         _vs = json.loads(st.session_state.verstoss_json)
         _vs_drivers = _vs.get("drivers", [])
         _vs_total   = _vs.get("total_violations", 0)
-        _vs_open    = sum(d.get("count_open", 0) for d in _vs_drivers)
-        _vs_inst    = sum(d.get("count_instructed", 0) for d in _vs_drivers)
         _vs_dp      = sum(d.get("sum_driver_penalty", 0) for d in _vs_drivers)
         _vs_cp      = sum(d.get("sum_company_penalty", 0) for d in _vs_drivers)
         st.caption(
-            f"✅ {len(_vs_drivers)} Fahrer · {_vs_total} Verstöße "
-            f"({_vs_open} offen · {_vs_inst} belehrt) · "
+            f"✅ {len(_vs_drivers)} Fahrer · {_vs_total} Verstöße · "
             f"Fahrer-Bußgeld {_vs_dp:,} € · Firma-Bußgeld {_vs_cp:,} €".replace(",", ".")
         )
     except Exception:
