@@ -2586,11 +2586,15 @@ function verstossFmtEuro(n) {
 }
 
 function verstossFmtMin(n) {
-  n = Number(n) || 0;
-  if (n < 60) return n + " min";
+  if (!Number.isFinite(Number(n))) return "\u2014";
+  n = Math.round(Number(n));
+  var sign = n < 0 ? "-" : "";
+  n = Math.abs(n);
   var h = Math.floor(n / 60);
   var m = n % 60;
-  return h + "h" + (m ? " " + m + "m" : "");
+  if (h === 0) return sign + m + " Min.";
+  if (m === 0) return sign + h + " Std.";
+  return sign + h + " Std. " + m + " Min.";
 }
 
 function verstossInit() {
@@ -2712,9 +2716,14 @@ function verstossRender() {
   html += sortableTh("cp",      "Bußgeld Firma",  "right");
   html += "</tr></thead><tbody>";
 
-  // "Neu" = Verstoß in den letzten 14 Tagen (ab heute)
-  var _nowMs = Date.now();
-  var _twoWeeksMs = 14 * 24 * 60 * 60 * 1000;
+  // "Neu" = nur Verstöße vom letzten vorhandenen Tag in der CSV
+  var _latestViolationDay = "";
+  data.forEach(function(_d) {
+    (_d.verstoesse || []).forEach(function(_v) {
+      var _day = ((_v.date_sort || "").substring(0, 10));
+      if (_day && _day > _latestViolationDay) _latestViolationDay = _day;
+    });
+  });
 
   drivers.forEach(function(d, i) {
     var isOpen = (_vsOpenDriver === d.name);
@@ -2724,16 +2733,7 @@ function verstossRender() {
     var last = (d.verstoesse && d.verstoesse[0]) ? d.verstoesse[0] : null;
     var lastStart = last ? last.start : "";
     var lastSort  = last ? last.date_sort : "";
-    var isRecent = false;
-    if (lastSort) {
-      // "YYYY-MM-DD HH:MM" -> Date
-      var parts = lastSort.split(/[- :]/);
-      if (parts.length >= 3) {
-        var ts = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]),
-                          parseInt(parts[3] || 0), parseInt(parts[4] || 0)).getTime();
-        isRecent = (!isNaN(ts) && (_nowMs - ts) < _twoWeeksMs && (_nowMs - ts) >= 0);
-      }
-    }
+    var isRecent = !!(_latestViolationDay && lastSort && lastSort.substring(0, 10) === _latestViolationDay);
     var leftBorder = isRecent ? "4px solid #dc2626" : "4px solid transparent";
 
     // Haupt-Zeile
@@ -2808,11 +2808,11 @@ function verstossRender() {
         if (v.law) html += " <span style='color:#94a3b8;font-size:10px;'>(" + verstossEsc(v.law) + ")</span>";
         html += "</td>";
         html += "<td style='padding:5px 8px;text-align:right;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
-              + (Number.isFinite(Number(v.target)) ? Number(v.target) : "\u2014") + "</td>";
+              + verstossFmtMin(v.target) + "</td>";
         html += "<td style='padding:5px 8px;text-align:right;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
-              + (Number.isFinite(Number(v.ist)) ? Number(v.ist) : "\u2014") + "</td>";
+              + verstossFmtMin(v.ist) + "</td>";
         html += "<td style='padding:5px 8px;text-align:right;color:" + (v.diff > 0 ? "#dc2626" : "#64748b") + ";font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
-              + (Number.isFinite(Number(v.diff)) ? Number(v.diff) : "\u2014") + "</td>";
+              + verstossFmtMin(v.diff) + "</td>";
         html += "<td style='padding:5px 8px;text-align:right;font-weight:700;color:" + (v.driver_penalty > 0 ? "#dc2626" : "#cbd5e1") + ";white-space:nowrap;'>"
               + (v.driver_penalty > 0 ? verstossFmtEuro(v.driver_penalty) : "\u2014") + "</td>";
         html += "<td style='padding:5px 8px;text-align:right;font-weight:700;color:" + (v.company_penalty > 0 ? "#b45309" : "#cbd5e1") + ";white-space:nowrap;'>"
@@ -2900,11 +2900,11 @@ function verstossPdfOne(name) {
       + (v.law ? "<div style='color:#94a3b8;font-size:6.5pt;'>" + verstossEsc(v.law) + "</div>" : "")
       + "</td>"
       + "<td style='text-align:right;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
-      + (Number.isFinite(Number(v.target)) ? Number(v.target) : "\u2014") + "</td>"
+      + verstossFmtMin(v.target) + "</td>"
       + "<td style='text-align:right;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
-      + (Number.isFinite(Number(v.ist)) ? Number(v.ist) : "\u2014") + "</td>"
+      + verstossFmtMin(v.ist) + "</td>"
       + "<td style='text-align:right;color:" + (v.diff > 0 ? "#dc2626" : "#64748b") + ";font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
-      + (Number.isFinite(Number(v.diff)) ? Number(v.diff) : "\u2014") + "</td>"
+      + verstossFmtMin(v.diff) + "</td>"
       + "<td style='text-align:right;color:" + (v.driver_penalty > 0 ? "#dc2626" : "#cbd5e1") + ";font-weight:700;white-space:nowrap;'>"
       + (v.driver_penalty > 0 ? verstossFmtEuro(v.driver_penalty) : "\u2014") + "</td>"
       + "<td style='text-align:right;color:" + (v.company_penalty > 0 ? "#b45309" : "#cbd5e1") + ";font-weight:700;white-space:nowrap;'>"
