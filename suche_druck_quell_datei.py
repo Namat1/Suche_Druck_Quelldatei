@@ -12,6 +12,7 @@ import base64
 import unicodedata
 import re
 import datetime
+from zoneinfo import ZoneInfo
 import hashlib
 import io
 from pathlib import Path
@@ -2625,12 +2626,22 @@ function verstossShortDateTimeFromMs(ms) {
 }
 
 function verstossIsZePlaceholder(beginn, ende) {
-  var b = String(beginn || "").trim();
-  var e = String(ende || "").trim();
+  function parts(v) {
+    return String(v || "")
+      .split(",")
+      .map(function(x){ return x.trim(); })
+      .filter(Boolean);
+  }
+  var bs = parts(beginn);
+  var es = parts(ende);
+  if (!bs.length || !es.length) return false;
   // In der Zeiterfassungs-CSV kommen bei manchen Tagen Platzhalter wie
-  // 00:00 bis 24:00 vor. Das sind keine echten Schichtzeiten und dürfen
-  // nicht als 24-Stunden-Schicht angezeigt oder gerechnet werden.
-  return (b === "00:00" && (e === "24:00" || e === "00:00"));
+  // 00:00 bis 24:00 oder 00:00, 00:00 bis 24:00, 24:00 vor.
+  // Das sind keine echten Schichtzeiten und dürfen nicht als 24-Stunden-Schicht
+  // angezeigt oder gerechnet werden.
+  var allStartZero = bs.every(function(x){ return x === "00:00"; });
+  var allEndFull = es.every(function(x){ return x === "24:00" || x === "00:00"; });
+  return allStartZero && allEndFull;
 }
 
 function verstossCleanFallbackZe(rec) {
@@ -4918,6 +4929,27 @@ def parse_zeiterfassung_csv(uploaded_file) -> str:
         except Exception:
             return None
 
+    def _berlin_offset_minutes(dt):
+        try:
+            return int(dt.replace(tzinfo=ZoneInfo("Europe/Berlin")).utcoffset().total_seconds() / 60)
+        except Exception:
+            return 0
+
+    def _js_ms_for_time_recording(dt):
+        # Die Zeiten aus dem Zeiterfassungs-Export sind gegenüber den Verstößen
+        # um die lokale Berlin-Zeitzone verschoben. Zusätzlich würde JavaScript
+        # beim Anzeigen eines Unix-Zeitstempels die Zeitzone erneut addieren.
+        # Deshalb wird hier zweimal der lokale Offset abgezogen, damit im Browser
+        # die gleiche Ortszeit wie in der Verstoßdatei erscheint.
+        off = _berlin_offset_minutes(dt)
+        adjusted = dt - datetime.timedelta(minutes=2 * off)
+        return int(adjusted.timestamp() * 1000)
+
+    def _display_shifted_dt(dt):
+        # Lokaler Anzeigezeitpunkt, der fachlich zum Verstoß passt.
+        off = _berlin_offset_minutes(dt)
+        return dt - datetime.timedelta(minutes=off)
+
     def _split_times(v):
         s = _clean(v)
         if not s:
@@ -5022,10 +5054,10 @@ def parse_zeiterfassung_csv(uploaded_file) -> str:
                     seg_pause = pause if i == longest_idx else 0
                     by_person[person_key].append({
                         "date": iso_day,
-                        "beginn": btxt,
-                        "ende": etxt,
-                        "start_ms": int(start_dt.timestamp() * 1000),
-                        "end_ms": int(end_dt.timestamp() * 1000),
+                        "beginn": _display_shifted_dt(start_dt).strftime("%d.%m.%Y %H:%M"),
+                        "ende": _display_shifted_dt(end_dt).strftime("%d.%m.%Y %H:%M"),
+                        "start_ms": _js_ms_for_time_recording(start_dt),
+                        "end_ms": _js_ms_for_time_recording(end_dt),
                         "duration": duration,
                         "pause": seg_pause,
                         "ruhezeit": ruhezeit,
