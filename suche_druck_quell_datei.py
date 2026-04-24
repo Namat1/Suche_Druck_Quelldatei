@@ -2624,13 +2624,33 @@ function verstossShortDateTimeFromMs(ms) {
     + String(d.getMinutes()).padStart(2, "0");
 }
 
+function verstossIsZePlaceholder(beginn, ende) {
+  var b = String(beginn || "").trim();
+  var e = String(ende || "").trim();
+  // In der Zeiterfassungs-CSV kommen bei manchen Tagen Platzhalter wie
+  // 00:00 bis 24:00 vor. Das sind keine echten Schichtzeiten und dürfen
+  // nicht als 24-Stunden-Schicht angezeigt oder gerechnet werden.
+  return (b === "00:00" && (e === "24:00" || e === "00:00"));
+}
+
+function verstossCleanFallbackZe(rec) {
+  if (!rec) return null;
+  var out = {};
+  Object.keys(rec).forEach(function(k){ out[k] = rec[k]; });
+  if (verstossIsZePlaceholder(out.beginn, out.ende)) {
+    out.beginn = "";
+    out.ende = "";
+  }
+  return out;
+}
+
 function verstossTimeFor(driverName, violation) {
   var day = String((violation && violation.date_sort) || "").substring(0, 10);
   if (!day) return null;
 
   var zdata = (typeof ZEITERFASSUNG_DATA !== "undefined" && ZEITERFASSUNG_DATA) ? ZEITERFASSUNG_DATA : {};
   var byKey = zdata.by_key || {};
-  var fallback = byKey[verstossTimeKey(driverName, day)] || null;
+  var fallback = verstossCleanFallbackZe(byKey[verstossTimeKey(driverName, day)] || null);
 
   var vStart = verstossParseDeDateTime(violation && violation.start);
   var vEnd = verstossParseDeDateTime(violation && violation.end);
@@ -2658,7 +2678,14 @@ function verstossTimeFor(driverName, violation) {
   var realOverlap = overlap.filter(function(s) {
     return !s.is_placeholder;
   });
-  if (realOverlap.length) overlap = realOverlap;
+  if (realOverlap.length) {
+    overlap = realOverlap;
+  } else {
+    // Wenn nur Platzhalter-Segmente (00:00-24:00) gefunden wurden, nicht daraus
+    // 24 Stunden Arbeitszeit bauen. Dann lieber die Tageswerte aus der CSV zeigen
+    // und Beginn/Ende leer lassen.
+    return fallback;
+  }
 
   // Falls ein Tag mehrere Segmente hat (z. B. 00:46 und 22:40), nimm nur
   // das Segment nahe am Verstoßbeginn. Nicht weitere Folgetags-Platzhalter
@@ -4978,7 +5005,11 @@ def parse_zeiterfassung_csv(uploaded_file) -> str:
                 seen_segments.add(seg_key)
 
                 seg_lkw = lkw_parts[idx] if len(lkw_parts) == len(begins) and idx < len(lkw_parts) else lkw
-                is_placeholder = duration >= 20 * 60 and (bmin <= 30 or emin >= 1410)
+                is_placeholder = (
+                    duration >= 18 * 60
+                    or (bmin == 0 and emin >= 1440)
+                    or (bmin == emin)
+                )
                 total_segments.append((idx, btxt, etxt, start_dt, end_dt, duration, seg_lkw, is_placeholder))
 
             if total_segments:
