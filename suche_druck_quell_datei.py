@@ -2644,7 +2644,10 @@ function verstossTimeFor(driverName, violation) {
   if (!segments.length) return fallback;
 
   // Bei Schichten über 0 Uhr darf nicht der ganze Kalendertag genommen werden.
-  // Deshalb werden nur Zeitsegmente verwendet, die in den Verstoßzeitraum fallen.
+  // Es werden nur Segmente verwendet, die den Verstoß wirklich schneiden.
+  // Volltag-Platzhalter aus der Zeiterfassung, zum Beispiel 00:00-24:00,
+  // werden verworfen, sobald echte Teilsegmente vorhanden sind. Sonst entstehen
+  // falsche Werte wie 48 Stunden und mehrere LKW an einem Verstoß.
   var overlap = segments.filter(function(s) {
     var a = Number(s.start_ms), b = Number(s.end_ms);
     return a < vEnd && b > vStart;
@@ -2652,17 +2655,32 @@ function verstossTimeFor(driverName, violation) {
 
   if (!overlap.length) return fallback;
 
-  // Falls ein Tag mehrere Segmente hat (z. B. 00:46 und 22:40), nimm bei
-  // Nachtverstößen das Segment, das nah am Verstoßbeginn startet, statt 00:46.
+  var realOverlap = overlap.filter(function(s) {
+    return !s.is_placeholder;
+  });
+  if (realOverlap.length) overlap = realOverlap;
+
+  // Falls ein Tag mehrere Segmente hat (z. B. 00:46 und 22:40), nimm nur
+  // das Segment nahe am Verstoßbeginn. Nicht weitere Folgetags-Platzhalter
+  // dazunehmen, sonst werden mehrere Schichten zusammengerechnet.
   var nearStart = overlap.filter(function(s) {
     var a = Number(s.start_ms);
-    return a >= (vStart - 2 * 60 * 60 * 1000);
+    return a >= (vStart - 2 * 60 * 60 * 1000) && a <= (vStart + 4 * 60 * 60 * 1000);
   });
   if (nearStart.length) {
-    overlap = nearStart.concat(segments.filter(function(s) {
-      var a = Number(s.start_ms), b = Number(s.end_ms);
-      return a >= vStart && a < vEnd && b > vStart && nearStart.indexOf(s) < 0;
-    }));
+    overlap = nearStart;
+  } else {
+    // Fallback: bestes einzelnes Segment nach Überschneidung und Nähe zum Start.
+    overlap.sort(function(x, y) {
+      function score(s) {
+        var a = Number(s.start_ms), b = Number(s.end_ms);
+        var ov = Math.max(0, Math.min(b, vEnd) - Math.max(a, vStart));
+        var dist = Math.abs(a - vStart);
+        return ov - (dist / 20);
+      }
+      return score(y) - score(x);
+    });
+    overlap = [overlap[0]];
   }
 
   overlap.sort(function(a, b) { return Number(a.start_ms) - Number(b.start_ms); });
@@ -4929,7 +4947,14 @@ def parse_zeiterfassung_csv(uploaded_file) -> str:
         if base_day and begins and ends:
             if len(ends) < len(begins):
                 ends += [ends[-1]] * (len(begins) - len(ends))
+
+            # LKW/Terminal kann ebenfalls kommagetrennt sein. Wenn die Anzahl passt,
+            # wird je Zeitsegment der passende LKW verwendet. Dadurch wird aus
+            # "LWL E 551, LWL E 554" nicht pauschal jeder LKW jedem Segment zugeordnet.
+            lkw_parts = [x.strip() for x in str(lkw or "").split(",") if x.strip()]
+
             total_segments = []
+            seen_segments = set()
             for idx, btxt in enumerate(begins):
                 etxt = ends[idx] if idx < len(ends) else ends[-1]
                 bmin = _minutes_of_day(btxt)
@@ -4945,15 +4970,24 @@ def parse_zeiterfassung_csv(uploaded_file) -> str:
                 duration = int(round((end_dt - start_dt).total_seconds() / 60))
                 if duration <= 0:
                     continue
-                total_segments.append((idx, btxt, etxt, start_dt, end_dt, duration))
+
+                # Identische Platzhalter wie 00:00-24:00, 00:00-24:00 nur einmal übernehmen.
+                seg_key = (btxt, etxt, int(start_dt.timestamp()), int(end_dt.timestamp()))
+                if seg_key in seen_segments:
+                    continue
+                seen_segments.add(seg_key)
+
+                seg_lkw = lkw_parts[idx] if len(lkw_parts) == len(begins) and idx < len(lkw_parts) else lkw
+                is_placeholder = duration >= 20 * 60 and (bmin <= 30 or emin >= 1410)
+                total_segments.append((idx, btxt, etxt, start_dt, end_dt, duration, seg_lkw, is_placeholder))
 
             if total_segments:
-                # Pausen nur dem längsten Segment zuordnen. Das verhindert doppelte Pausen,
-                # wenn ein Tag in mehrere Teilsegmente getrennt ist.
-                longest_idx = max(range(len(total_segments)), key=lambda i: total_segments[i][5])
+                # Pausen nur dem längsten echten Segment zuordnen. Das verhindert doppelte Pausen,
+                # wenn ein Tag in mehrere Teilsegmente getrennt ist oder Volltag-Platzhalter enthält.
+                longest_idx = max(range(len(total_segments)), key=lambda i: (0 if total_segments[i][7] else 1, total_segments[i][5]))
                 person_key = _clean(name).lower()
                 by_person.setdefault(person_key, [])
-                for i, (idx, btxt, etxt, start_dt, end_dt, duration) in enumerate(total_segments):
+                for i, (idx, btxt, etxt, start_dt, end_dt, duration, seg_lkw, is_placeholder) in enumerate(total_segments):
                     seg_pause = pause if i == longest_idx else 0
                     by_person[person_key].append({
                         "date": iso_day,
@@ -4964,7 +4998,8 @@ def parse_zeiterfassung_csv(uploaded_file) -> str:
                         "duration": duration,
                         "pause": seg_pause,
                         "ruhezeit": ruhezeit,
-                        "lkw": lkw,
+                        "lkw": seg_lkw,
+                        "is_placeholder": is_placeholder,
                     })
 
         if key not in by_key:
