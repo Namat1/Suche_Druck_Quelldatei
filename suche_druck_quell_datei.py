@@ -2791,8 +2791,8 @@ function verstossRender() {
       html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;max-height:400px;overflow-y:auto;'>";
       html += "<table style='width:100%;border-collapse:collapse;font-size:11px;'>";
       html += "<thead><tr style='background:#475569;color:#fff;position:sticky;top:0;'>";
-      ["Start", "Ende", "Verstoß", "Abw.", "Fahrer", "Firma"].forEach(function(h, idx) {
-        var align = (idx >= 3 && idx <= 5) ? "right" : "left";
+      ["Start", "Ende", "Verstoß", "Soll", "Ist", "Differenz", "Fahrer", "Firma"].forEach(function(h, idx) {
+        var align = (idx >= 3 && idx <= 7) ? "right" : "left";
         html += "<th style='padding:6px 8px;text-align:" + align + ";font-size:10px;font-weight:800;letter-spacing:.3px;white-space:nowrap;'>"
               + h + "</th>";
       });
@@ -2807,8 +2807,12 @@ function verstossRender() {
         html += "<span style='font-weight:600;'>" + verstossEsc(v.violation || "\u2014") + "</span>";
         if (v.law) html += " <span style='color:#94a3b8;font-size:10px;'>(" + verstossEsc(v.law) + ")</span>";
         html += "</td>";
-        html += "<td style='padding:5px 8px;text-align:right;color:" + (v.diff > 0 ? "#dc2626" : "#64748b") + ";font-weight:700;white-space:nowrap;'>"
-              + (v.diff ? verstossFmtMin(v.diff) : "\u2014") + "</td>";
+        html += "<td style='padding:5px 8px;text-align:right;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
+              + (Number.isFinite(Number(v.target)) ? Number(v.target) : "\u2014") + "</td>";
+        html += "<td style='padding:5px 8px;text-align:right;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
+              + (Number.isFinite(Number(v.ist)) ? Number(v.ist) : "\u2014") + "</td>";
+        html += "<td style='padding:5px 8px;text-align:right;color:" + (v.diff > 0 ? "#dc2626" : "#64748b") + ";font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
+              + (Number.isFinite(Number(v.diff)) ? Number(v.diff) : "\u2014") + "</td>";
         html += "<td style='padding:5px 8px;text-align:right;font-weight:700;color:" + (v.driver_penalty > 0 ? "#dc2626" : "#cbd5e1") + ";white-space:nowrap;'>"
               + (v.driver_penalty > 0 ? verstossFmtEuro(v.driver_penalty) : "\u2014") + "</td>";
         html += "<td style='padding:5px 8px;text-align:right;font-weight:700;color:" + (v.company_penalty > 0 ? "#b45309" : "#cbd5e1") + ";white-space:nowrap;'>"
@@ -2882,7 +2886,9 @@ function verstossPdfOne(name) {
 
   body += "<table><thead><tr>"
     + "<th>Start</th><th>Ende</th><th>Verstoß / Gesetz</th>"
-    + "<th style='text-align:right'>Abw.</th>"
+    + "<th style='text-align:right'>Soll</th>"
+    + "<th style='text-align:right'>Ist</th>"
+    + "<th style='text-align:right'>Differenz</th>"
     + "<th style='text-align:right'>Fahrer</th>"
     + "<th style='text-align:right'>Firma</th>"
     + "</tr></thead><tbody>";
@@ -2893,8 +2899,12 @@ function verstossPdfOne(name) {
       + "<td><div style='font-weight:600;'>" + verstossEsc(v.violation || "\u2014") + "</div>"
       + (v.law ? "<div style='color:#94a3b8;font-size:6.5pt;'>" + verstossEsc(v.law) + "</div>" : "")
       + "</td>"
-      + "<td style='text-align:right;color:" + (v.diff > 0 ? "#dc2626" : "#64748b") + ";font-weight:700;white-space:nowrap;'>"
-      + (v.diff ? verstossFmtMin(v.diff) : "\u2014") + "</td>"
+      + "<td style='text-align:right;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
+      + (Number.isFinite(Number(v.target)) ? Number(v.target) : "\u2014") + "</td>"
+      + "<td style='text-align:right;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
+      + (Number.isFinite(Number(v.ist)) ? Number(v.ist) : "\u2014") + "</td>"
+      + "<td style='text-align:right;color:" + (v.diff > 0 ? "#dc2626" : "#64748b") + ";font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
+      + (Number.isFinite(Number(v.diff)) ? Number(v.diff) : "\u2014") + "</td>"
       + "<td style='text-align:right;color:" + (v.driver_penalty > 0 ? "#dc2626" : "#cbd5e1") + ";font-weight:700;white-space:nowrap;'>"
       + (v.driver_penalty > 0 ? verstossFmtEuro(v.driver_penalty) : "\u2014") + "</td>"
       + "<td style='text-align:right;color:" + (v.company_penalty > 0 ? "#b45309" : "#cbd5e1") + ";font-weight:700;white-space:nowrap;'>"
