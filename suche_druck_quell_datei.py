@@ -3418,10 +3418,10 @@ function verstossPdfOne(name) {
     + ".types{margin:4mm 0;padding:3mm 4mm;background:#f8fafc;border:1px solid #e2e8f0;border-radius:2mm}"
     + ".types .tl{font-size:7pt;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2mm}"
     + ".types .tc{display:inline-block;background:#fff;border:1px solid #e2e8f0;border-radius:1mm;padding:0.8mm 2mm;margin:0.8mm 0.8mm 0 0;font-size:8pt}"
-    + "table{width:100%;border-collapse:collapse;font-size:8pt;margin-top:2mm}"
+    + "table{width:100%;border-collapse:collapse;font-size:9.5pt;margin-top:2mm}"
     + "thead tr{background:#1e3a5f;color:#fff}"
-    + "thead th{padding:2mm 2.5mm;font-weight:800;text-align:left;font-size:7pt;text-transform:uppercase;letter-spacing:.3px}"
-    + "tbody td{padding:1.6mm 2.5mm;border-bottom:1px solid #eef2f7}"
+    + "thead th{padding:2.2mm 3mm;font-weight:800;text-align:left;font-size:8pt;text-transform:uppercase;letter-spacing:.3px}"
+    + "tbody td{padding:2.2mm 3mm;border-bottom:1px solid #eef2f7;vertical-align:top}"
     + "tbody tr:nth-child(even){background:#f8fafc}"
     + ".ft{margin-top:6mm;padding-top:3mm;border-top:1px solid #e2e8f0;font-size:7pt;color:#94a3b8;display:flex;justify-content:space-between}"
     + ".sig{margin-top:10mm}"
@@ -3449,42 +3449,24 @@ function verstossPdfOne(name) {
   }
 
   body += "<table><thead><tr>"
-    + "<th>Start</th><th>Ende</th><th>Verstoß / Gesetz</th>"
-    + "<th style='text-align:right'>Soll</th>"
-    + "<th style='text-align:right'>Ist</th>"
-    + "<th style='text-align:right'>Differenz</th>"
-    + "<th>Beginn ZE</th><th>Ende ZE</th>"
-    + "<th style='text-align:right'>Arbeitszeit</th>"
-    + "<th style='text-align:right'>Pause</th>"
-    + "<th style='text-align:right'>Ruhezeit</th>"
-    + "<th>LKW</th>"
-    + "<th style='text-align:right'>Fahrer</th>"
-    + "<th style='text-align:right'>Firma</th>"
+    + "<th style='width:22mm'>Datum</th>"
+    + "<th>Verstoß</th>"
+    + "<th style='text-align:right;width:34mm'>Strafe</th>"
     + "</tr></thead><tbody>";
   d.verstoesse.forEach(function(v) {
+    var dateOnly = String(v.start || "").split(" ")[0];
+    var dp = v.driver_penalty > 0 ? verstossFmtEuro(v.driver_penalty) : null;
+    var cp = v.company_penalty > 0 ? verstossFmtEuro(v.company_penalty) : null;
+    var penaltyHtml = "";
+    if (dp) penaltyHtml += "<div style='color:#dc2626;font-weight:700;'>Fahrer " + dp + "</div>";
+    if (cp) penaltyHtml += "<div style='color:#b45309;font-weight:700;'>Firma " + cp + "</div>";
+    if (!penaltyHtml) penaltyHtml = "<div style='color:#cbd5e1;'>\u2014</div>";
     body += "<tr>"
-      + "<td style='white-space:nowrap;font-weight:600;'>" + verstossEsc(v.start) + "</td>"
-      + "<td style='white-space:nowrap;color:#64748b;'>" + verstossEsc(v.end) + "</td>"
+      + "<td style='white-space:nowrap;font-weight:600;'>" + verstossEsc(dateOnly) + "</td>"
       + "<td><div style='font-weight:600;'>" + verstossEsc(v.violation || "\u2014") + "</div>"
       + (v.law ? "<div style='color:#94a3b8;font-size:6.5pt;'>" + verstossEsc(v.law) + "</div>" : "")
       + "</td>"
-      + "<td style='text-align:right;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
-      + verstossFmtMin(v.target) + "</td>"
-      + "<td style='text-align:right;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
-      + verstossFmtMin(v.ist) + "</td>"
-      + "<td style='text-align:right;color:" + (v.diff > 0 ? "#dc2626" : "#64748b") + ";font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
-      + verstossFmtMin(v.diff) + "</td>";
-    var z = verstossTimeFor(d.name, v);
-    body += "<td style='white-space:nowrap;font-weight:700;'>" + verstossVal(z && z.beginn) + "</td>"
-      + "<td style='white-space:nowrap;color:#64748b;'>" + verstossVal(z && z.ende) + "</td>"
-      + "<td style='text-align:right;white-space:nowrap;font-weight:700;font-variant-numeric:tabular-nums;'>" + verstossTimeMin(z && z.arbeitszeit) + "</td>"
-      + "<td style='text-align:right;white-space:nowrap;font-weight:700;font-variant-numeric:tabular-nums;'>" + verstossTimeMin(z && z.pause) + "</td>"
-      + "<td style='text-align:right;white-space:nowrap;font-weight:700;font-variant-numeric:tabular-nums;'>" + verstossTimeMin(z && z.ruhezeit) + "</td>"
-      + "<td style='white-space:nowrap;font-weight:700;'>" + verstossLkw(z) + "</td>"
-      + "<td style='text-align:right;color:" + (v.driver_penalty > 0 ? "#dc2626" : "#cbd5e1") + ";font-weight:700;white-space:nowrap;'>"
-      + (v.driver_penalty > 0 ? verstossFmtEuro(v.driver_penalty) : "\u2014") + "</td>"
-      + "<td style='text-align:right;color:" + (v.company_penalty > 0 ? "#b45309" : "#cbd5e1") + ";font-weight:700;white-space:nowrap;'>"
-      + (v.company_penalty > 0 ? verstossFmtEuro(v.company_penalty) : "\u2014") + "</td>"
+      + "<td style='text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + penaltyHtml + "</td>"
       + "</tr>";
   });
   body += "</tbody></table>";
