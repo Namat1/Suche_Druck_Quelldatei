@@ -3338,7 +3338,7 @@ iframe.active{{display:block}}
   </div>
   <button class="nav-btn" id="btn-verstoss" onclick="showArea('verstoss')">&#9888;&#65039; Verstoßauswertung</button>
   <button class="nav-btn" id="btn-tel" onclick="showArea('tel')">&#128222; Telefonliste</button>
-  <button class="nav-btn" id="btn-sam" onclick="showArea('sam')">&#128664; Sa + So Einstätze</button>
+  <button class="nav-btn" id="btn-sam" onclick="showArea('sam')">&#128664; Sa + So Einsätze</button>
   <button class="nav-btn" id="btn-fa" onclick="showArea('fa')">&#128101; Fahrerauswertung</button>
   <button class="nav-btn" id="btn-zulage" onclick="showArea('zulage')">&#128176; Zulagen</button>
   </div>
@@ -3461,7 +3461,7 @@ iframe.active{{display:block}}
 
   <div id="panel-sam" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#e8ecf1;font-family:Segoe UI,Arial,sans-serif">
     <div style="max-width:1000px;margin:0 auto">
-      <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128664; Sa + So Einstätze</h2>
+      <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128664; Sa + So Einsätze</h2>
       <div style="display:inline-flex;align-items:center;gap:6px;margin-bottom:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:5px 12px;font-size:12px;color:#92400e;">&#9888;&#65039; Ein Sonntagseinsatz wird nur als dieser gewertet bei einer Anfangszeit bis 15&nbsp;Uhr.</div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <input id="sam-search" placeholder="Fahrer suchen..." oninput="samFilter(this.value)"
@@ -3473,7 +3473,7 @@ iframe.active{{display:block}}
           </select>
         <div style="display:flex;gap:5px;">
           <button onclick="samSort('status')" id="sam-sort-status"
-            style="padding:6px 12px;border:2px solid #1b66b3;border-radius:5px;background:#1b66b3;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
+            style="padding:6px 12px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
             Status &#8593;
           </button>
           <button onclick="samSort('name')" id="sam-sort-name"
@@ -3481,7 +3481,7 @@ iframe.active{{display:block}}
             Name
           </button>
           <button onclick="samSort('count')" id="sam-sort-count"
-            style="padding:6px 12px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
+            style="padding:6px 12px;border:2px solid #1b66b3;border-radius:5px;background:#1b66b3;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
             Eins&#228;tze &#8595;
           </button>
         </div>
@@ -4011,7 +4011,7 @@ function telRender(q) {{
   document.getElementById("tel-content").innerHTML = html;
 }}
 // ── Samstags Fahrer ───────────────────────────────────────────────────────────
-var samCurrentSort = "status"; // default: sort by status (critical first)
+var samCurrentSort = "count"; // default: beim ersten Öffnen: viele Einsätze oben, wenige unten
 var samYearFilter  = String(new Date().getFullYear());
 
 function samSort(mode) {{
@@ -4061,6 +4061,14 @@ function samParseYear(datum) {{
   // "01.02.2026 (KW5)"  or  "Sa 01.02.2026 (KW5)"
   var m = datum.match(/(\d{{2}}\.\d{{2}}\.(\d{{4}}))/);
   return m ? parseInt(m[2]) : null;
+}}
+
+function samEsc(v) {{
+  return String(v == null ? "" : v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }}
 
 function samRender(q) {{
@@ -4153,7 +4161,12 @@ function samRender(q) {{
       return sd !== 0 ? sd : a.name.localeCompare(b.name,"de");
     }});
   }} else if(samCurrentSort === "count") {{
-    filtered.sort(function(a,b) {{ return b._curEinsaetze - a._curEinsaetze; }});
+    var sortYear = samYearFilter !== "all" ? samYearFilter : ""+curYear;
+    filtered.sort(function(a,b) {{
+      var ac = (a._byYear[sortYear]||[]).length;
+      var bc = (b._byYear[sortYear]||[]).length;
+      return bc !== ac ? bc - ac : a.name.localeCompare(b.name,"de");
+    }});
   }} else {{
     filtered.sort(function(a,b) {{ return a.name.localeCompare(b.name,"de"); }});
   }}
@@ -4175,86 +4188,76 @@ function samRender(q) {{
     "</div>";
   document.getElementById("sam-stats").innerHTML = statsHtml;
 
-  // Cards
-  var html = "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;align-items:start;'>";
+  // Ausklappbare Liste: farblich wie Status, zuerst nach Anzahl absteigend.
+  var html = "<div style='display:flex;flex-direction:column;gap:8px;'>";
 
   var statusCfg = {{
-    done: {{ border:"#16a34a", bg:"#f0fdf4", badge:"#16a34a", icon:"✓", label:"Jahresziel erreicht!" }},
-    ok:   {{ border:"#1b66b3", bg:"#eff6ff", badge:"#1b66b3", icon:"↑", label:"Im Soll" }},
-    warn: {{ border:"#d97706", bg:"#fffbeb", badge:"#d97706", icon:"⚠", label:"Leicht hinter Soll" }},
-    crit: {{ border:"#dc2626", bg:"#fff1f2", badge:"#dc2626", icon:"↓", label:"Rückstand" }}
+    done: {{ border:"#16a34a", bg:"#f0fdf4", badge:"#16a34a", soft:"#dcfce7", icon:"✓", label:"Jahresziel erreicht" }},
+    ok:   {{ border:"#1b66b3", bg:"#eff6ff", badge:"#1b66b3", soft:"#dbeafe", icon:"↑", label:"Im Soll" }},
+    warn: {{ border:"#d97706", bg:"#fffbeb", badge:"#d97706", soft:"#fef3c7", icon:"⚠", label:"Leicht hinter Soll" }},
+    crit: {{ border:"#dc2626", bg:"#fff1f2", badge:"#dc2626", soft:"#fee2e2", icon:"↓", label:"Rückstand" }}
   }};
 
-  filtered.forEach(function(d) {{
-    var cfg = statusCfg[d._status];
+  filtered.forEach(function(d, idx) {{
+    var cfg = statusCfg[d._status] || statusCfg.crit;
     var yr  = samYearFilter !== "all" ? samYearFilter : ""+curYear;
     var einsaetzeThisYear = (d._byYear[yr]||[]).length;
     var pct = Math.min(100, Math.round(einsaetzeThisYear / ZIEL * 100));
     var sollPct = Math.min(100, Math.round(soll / ZIEL * 100));
 
-    // Progress bar
-    var progressHtml =
-      "<div style='margin-top:10px;'>" +
-      "<div style='display:flex;justify-content:space-between;font-size:10px;color:#64748b;margin-bottom:3px;'>" +
-      "<span>0</span><span style='font-weight:800;color:"+cfg.badge+";'>Ist: "+einsaetzeThisYear+"</span>" +
-      "<span style='color:#94a3b8;'>Soll heute: "+soll+"</span><span style='color:#334155;font-weight:700;'>Ziel: "+ZIEL+"</span>" +
-      "</div>" +
-      "<div style='position:relative;height:14px;background:#e4e9f0;border-radius:7px;overflow:hidden;'>" +
-      // Actual bar
-      "<div style='position:absolute;top:0;left:0;height:100%;width:"+pct+"%;background:"+cfg.badge+";border-radius:7px;transition:width .4s;'></div>" +
-      // Soll marker
-      "<div style='position:absolute;top:0;left:"+sollPct+"%;width:2px;height:100%;background:#334155;opacity:.5;'></div>" +
-      "</div>" +
-      "<div style='display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;margin-top:2px;'>" +
-      "<span style='margin-left:"+sollPct+"%;transform:translateX(-50%);color:#64748b;font-weight:700;'>↑ heute</span>" +
-      "</div>" +
-      "</div>";
+    var sortedDaten = (d._byYear[yr]||[]).slice().sort(function(a,b){{
+      var pa=(a.datum||"").match(/(\d{{2}})\.(\d{{2}})\.(\d{{4}})/);
+      var pb=(b.datum||"").match(/(\d{{2}})\.(\d{{2}})\.(\d{{4}})/);
+      if(!pa||!pb) return 0;
+      return new Date(pa[3],pa[2]-1,pa[1]) - new Date(pb[3],pb[2]-1,pb[1]);
+    }});
 
-    // Previous years compact
-    var otherYears = Object.keys(d._byYear).filter(function(y){{ return y !== ""+curYear; }}).sort().reverse();
+    var datesHtml = sortedDaten.length ? sortedDaten.map(function(e) {{
+      var tourTxt = e.tour && e.tour !== "zbv" ? e.tour : "z.b.v.";
+      return "<span style='display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid #d8dee8;border-radius:5px;padding:4px 8px;margin:3px;font-size:10.5px;color:#334155;'>" +
+        "<b style='color:"+cfg.badge+";'>" + samEsc(e.tag||"Sa") + "</b> " + samEsc(e.datum||"") +
+        " <b style='color:#1b66b3;'>" + samEsc(tourTxt) + "</b></span>";
+    }}).join("") : "<span style='display:inline-block;color:#94a3b8;font-size:11px;padding:4px 0;'>Keine Einsätze im gewählten Jahr.</span>";
+
+    var otherYears = Object.keys(d._byYear).filter(function(y){{ return y !== yr; }}).sort().reverse();
     var prevHtml = "";
     if(otherYears.length) {{
-      prevHtml = "<div style='margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;'>";
+      prevHtml = "<div style='margin-top:7px;display:flex;gap:4px;flex-wrap:wrap;'>";
       otherYears.forEach(function(y) {{
         var n = d._byYear[y].length;
         var metTarget = n >= ZIEL;
-        prevHtml += "<span style='font-size:9px;padding:1px 6px;border-radius:4px;font-weight:700;" +
+        prevHtml += "<span style='font-size:9px;padding:2px 7px;border-radius:5px;font-weight:800;" +
           "background:"+(metTarget?"#dcfce7":"#fee2e2")+";color:"+(metTarget?"#16a34a":"#dc2626")+";'>" +
-          y+": "+n+(metTarget?" ✓":" ✗")+"</span>";
+          samEsc(y)+": "+n+(metTarget?" ✓":" ✗")+"</span>";
       }});
       prevHtml += "</div>";
     }}
 
-    // Sorted dates for this year
-    var sortedDaten = (d._byYear[yr]||[]).slice().sort(function(a,b){{
-      var pa=a.datum.match(/(\\d{{2}})\\.(\\d{{2}})\\.(\\d{{4}})/);
-      var pb=b.datum.match(/(\\d{{2}})\\.(\\d{{2}})\\.(\\d{{4}})/);
-      if(!pa||!pb) return 0;
-      return new Date(pa[3],pa[2]-1,pa[1]) - new Date(pb[3],pb[2]-1,pb[1]);
-    }});
-    var datesHtml = sortedDaten.map(function(e) {{
-      return "<span style='display:inline-block;background:#e4e9f0;border-radius:4px;padding:2px 7px;margin:2px;font-size:10px;color:#334155;'>" +
-        (e.tag||"Sa")+" "+e.datum + " <b style=\'color:#1b66b3;\'>\"+(e.tour && e.tour!=="zbv" ? e.tour : "z.b.v.")+\"</b>" + "</span>";
-    }}).join("");
-
     html +=
-      "<div onclick='samToggle(this)' style='background:"+cfg.bg+";border:2px solid "+cfg.border+";border-radius:5px;padding:14px 16px;cursor:pointer;transition:box-shadow .15s;'>" +
-      // Header row
-      "<div style='display:flex;align-items:flex-start;justify-content:space-between;gap:8px;'>" +
-      "<div style='flex:1;'>" +
-      "<div style='font-weight:900;font-size:14px;color:#0b1220;'>"+d.name+"</div>" +
-      "<div style='margin-top:3px;display:inline-flex;align-items:center;gap:4px;background:"+cfg.badge+";color:#fff;border-radius:5px;padding:1px 8px;font-size:10px;font-weight:800;'>" +
-        cfg.icon+" "+cfg.label+"</div>" +
-      "</div>" +
-      // Big number
-      "<div style='text-align:right;flex-shrink:0;'>" +
-      "<div style='font-size:28px;font-weight:900;color:"+cfg.badge+";line-height:1;'>"+einsaetzeThisYear+"</div>" +
-      "<div style='font-size:9px;color:#94a3b8;font-weight:600;'>/ "+ZIEL+" Einsätze</div>" +
-      "</div>" +
-      "</div>" +
-      progressHtml +
-      prevHtml +
-      "<div class='sam-dates' style='display:none;margin-top:10px;border-top:1px solid #e2e8f0;padding-top:8px;'>"+datesHtml+"</div>" +
+      "<div onclick='samToggle(this)' style='background:"+cfg.bg+";border:2px solid "+cfg.border+";border-left-width:8px;border-radius:6px;cursor:pointer;overflow:hidden;box-shadow:0 1px 4px rgba(15,23,42,.06);'>" +
+        "<div style='display:grid;grid-template-columns:42px minmax(180px,1fr) 150px 130px 34px;gap:10px;align-items:center;padding:10px 12px;'>" +
+          "<div style='font-size:12px;font-weight:900;color:"+cfg.badge+";'>#"+(idx+1)+"</div>" +
+          "<div style='min-width:0;'>" +
+            "<div style='font-weight:900;font-size:14px;color:#0b1220;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>"+samEsc(d.name)+"</div>" +
+            "<div style='display:inline-flex;align-items:center;gap:5px;margin-top:4px;background:"+cfg.badge+";color:#fff;border-radius:5px;padding:2px 8px;font-size:10px;font-weight:900;'>"+cfg.icon+" "+cfg.label+"</div>" +
+          "</div>" +
+          "<div style='min-width:120px;'>" +
+            "<div style='height:12px;background:#e4e9f0;border-radius:999px;position:relative;overflow:hidden;'>" +
+              "<div style='position:absolute;left:0;top:0;height:100%;width:"+pct+"%;background:"+cfg.badge+";border-radius:999px;'></div>" +
+              "<div style='position:absolute;left:"+sollPct+"%;top:0;width:2px;height:100%;background:#334155;opacity:.45;'></div>" +
+            "</div>" +
+            "<div style='margin-top:3px;font-size:9px;color:#64748b;font-weight:700;'>Soll heute: "+soll+" / Ziel: "+ZIEL+"</div>" +
+          "</div>" +
+          "<div style='text-align:right;'>" +
+            "<div style='font-size:26px;font-weight:950;color:"+cfg.badge+";line-height:1;'>"+einsaetzeThisYear+"</div>" +
+            "<div style='font-size:9px;color:#64748b;font-weight:800;'>Einsätze</div>" +
+          "</div>" +
+          "<div class='sam-arrow' style='font-size:18px;font-weight:900;color:"+cfg.badge+";text-align:right;'>⌄</div>" +
+        "</div>" +
+        "<div class='sam-dates' style='display:none;background:rgba(255,255,255,.72);border-top:1px solid rgba(148,163,184,.35);padding:9px 12px 10px 64px;'>" +
+          "<div style='font-size:10px;text-transform:uppercase;letter-spacing:.35px;font-weight:900;color:#64748b;margin-bottom:5px;'>Einsätze im Jahr "+samEsc(yr)+"</div>" +
+          datesHtml + prevHtml +
+        "</div>" +
       "</div>";
   }});
 
@@ -4267,6 +4270,8 @@ function samToggle(el) {{
   if(!dates) return;
   var open = dates.style.display !== "none";
   dates.style.display = open ? "none" : "block";
+  var arrow = el.querySelector(".sam-arrow");
+  if(arrow) arrow.textContent = open ? "⌄" : "⌃";
 }}
 
 {fa_js_code}
