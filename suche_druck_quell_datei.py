@@ -2822,6 +2822,29 @@ function verstossMonthOf(v) {
   return m ? Math.max(1, Math.min(12, Number(m[1]))) : 0;
 }
 
+function verstossCsvSinceLabel() {
+  if (VERSTOSS_DATA && VERSTOSS_DATA.first_violation_month) {
+    return VERSTOSS_DATA.first_violation_month;
+  }
+
+  var first = "";
+  var data = (VERSTOSS_DATA && Array.isArray(VERSTOSS_DATA.drivers)) ? VERSTOSS_DATA.drivers : [];
+  data.forEach(function(d) {
+    (d.verstoesse || []).forEach(function(v) {
+      var iso = String((v && v.date_sort) || "").substring(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+        var s = String((v && v.start) || "");
+        var m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+        if (m) iso = m[3] + "-" + m[2] + "-" + m[1];
+      }
+      if (/^\d{4}-\d{2}-\d{2}$/.test(iso) && (!first || iso < first)) first = iso;
+    });
+  });
+
+  if (!first) return "";
+  return first.substring(5, 7) + "/" + first.substring(0, 4);
+}
+
 function verstossGetFlatViolations() {
   var data = (VERSTOSS_DATA && Array.isArray(VERSTOSS_DATA.drivers)) ? VERSTOSS_DATA.drivers : [];
   var out = [];
@@ -3071,13 +3094,14 @@ function verstossRender() {
   var totCP = drivers.reduce(function(s, d) { return s + (d.sum_company_penalty || 0); }, 0);
 
   if (stats) {
+    var sinceLabel = verstossCsvSinceLabel();
     stats.innerHTML =
         "<b>" + drivers.length + "</b> Fahrer &middot; "
       + "<b>" + totV + "</b> Verstöße &middot; "
       + "Fahrer <b style='color:#dc2626;'>" + verstossFmtEuro(totDP) + "</b> &middot; "
       + "Firma <b style='color:#b45309;'>" + verstossFmtEuro(totCP) + "</b>"
-      + ((typeof ZEITERFASSUNG_DATA !== "undefined" && ZEITERFASSUNG_DATA && ZEITERFASSUNG_DATA.total_rows)
-          ? " &middot; Zeiterfassung <b>" + ZEITERFASSUNG_DATA.total_rows + "</b> Zeilen"
+      + (sinceLabel
+          ? " &middot; Verstöße erfasst seit <b>" + verstossEsc(sinceLabel) + "</b>"
           : "");
   }
 
@@ -5366,7 +5390,7 @@ def parse_verstoss_csv(uploaded_file) -> str:
     import csv as _csv
     from io import StringIO as _SIO
 
-    empty = json.dumps({"drivers": [], "total_violations": 0}, ensure_ascii=False)
+    empty = json.dumps({"drivers": [], "total_violations": 0, "first_violation_month": "", "last_violation_month": ""}, ensure_ascii=False)
     payload = read_upload_bytes(uploaded_file)
     if not payload:
         return empty
@@ -5496,7 +5520,32 @@ def parse_verstoss_csv(uploaded_file) -> str:
     drivers.sort(key=lambda x: (_last_sort(x), x["name"]), reverse=True)
 
     total = sum(d["count"] for d in drivers)
-    return json.dumps({"drivers": drivers, "total_violations": total}, ensure_ascii=False)
+
+    # Zeitraum direkt aus der Verstoß-CSV ableiten.
+    # Anzeige im Kopf: "Verstöße erfasst seit MM/JJJJ".
+    _all_dates = [
+        e.get("date_sort", "")[:10]
+        for d in drivers
+        for e in d.get("verstoesse", [])
+        if e.get("date_sort")
+    ]
+
+    def _month_label(iso_date: str) -> str:
+        try:
+            yyyy, mm, _dd = iso_date.split("-", 2)
+            return f"{mm}/{yyyy}"
+        except Exception:
+            return ""
+
+    first_violation_month = _month_label(min(_all_dates)) if _all_dates else ""
+    last_violation_month = _month_label(max(_all_dates)) if _all_dates else ""
+
+    return json.dumps({
+        "drivers": drivers,
+        "total_violations": total,
+        "first_violation_month": first_violation_month,
+        "last_violation_month": last_violation_month,
+    }, ensure_ascii=False)
 
 
 def parse_fahrzeugwaesche_excel(uploaded_files) -> str:
