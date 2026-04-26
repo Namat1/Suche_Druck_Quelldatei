@@ -4013,6 +4013,7 @@ function telRender(q) {{
 // ── Samstags Fahrer ───────────────────────────────────────────────────────────
 var samCurrentSort = "count"; // default: beim ersten Öffnen: viele Einsätze oben, wenige unten
 var samYearFilter  = String(new Date().getFullYear());
+var samStatusFilter = "all"; // Klick auf die farbigen Zähler filtert die Liste
 
 function samSort(mode) {{
   samCurrentSort = mode;
@@ -4030,6 +4031,20 @@ function samFilter(q) {{ samRender(q); }}
 function samYearChange(yr) {{
   samYearFilter = yr;
   samRender(document.getElementById("sam-search").value);
+}}
+
+function samSetStatusFilter(status) {{
+  samStatusFilter = status || "all";
+  samRender(document.getElementById("sam-search").value);
+}}
+
+function samStatBtn(status, html, bg, color, title) {{
+  var active = samStatusFilter === status;
+  return "<button type='button' onclick='samSetStatusFilter(&quot;"+status+"&quot;)' title='"+samEsc(title||"")+"' " +
+    "style='display:inline-flex;align-items:center;gap:3px;border-radius:4px;padding:2px 8px;" +
+    "font-family:inherit;font-size:11px;font-weight:800;line-height:1.4;cursor:pointer;" +
+    "background:"+bg+";color:"+color+";border:1px solid "+(active?color:"transparent")+";" +
+    "box-shadow:"+(active?"0 0 0 2px rgba(15,23,42,.10) inset":"none")+";'>" + html + "</button>";
 }}
 
 // Count Saturdays from Jan 1 of a year up to (but not including) a given date
@@ -4142,7 +4157,7 @@ function samRender(q) {{
   }}
 
   // Filter by search + year
-  var filtered = driverData.filter(function(d) {{
+  var baseFiltered = driverData.filter(function(d) {{
     if(q && !d.name.toLowerCase().includes(q)) return false;
     if(samYearFilter !== "all") {{
       // Always include drivers with 0 deployments (they have no year entries)
@@ -4151,6 +4166,11 @@ function samRender(q) {{
       if(!hasYear && !hasNoDeployments) return false;
     }}
     return true;
+  }});
+
+  // Klickbarer Statusfilter oben: Alle / Ziel erreicht / Im Soll / Leicht hinter / Rückstand
+  var filtered = baseFiltered.filter(function(d) {{
+    return samStatusFilter === "all" || d._status === samStatusFilter;
   }});
 
   // Sort
@@ -4171,19 +4191,19 @@ function samRender(q) {{
     filtered.sort(function(a,b) {{ return a.name.localeCompare(b.name,"de"); }});
   }}
 
-  // Stats bar
-  var nDone = filtered.filter(function(d){{return d._status==="done";}}).length;
-  var nOk   = filtered.filter(function(d){{return d._status==="ok";}}).length;
-  var nWarn = filtered.filter(function(d){{return d._status==="warn";}}).length;
-  var nCrit = filtered.filter(function(d){{return d._status==="crit";}}).length;
+  // Stats bar – klickbar: jeder farbige Zähler filtert die Liste darunter
+  var nDone = baseFiltered.filter(function(d){{return d._status==="done";}}).length;
+  var nOk   = baseFiltered.filter(function(d){{return d._status==="ok";}}).length;
+  var nWarn = baseFiltered.filter(function(d){{return d._status==="warn";}}).length;
+  var nCrit = baseFiltered.filter(function(d){{return d._status==="crit";}}).length;
 
   var statsHtml =
     "<div style='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;font-size:11px;'>" +
-    "<span style='color:#64748b;font-weight:700;'>"+filtered.length+" Fahrer</span>" +
-    "<span style='display:inline-flex;align-items:center;gap:3px;background:#dcfce7;border-radius:4px;padding:2px 8px;font-weight:800;color:#16a34a;'>&#10003; Ziel erreicht: "+nDone+"</span>" +
-    "<span style='display:inline-flex;align-items:center;gap:3px;background:#dbeafe;border-radius:4px;padding:2px 8px;font-weight:800;color:#1b66b3;'>&#8679; Im Soll: "+nOk+"</span>" +
-    "<span style='display:inline-flex;align-items:center;gap:3px;background:#fef9c3;border-radius:4px;padding:2px 8px;font-weight:800;color:#d97706;'>&#9888; Leicht hinter: "+nWarn+"</span>" +
-    "<span style='display:inline-flex;align-items:center;gap:3px;background:#fee2e2;border-radius:4px;padding:2px 8px;font-weight:800;color:#dc2626;'>&#8679;&#8595; Rückstand: "+nCrit+"</span>" +
+    samStatBtn("all", baseFiltered.length+" Fahrer", "#eef2f7", "#64748b", "Alle Fahrer anzeigen") +
+    samStatBtn("done", "&#10003; Ziel erreicht: "+nDone, "#dcfce7", "#16a34a", "Nur Fahrer mit erreichtem Jahresziel anzeigen") +
+    samStatBtn("ok", "&#8679; Im Soll: "+nOk, "#dbeafe", "#1b66b3", "Nur Fahrer im Soll anzeigen") +
+    samStatBtn("warn", "&#9888; Leicht hinter: "+nWarn, "#fef9c3", "#d97706", "Nur Fahrer leicht hinter Soll anzeigen") +
+    samStatBtn("crit", "&#8679;&#8595; Rückstand: "+nCrit, "#fee2e2", "#dc2626", "Nur Fahrer mit Rückstand anzeigen") +
     "<span style='margin-left:auto;color:#94a3b8;font-size:10px;'>Soll heute: <b style='color:#1b66b3;'>"+soll+"</b> / "+ZIEL+" &nbsp;("+satElapsed+" von "+satTotal+" Samstagen)</span>" +
     "</div>";
   document.getElementById("sam-stats").innerHTML = statsHtml;
