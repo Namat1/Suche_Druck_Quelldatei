@@ -49,11 +49,25 @@ def to_bytes_buffer(uploaded_file) -> io.BytesIO:
 
 
 def upload_signature(uploaded_file) -> str:
+    """Liefert eine eindeutige Signatur fuer ein UploadedFile.
+
+    Streamlit-UploadedFile-Objekte haben eine ``file_id`` bzw. ``_file_urls``,
+    die sich nur dann aendert, wenn der Nutzer eine neue Datei hochlaedt.
+    Wir benutzen Name + Size + file_id als billigen Schluessel und sparen uns
+    das vollstaendige Auslesen + SHA1 ueber 10-50 MB pro Re-Run.
+    Fallback ist die alte SHA1-Methode, falls kein file_id verfuegbar ist.
+    """
     if uploaded_file is None:
         return ""
+    name = getattr(uploaded_file, "name", "") or ""
+    size = getattr(uploaded_file, "size", 0) or 0
+    fid = getattr(uploaded_file, "file_id", None) or getattr(uploaded_file, "_file_urls", None) or ""
+    if fid:
+        return f"{name}|{size}|{fid}"
+    # Fallback: SHA1 ueber Inhalt
     payload = read_upload_bytes(uploaded_file)
     digest = hashlib.sha1()
-    digest.update(getattr(uploaded_file, "name", "").encode("utf-8", errors="ignore"))
+    digest.update(name.encode("utf-8", errors="ignore"))
     digest.update(b"|")
     digest.update(payload)
     return digest.hexdigest()
@@ -1171,7 +1185,117 @@ window.onMkListe = window.onKundenListe;
 
 SUCHE_HTML_TEMPLATE = _patch_suche_template_sonderliste_marktkauf(SUCHE_HTML_TEMPLATE)
 
-DRUCK_HTML_TEMPLATE: str = base64.b64decode(_DRUCK_B64).decode("utf-8")
+
+def _patch_suche_template_perf_searchindex(template: str) -> str:
+    """Vor-normalisierter Suchindex pro Kunde + DocumentFragment-Rendering.
+
+    Spart O(n) Stringkonkatenation + normDE() pro Tastendruck (#5),
+    und O(n) DOM-Reflows beim Tabellen-Render (#6).
+    """
+    # 1) buildData: am Ende _search pro Kunde befuellen
+    needle_build = "  allCustomers = Array.from(map.values());\n}"
+    repl_build = (
+        "  allCustomers = Array.from(map.values());\n"
+        "  // Vor-normalisierter Suchindex pro Kunde — vermeidet Konkatenation pro Tastendruck\n"
+        "  for(const c of allCustomers){\n"
+        "    const csb = c.csb_nummer || '';\n"
+        "    const noteC = (kundenNotizen[csb] && kundenNotizen[csb].c) || '';\n"
+        "    const noteD = (kundenNotizen[csb] && kundenNotizen[csb].d) || '';\n"
+        "    const tourText = (c.touren||[]).map(t => ((t.tournummer||'') + ' ' + (t.liefertag||''))).join(' ');\n"
+        "    c._search = normDE([\n"
+        "      c.name||'', c.strasse||'', c.ort||'', csb,\n"
+        "      c.sap_nummer||'', c.fachberater||'', c.schluessel||'',\n"
+        "      c.fb_phone||'', c.market_phone||'', c.market_email||'',\n"
+        "      noteC, noteD, tourText\n"
+        "    ].join(' '));\n"
+        "  }\n"
+        "}"
+    )
+    if needle_build in template:
+        template = template.replace(needle_build, repl_build, 1)
+
+    # 2) onSmart Text-Branch: lange Konkatenation durch k._search ersetzen
+    # Wir suchen das gesamte "const text = ( ... );  return normDE(text).includes(q);"
+    pattern_textsearch = re.compile(
+        r"const text = \(\s*\n"
+        r"(?:[^;]+\n)+?"
+        r"\s*\);\s*\n"
+        r"\s*return normDE\(text\)\.includes\(q\);",
+        re.MULTILINE
+    )
+    template = pattern_textsearch.sub(
+        "return (k._search || '').includes(q);",
+        template,
+        count=1
+    )
+
+    # 3) renderTable: DocumentFragment statt einzelnem appendChild
+    needle_rt = (
+        "  body.innerHTML='';\n"
+        "  if(list.length){\n"
+        "    list.forEach(k=>body.appendChild(rowFor(k)));\n"
+        "    tbl.style.display='table';"
+    )
+    repl_rt = (
+        "  body.innerHTML='';\n"
+        "  if(list.length){\n"
+        "    const frag = document.createDocumentFragment();\n"
+        "    list.forEach(k=>frag.appendChild(rowFor(k)));\n"
+        "    body.appendChild(frag);\n"
+        "    tbl.style.display='table';"
+    )
+    if needle_rt in template:
+        template = template.replace(needle_rt, repl_rt, 1)
+
+    return template
+
+SUCHE_HTML_TEMPLATE = _patch_suche_template_perf_searchindex(SUCHE_HTML_TEMPLATE)
+
+
+def _patch_suche_template_optik(template: str) -> str:
+    """Kleinere Optik-Korrekturen (#8 Webfont, #10 Body-Weight)."""
+    # #8: Webfont-Cocktail abspecken — nur Inter Tight (3 Weights) + JetBrains Mono (1 Weight)
+    old_fonts = (
+        '<link href="https://fonts.googleapis.com/css2?'
+        'family=Inter:wght@500;600;700;800;900'
+        '&family=Inter+Tight:wght@500;600;700;800;900'
+        '&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">'
+    )
+    new_fonts = (
+        '<link rel="preconnect" href="https://fonts.googleapis.com">'
+        '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+        '<link href="https://fonts.googleapis.com/css2?'
+        'family=Inter+Tight:wght@600;700;900'
+        '&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">'
+    )
+    if old_fonts in template:
+        template = template.replace(old_fonts, new_fonts, 1)
+
+    # #10: body font-weight 650 → 600 (lesbarer, ruhiger) — auch ohne Semikolon
+    template = re.sub(r"font-weight\s*:\s*650\b", "font-weight:600", template)
+
+    return template
+
+SUCHE_HTML_TEMPLATE = _patch_suche_template_optik(SUCHE_HTML_TEMPLATE)
+
+
+def _patch_druck_template_cleanup(template: str) -> str:
+    """Entfernt Debug-console.log-Spam aus dem Druck-Template (#7).
+
+    Im Live-Einsatz unnoetig und unprofessionell.
+    """
+    # Alle console.log / console.warn / console.error Statements entfernen
+    template = re.sub(
+        r"^\s*console\.(?:log|warn|error|info|debug)\([^;]*\);?\s*\n",
+        "",
+        template,
+        flags=re.MULTILINE,
+    )
+    return template
+
+DRUCK_HTML_TEMPLATE: str = _patch_druck_template_cleanup(
+    base64.b64decode(_DRUCK_B64).decode("utf-8")
+)
 
 
 # =============================================================================
@@ -1643,9 +1767,10 @@ def generate_suche_html(excel_file, key_file, logo_file,
     excel_bytes = read_upload_bytes(excel_file)
 
     with st.spinner("Lese Schluesseldatei ..."):
-        key_df = pd.read_excel(io.BytesIO(read_upload_bytes(key_file)), sheet_name=0, header=0)
+        key_bytes = read_upload_bytes(key_file)
+        key_df = pd.read_excel(io.BytesIO(key_bytes), sheet_name=0, header=0)
         if key_df.shape[1] < 2:
-            key_df = pd.read_excel(io.BytesIO(read_upload_bytes(key_file)), sheet_name=0, header=None)
+            key_df = pd.read_excel(io.BytesIO(key_bytes), sheet_name=0, header=None)
         key_map = build_key_map(key_df)
 
     berater_map: dict = {}
@@ -1658,10 +1783,11 @@ def generate_suche_html(excel_file, key_file, logo_file,
     berater_csb_map: dict = {}
     if berater_csb_file is not None:
         with st.spinner("Lese Fachberater-CSB-Zuordnung ..."):
+            bcsb_bytes = read_upload_bytes(berater_csb_file)
             try:
-                bcf = pd.read_excel(io.BytesIO(read_upload_bytes(berater_csb_file)), sheet_name=0, header=0)
+                bcf = pd.read_excel(io.BytesIO(bcsb_bytes), sheet_name=0, header=0)
             except Exception:
-                bcf = pd.read_excel(io.BytesIO(read_upload_bytes(berater_csb_file)), sheet_name=0, header=None)
+                bcf = pd.read_excel(io.BytesIO(bcsb_bytes), sheet_name=0, header=None)
             berater_csb_map = build_berater_csb_map(bcf)
 
     with st.spinner("Lese Ladefolgen (Mo-Sa Winter) ..."):
@@ -1789,18 +1915,29 @@ def generate_druck_html(up, logo_up, fcsb_file=None, lieferhinweis_csv=None) -> 
         "nms":     "Hupa 2221-4444",
         "malchow": "Hupa 7773-7779",
     }
+
+    # Excel einmal komplett in den Speicher lesen + ExcelFile-Handle wiederverwenden
+    excel_bytes = read_upload_bytes(up)
+    excel_buf = io.BytesIO(excel_bytes)
+    try:
+        excel_book = pd.ExcelFile(excel_buf, engine="openpyxl")
+        available_sheets = set(excel_book.sheet_names)
+    except Exception:
+        excel_book = None
+        available_sheets = set()
+
     for area_key, sheet_name in SHEETS_DRUCK.items():
         with st.spinner(f"Verarbeite: {sheet_name} ..."):
             df = None
-            for sn in [sheet_name, _SHEETS_ALT.get(area_key, "")]:
-                if not sn:
-                    continue
-                try:
-                    up.seek(0)
-                    df = pd.read_excel(up, sheet_name=sn)
-                    break
-                except Exception:
-                    continue
+            if excel_book is not None:
+                for sn in [sheet_name, _SHEETS_ALT.get(area_key, "")]:
+                    if not sn or sn not in available_sheets:
+                        continue
+                    try:
+                        df = pd.read_excel(excel_book, sheet_name=sn)
+                        break
+                    except Exception:
+                        continue
             if df is None:
                 continue
 
@@ -1898,11 +2035,10 @@ def generate_druck_html(up, logo_up, fcsb_file=None, lieferhinweis_csv=None) -> 
         all_data[area_key] = data
         st.success(f"✓ {sheet_name}: {len(data)} Kunden verarbeitet")
 
-    # Ladefolge aus Marktschlüssel-Excel (Mo-Sa Winter)
+    # Ladefolge aus Marktschlüssel-Excel (Mo-Sa Winter) — wiederverwendetes Buffer
     ladefolge_map: dict = {}
     try:
-        up.seek(0)
-        ladefolge_map = build_winter_map(up)
+        ladefolge_map = build_winter_map(io.BytesIO(excel_bytes))
     except Exception:
         pass
 
