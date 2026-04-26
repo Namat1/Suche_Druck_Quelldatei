@@ -2783,6 +2783,218 @@ function verstossInit() {
   verstossRender();
 }
 
+function buildVerstossDdMenu() {
+  var menu = document.getElementById("ddmenu-verstoss");
+  if (!menu) return;
+  var items = [
+    { id: "verstoss", label: "Liste" },
+    { id: "verstoss_graph", label: "Graph pro Jahr" }
+  ];
+  menu.innerHTML = items.map(function(it) {
+    var active = (currentArea === it.id) ? " active" : "";
+    return "<div class='dd-item" + active + "' onclick='ddSelectVerstoss(\"" + it.id + "\")'>" + it.label + "</div>";
+  }).join("");
+}
+
+function ddSelectVerstoss(area) {
+  showArea(area);
+  document.querySelectorAll(".nav-dd").forEach(function(d){ d.classList.remove("open"); });
+}
+
+var _vsGraphYear = "";
+var _vsGraphCharts = {};
+
+function verstossYearOf(v) {
+  var ds = String((v && v.date_sort) || "");
+  var m = ds.match(/^(\d{4})-/);
+  if (m) return m[1];
+  var s = String((v && v.start) || "");
+  m = s.match(/^\d{2}\.\d{2}\.(\d{4})/);
+  return m ? m[1] : "";
+}
+
+function verstossMonthOf(v) {
+  var ds = String((v && v.date_sort) || "");
+  var m = ds.match(/^\d{4}-(\d{2})-/);
+  if (m) return Math.max(1, Math.min(12, Number(m[1])));
+  var s = String((v && v.start) || "");
+  m = s.match(/^\d{2}\.(\d{2})\.\d{4}/);
+  return m ? Math.max(1, Math.min(12, Number(m[1]))) : 0;
+}
+
+function verstossGetFlatViolations() {
+  var data = (VERSTOSS_DATA && Array.isArray(VERSTOSS_DATA.drivers)) ? VERSTOSS_DATA.drivers : [];
+  var out = [];
+  data.forEach(function(d) {
+    (d.verstoesse || []).forEach(function(v) {
+      var y = verstossYearOf(v);
+      var mo = verstossMonthOf(v);
+      out.push({
+        driver: d.name || "",
+        year: y,
+        month: mo,
+        type: (v.violation || "—"),
+        law: (v.law || ""),
+        diff: Number(v.diff || 0),
+        driver_penalty: Number(v.driver_penalty || 0),
+        company_penalty: Number(v.company_penalty || 0),
+        date_sort: v.date_sort || "",
+        start: v.start || ""
+      });
+    });
+  });
+  return out;
+}
+
+function verstossGetGraphYears() {
+  var seen = {};
+  verstossGetFlatViolations().forEach(function(r) { if (r.year) seen[r.year] = 1; });
+  return Object.keys(seen).sort(function(a, b) { return b.localeCompare(a); });
+}
+
+function verstossPopulateGraphYears() {
+  var sel = document.getElementById("verstoss-graph-year");
+  if (!sel) return;
+  var years = verstossGetGraphYears();
+  var keep = sel.value || _vsGraphYear;
+  var html = "<option value='all'>Alle Jahre</option>";
+  years.forEach(function(y) { html += "<option value='" + y + "'>" + y + "</option>"; });
+  sel.innerHTML = html;
+  if (keep && (keep === "all" || years.indexOf(keep) >= 0)) {
+    _vsGraphYear = keep;
+  } else if (years.length) {
+    _vsGraphYear = years[0];
+  } else {
+    _vsGraphYear = "all";
+  }
+  sel.value = _vsGraphYear;
+}
+
+function verstossGraphYearChange(y) {
+  _vsGraphYear = y || "all";
+  verstossRenderGraph();
+}
+
+function verstossChart(id, cfg) {
+  var canvas = document.getElementById(id);
+  if (!canvas || typeof Chart === "undefined") return;
+  if (_vsGraphCharts[id]) {
+    try { _vsGraphCharts[id].destroy(); } catch(e) {}
+  }
+  _vsGraphCharts[id] = new Chart(canvas, cfg);
+}
+
+function verstossInitGraph() {
+  verstossPopulateGraphYears();
+  verstossRenderGraph();
+}
+
+function verstossRenderGraph() {
+  var body = document.getElementById("verstoss-graph-content");
+  var stats = document.getElementById("verstoss-graph-stats");
+  if (!body) return;
+  var all = verstossGetFlatViolations();
+  if (!all.length) {
+    body.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Verstoßdaten – bitte CSV in Streamlit hochladen.</div>";
+    if (stats) stats.innerHTML = "";
+    return;
+  }
+
+  verstossPopulateGraphYears();
+  var year = _vsGraphYear || "all";
+  var rows = all.filter(function(r) { return year === "all" || r.year === year; });
+  var label = (year === "all") ? "alle Jahre" : year;
+  var total = rows.length;
+  var sumDriver = rows.reduce(function(s, r) { return s + r.driver_penalty; }, 0);
+  var sumCompany = rows.reduce(function(s, r) { return s + r.company_penalty; }, 0);
+  var sumDiff = rows.reduce(function(s, r) { return s + Math.max(0, r.diff || 0); }, 0);
+  var driverMap = {}, typeMap = {}, monthCount = Array(12).fill(0), monthDriver = Array(12).fill(0), monthCompany = Array(12).fill(0);
+
+  rows.forEach(function(r) {
+    driverMap[r.driver] = (driverMap[r.driver] || 0) + 1;
+    typeMap[r.type] = (typeMap[r.type] || 0) + 1;
+    if (r.month >= 1 && r.month <= 12) {
+      monthCount[r.month - 1] += 1;
+      monthDriver[r.month - 1] += r.driver_penalty;
+      monthCompany[r.month - 1] += r.company_penalty;
+    }
+  });
+
+  var topDrivers = Object.entries(driverMap).sort(function(a, b) { return b[1] - a[1] || a[0].localeCompare(b[0], "de"); }).slice(0, 15);
+  var topTypes = Object.entries(typeMap).sort(function(a, b) { return b[1] - a[1] || a[0].localeCompare(b[0], "de"); }).slice(0, 12);
+  var months = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+  var maxMonth = Math.max.apply(null, monthCount.concat([0]));
+  var maxMonthName = maxMonth ? months[monthCount.indexOf(maxMonth)] : "—";
+
+  if (stats) {
+    stats.innerHTML = "Jahr <b style='color:#991b1b;'>" + verstossEsc(label) + "</b> &middot; <b>" + total + "</b> Verstöße";
+  }
+
+  var html = "";
+  html += "<div style='display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:12px;margin-bottom:14px;'>";
+  html += verstossGraphKpi("Verstöße", total, "#991b1b", "&#9888;&#65039;");
+  html += verstossGraphKpi("Bußgeld Fahrer", verstossFmtEuro(sumDriver), "#dc2626", "&#128179;");
+  html += verstossGraphKpi("Bußgeld Firma", verstossFmtEuro(sumCompany), "#b45309", "&#127970;");
+  html += verstossGraphKpi("Stärkster Monat", maxMonthName + (maxMonth ? " · " + maxMonth : ""), "#1e3a5f", "&#128197;");
+  html += "</div>";
+
+  html += "<div style='display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px;'>";
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:330px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:8px;'>Verstöße nach Monat</div><div style='height:270px;'><canvas id='verstoss-chart-month'></canvas></div></div>";
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:330px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:8px;'>Verstoßarten</div><div style='height:270px;'><canvas id='verstoss-chart-type'></canvas></div></div>";
+  html += "</div>";
+
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:8px;'>Top Fahrer nach Anzahl</div><div style='height:360px;'><canvas id='verstoss-chart-driver'></canvas></div></div>";
+
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:14px;'>";
+  html += "<div style='padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:900;color:#0f172a;'>Monatsübersicht " + verstossEsc(label) + "</div>";
+  html += "<table style='width:100%;border-collapse:collapse;font-size:12px;'><thead><tr style='background:#1e3a5f;color:#fff;'>";
+  ["Monat", "Verstöße", "Bußgeld Fahrer", "Bußgeld Firma"].forEach(function(h, i) {
+    html += "<th style='padding:8px 10px;text-align:" + (i === 0 ? "left" : "right") + ";font-size:11px;text-transform:uppercase;letter-spacing:.35px;'>" + h + "</th>";
+  });
+  html += "</tr></thead><tbody>";
+  months.forEach(function(m, i) {
+    html += "<tr style='background:" + (i % 2 ? "#f8fafc" : "#fff") + ";border-bottom:1px solid #eef2f7;'>";
+    html += "<td style='padding:8px 10px;font-weight:800;color:#0f172a;'>" + m + "</td>";
+    html += "<td style='padding:8px 10px;text-align:right;font-weight:900;color:#1e3a5f;'>" + monthCount[i] + "</td>";
+    html += "<td style='padding:8px 10px;text-align:right;font-weight:800;color:" + (monthDriver[i] ? "#dc2626" : "#cbd5e1") + ";'>" + verstossFmtEuro(monthDriver[i]) + "</td>";
+    html += "<td style='padding:8px 10px;text-align:right;font-weight:800;color:" + (monthCompany[i] ? "#b45309" : "#cbd5e1") + ";'>" + verstossFmtEuro(monthCompany[i]) + "</td>";
+    html += "</tr>";
+  });
+  html += "</tbody></table></div>";
+
+  if (!rows.length) {
+    html = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;'>Keine Verstöße für " + verstossEsc(label) + " gefunden.</div>";
+  }
+  body.innerHTML = html;
+
+  if (!rows.length || typeof Chart === "undefined") return;
+
+  verstossChart("verstoss-chart-month", {
+    type: "bar",
+    data: { labels: months, datasets: [{ label: "Verstöße", data: monthCount, backgroundColor: "#dc2626", borderRadius: 5 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+  });
+
+  verstossChart("verstoss-chart-type", {
+    type: "doughnut",
+    data: { labels: topTypes.map(function(x){ return x[0]; }), datasets: [{ data: topTypes.map(function(x){ return x[1]; }), backgroundColor: ["#dc2626", "#f97316", "#f59e0b", "#1e3a5f", "#2563eb", "#0891b2", "#16a34a", "#7c3aed", "#be123c", "#475569", "#0f766e", "#92400e"] }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } } } }
+  });
+
+  verstossChart("verstoss-chart-driver", {
+    type: "bar",
+    data: { labels: topDrivers.map(function(x){ return x[0]; }), datasets: [{ label: "Verstöße", data: topDrivers.map(function(x){ return x[1]; }), backgroundColor: "#1e3a5f", borderRadius: 5 }] },
+    options: { indexAxis: "y", responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } }
+  });
+}
+
+function verstossGraphKpi(label, value, color, icon) {
+  return "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px 16px;box-shadow:0 1px 4px rgba(15,23,42,.04);'>"
+    + "<div style='font-size:11px;font-weight:900;color:#64748b;text-transform:uppercase;letter-spacing:.35px;margin-bottom:7px;'>" + icon + " " + verstossEsc(label) + "</div>"
+    + "<div style='font-size:22px;font-weight:950;color:" + color + ";line-height:1.1;'>" + value + "</div>"
+    + "</div>";
+}
+
 function verstossFilter(q) {
   _vsSearchQ = (q || "").toLowerCase().trim();
   _vsOpenDriver = null;
@@ -3336,7 +3548,12 @@ iframe.active{{display:block}}
     </button>
     <div class="dd-menu" id="ddmenu-vz"></div>
   </div>
-  <button class="nav-btn" id="btn-verstoss" onclick="showArea('verstoss')">&#9888;&#65039; Verstoßauswertung</button>
+  <div class="nav-dd" id="dd-verstoss">
+    <button class="nav-dd-btn" id="btn-verstoss" onclick="ddToggle('verstoss',event)">
+      &#9888;&#65039; Versto&#223;auswertung <span class="dd-arrow">&#9660;</span>
+    </button>
+    <div class="dd-menu" id="ddmenu-verstoss"></div>
+  </div>
   <button class="nav-btn" id="btn-tel" onclick="showArea('tel')">&#128222; Telefonliste</button>
   <button class="nav-btn" id="btn-sam" onclick="showArea('sam')">&#128664; Sa + So Einsätze</button>
   <button class="nav-btn" id="btn-fa" onclick="showArea('fa')">&#128101; Fahrerauswertung</button>
@@ -3550,6 +3767,21 @@ iframe.active{{display:block}}
     </div>
   </div>
 
+  <!-- ── Verstoßauswertung Graph Panel ───────────────────────────────────── -->
+  <div id="panel-verstoss-graph" style="display:none;flex:1;flex-direction:column;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;">
+    <div style="width:92%;margin:0 auto;display:flex;flex-direction:column;flex:1;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:10px;padding:14px 0;flex-wrap:wrap;flex-shrink:0;">
+        <h2 style="margin:0;font-size:17px;font-weight:900;color:#991b1b;">&#9888;&#65039; Versto&#223;auswertung &ndash; Graph pro Jahr</h2>
+        <select id="verstoss-graph-year" onchange="verstossGraphYearChange(this.value)"
+          style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:13px;font-weight:800;font-family:inherit;outline:none;background:#fff;color:#991b1b;cursor:pointer;"></select>
+        <span id="verstoss-graph-stats" style="font-size:12px;font-weight:700;color:#64748b;margin-left:auto;"></span>
+      </div>
+      <div id="verstoss-graph-content" style="flex:1;overflow-y:auto;padding:4px 2px 30px 2px;">
+        <div style="color:#94a3b8;padding:60px;text-align:center;font-size:14px;">Keine Versto&#223;daten &ndash; bitte CSV in Streamlit hochladen.</div>
+      </div>
+    </div>
+  </div>
+
 </div>
 </div>
 
@@ -3611,7 +3843,8 @@ function ddToggle(area, e) {{
   var wasOpen = dd.classList.contains("open");
   document.querySelectorAll(".nav-dd").forEach(function(d){{d.classList.remove("open");}});
   if(!wasOpen) {{
-    buildDdMenu(area);
+    if(area === "verstoss") buildVerstossDdMenu();
+    else buildDdMenu(area);
     dd.classList.add("open");
     // Position unter dem Button berechnen (fixed, ignoriert iframe)
     var btn  = document.getElementById("btn-"+area);
@@ -3679,8 +3912,11 @@ function showArea(s) {{
   if(zuBtn) zuBtn.className = "nav-btn" + (s==="zulage" ? " active" : "");
   var verstossPanel = document.getElementById("panel-verstoss");
   if(verstossPanel) verstossPanel.style.display = (s==="verstoss") ? "flex" : "none";
+  var verstossGraphPanel = document.getElementById("panel-verstoss-graph");
+  if(verstossGraphPanel) verstossGraphPanel.style.display = (s==="verstoss_graph") ? "flex" : "none";
   var verstossBtn = document.getElementById("btn-verstoss");
-  if(verstossBtn) verstossBtn.className = "nav-btn" + (s==="verstoss" ? " active" : "");
+  if(verstossBtn) verstossBtn.className = "nav-dd-btn" + ((s==="verstoss" || s==="verstoss_graph") ? " active" : "");
+  if(typeof buildVerstossDdMenu === "function") buildVerstossDdMenu();
 
   if(s==="vz") {{
     fwInitDatePicker();
@@ -3693,6 +3929,10 @@ function showArea(s) {{
   if(s==="verstoss") {{
     if(verstossPanel && !verstossPanel.dataset.loaded) {{ verstossInit(); verstossPanel.dataset.loaded="1"; }}
     else {{ verstossRender(); }}
+  }}
+  if(s==="verstoss_graph") {{
+    if(verstossGraphPanel && !verstossGraphPanel.dataset.loaded) {{ verstossInitGraph(); verstossGraphPanel.dataset.loaded="1"; }}
+    else {{ verstossRenderGraph(); }}
   }}
   if(s==="fa") {{ if(faPanel) faPanel.scrollTop = 0; if(faPanel && !faPanel.dataset.loaded) {{ faRender(""); faPanel.dataset.loaded="1"; }} }}
 }}
