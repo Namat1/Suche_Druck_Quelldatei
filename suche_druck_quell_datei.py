@@ -2311,7 +2311,7 @@ def parse_fahrer_excel(dateien: list) -> str:
     return _json.dumps(result, ensure_ascii=False)
 
 
-def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', zeiterfassung_json: str = '{"by_key":{},"total_rows":0}', spesen_json: str = '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}', grosskunden_json: str = "[]", last_updated: str = "") -> str:
+def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', spesen_json: str = '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}', grosskunden_json: str = "[]", last_updated: str = "") -> str:
     try:
         _logo_up = st.session_state.get("g_logo")
     except Exception:
@@ -2563,7 +2563,7 @@ function spesenShowDetail(name) {
   cards.forEach(function(c){ html += "<div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;'><div style='font-size:10px;font-weight:900;color:#64748b;text-transform:uppercase;letter-spacing:.35px;'>"+c[0]+"</div><div style='font-size:17px;font-weight:900;color:"+c[2]+";margin-top:3px;'>"+c[1]+"</div></div>"; });
   html += "</div></div>";
 
-  html += "<div style='background:#fff;border:1px solid #d7dee7;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.05);'>";
+  html += "<div style='background:#fff;border:1px solid #d7dee7;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.05);'>";
   html += "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
   html += "<thead><tr style='background:#e8f1fb;color:#1b66b3;text-align:left;'>" +
           "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;position:sticky;top:0;background:#e8f1fb;z-index:1;'>Datum</th>" +
@@ -2835,7 +2835,7 @@ function spesenShowLateStarts() {
   monthKeys.forEach(function(k){
     var mo = byMonth[k];
     var monthDriverCount = Object.keys(mo.drivers).length;
-    html += "<div style='background:#fff;border:1px solid #d7dee7;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.05);margin-bottom:14px;'>";
+    html += "<div style='background:#fff;border:1px solid #d7dee7;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.05);margin-bottom:14px;'>";
     // Monats-Header-Streifen
     html += "<div style='padding:10px 14px;border-bottom:1px solid #ede9fe;background:#f5f3ff;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;'>";
     html += "<div style='font-size:13px;font-weight:900;color:#6d28d9;text-transform:uppercase;letter-spacing:.4px;border-left:3px solid #6d28d9;padding-left:8px;'>" + spEsc(mo.label || k) + "</div>";
@@ -2891,7 +2891,7 @@ function spesenShowLateStarts() {
 }
 """
 
-    fa_js_code = '\n// ── Fahrerauswertung ──────────────────────────────────────────────────────────\nvar faCurrentSort  = \"name\";\nvar faYearFilter   = String(new Date().getFullYear());\nvar faSelectedName = null;\nvar faSearchQuery  = \"\";\n\nfunction faSort(mode) {\n  faCurrentSort = mode;\n  [\"name\",\"arbeit\"].forEach(function(m) {\n    var btn = document.getElementById(\"fa-sort-\"+m);\n    if(!btn) return;\n    btn.style.background = mode===m ? \"#1b66b3\" : \"#fff\";\n    btn.style.color      = mode===m ? \"#fff\"    : \"#1b66b3\";\n  });\n  faBuildSidebarHighlight(faSelectedName);\n}\n\nfunction faFilter(q) { faSearchQuery = q; faBuildSidebarHighlight(faSelectedName); }\nfunction faYearChange(yr) {\n  faYearFilter = yr;\n  faBuildSidebarHighlight(faSelectedName);\n  if(faSelectedName) faShowDetail(faSelectedName);\n}\n\nfunction faGetStats(driver, yr) {\n  if(!driver.years) return {krank:0,urlaub:0,ausgleich:0,arbeit:0,arbeit_samstag:0,touren:{},lkw:{},eintraege:[]};\n  var years = yr===\"all\" ? Object.keys(driver.years) : [yr];\n  var out = {krank:0,urlaub:0,ausgleich:0,arbeit:0,arbeit_samstag:0,touren:{},lkw:{},eintraege:[]};\n  years.forEach(function(y) {\n    var d = driver.years[y];\n    if(!d) return;\n    out.krank          += d.krank          || 0;\n    out.urlaub         += d.urlaub         || 0;\n    out.ausgleich      += d.ausgleich      || 0;\n    out.arbeit         += d.arbeit         || 0;\n    out.arbeit_samstag += d.arbeit_samstag || 0;\n    Object.keys(d.touren||{}).forEach(function(t){\n      out.touren[t] = (out.touren[t]||0) + d.touren[t];\n    });\n    // Use pre-computed lkw if available, otherwise compute from eintraege\n    var lkwSource = d.lkw && Object.keys(d.lkw).length > 0 ? d.lkw : (function(){\n      var cnt = {};\n      (d.eintraege||[]).forEach(function(e){\n        var lv = (e.lkw||\"\").trim();\n        var tl = (e.tour||\"\").toLowerCase();\n        if(lv && lv!==\"0\" && !/krank|urlaub|ausgleich/i.test(tl)){\n          cnt[lv] = (cnt[lv]||0) + 1;\n        }\n      });\n      return cnt;\n    })();\n    Object.keys(lkwSource).forEach(function(l){\n      out.lkw[l] = (out.lkw[l]||0) + lkwSource[l];\n    });\n    out.eintraege = out.eintraege.concat(d.eintraege||[]);\n  });\n  return out;\n}\n\nfunction faGetFiltered() {\n  var q = faSearchQuery.toLowerCase().trim();\n  var list = FA_DATA.filter(function(d) {\n    if(q && !d.name.toLowerCase().includes(q)) return false;\n    if(faYearFilter !== \"all\" && !d.years[faYearFilter]) return false;\n    return true;\n  });\n  if(faCurrentSort === \"arbeit\") {\n    list.sort(function(a,b){ return faGetStats(b,faYearFilter).arbeit - faGetStats(a,faYearFilter).arbeit; });\n  } else {\n    list.sort(function(a,b){ return a.name.localeCompare(b.name,\"de\"); });\n  }\n  return list;\n}\n\nfunction faRender(q) {\n  faSearchQuery = q || \"\";\n  if(!FA_DATA || !FA_DATA.length) {\n    var c = document.getElementById(\"fa-detail-panel\");\n    if(c) c.innerHTML = \"<div style=\'color:#94a3b8;padding:40px;text-align:center;font-size:14px;\'>Keine Daten vorhanden.<br>Bitte Fahrerauswertungs-Dateien in Streamlit hochladen.</div>\";\n    return;\n  }\n  faPopulateYears();\n  faBuildSidebarHighlight(null);\n}\n\nfunction faPopulateYears() {\n  var allYears = [];\n  FA_DATA.forEach(function(d) {\n    Object.keys(d.years||{}).forEach(function(y){\n      if(y !== \"2024\" && allYears.indexOf(y) === -1) allYears.push(y);\n    });\n  });\n  allYears.sort().reverse();\n  var yrSel = document.getElementById(\"fa-year-sel\");\n  if(!yrSel) return;\n  var current = yrSel.value;\n  var curYr = String(new Date().getFullYear());\n  yrSel.innerHTML = allYears.map(function(y){ return \"<option value=\'\"+y+\"\'>\"+y+\"</option>\"; }).join(\"\");\n  // Default to current year\n  if(current && allYears.indexOf(current) !== -1) yrSel.value = current;\n  else if(allYears.indexOf(curYr) !== -1) yrSel.value = curYr;\n  else if(allYears.length) yrSel.value = allYears[0];\n  faYearFilter = yrSel.value;\n}\n\nfunction faBuildSidebarHighlight(activeName) {\n  var sidebar = document.getElementById(\"fa-sidebar-list\");\n  if(!sidebar) return;\n  var filtered = faGetFiltered();\n\n  var statsEl = document.getElementById(\"fa-stats\");\n  if(statsEl) {\n    var total   = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).arbeit;    },0);\n    var totalK  = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).krank;     },0);\n    var totalU  = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).urlaub;    },0);\n    statsEl.innerHTML =\n      \"<b>\"+filtered.length+\"</b> Fahrer &nbsp;&middot;&nbsp; Σ <b>\"+total+\"</b> Arbeitstage\" +\n      (totalK ? \" &nbsp;&middot;&nbsp; <span style=\'color:#dc2626;\'>Krank Σ <b>\"+totalK+\"</b></span>\" : \"\") +\n      (totalU ? \" &nbsp;&middot;&nbsp; <span style=\'color:#0891b2;\'>Urlaub Σ <b>\"+totalU+\"</b></span>\" : \"\");\n  }\n\n  var html = \"\";\n  filtered.forEach(function(d) {\n    var s = faGetStats(d, faYearFilter);\n    var active = d.name === activeName;\n    var bg = active ? \"#1b66b3\" : \"#fff\";\n    var fg = active ? \"#fff\" : \"#0b1220\";\n    html += \"<div onclick=\'faShowDetail(\\\"\"+d.name.replace(/\"/g,\"&quot;\")+\"\\\")\'\"+\n      \" style=\'padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;background:\"+bg+\";\'>\" +\n      \"<div style=\'font-weight:700;font-size:13px;color:\"+fg+\";\'>\"+d.name+\"</div>\" +\n      \"<div style=\'display:flex;gap:3px;flex-wrap:wrap;margin-top:3px;\'>\" +\n        \"<span style=\'font-size:8px;font-weight:600;padding:0px 3px;border-radius:2px;background:\"+(active?\"rgba(255,255,255,.2)\":\"#dbeafe\")+\";color:\"+(active?\"#fff\":\"#1b66b3\")+\"\'>\"+s.arbeit+\" T</span>\" +\n        (s.arbeit_samstag ? \"<span style=\'font-size:8px;font-weight:600;padding:0px 3px;border-radius:2px;background:\"+(active?\"rgba(255,255,255,.15)\":\"#fef9c3\")+\";color:\"+(active?\"#fff\":\"#b45309\")+\"\'>Sa \"+s.arbeit_samstag+\"</span>\" : \"\") +\n        (s.krank ? \"<span style=\'font-size:8px;font-weight:600;padding:0px 3px;border-radius:2px;background:\"+(active?\"rgba(255,255,255,.15)\":\"#fee2e2\")+\";color:\"+(active?\"#fff\":\"#dc2626\")+\"\'>K \"+s.krank+\"</span>\" : \"\") +\n      \"</div></div>\";\n  });\n  sidebar.innerHTML = html || \"<div style=\'padding:20px;color:#94a3b8;font-size:12px;text-align:center;\'>Kein Fahrer gefunden</div>\";\n\n  if(!activeName && filtered.length) { faSelectedName = filtered[0].name; faShowDetail(filtered[0].name); }\n  else if(activeName) faSelectedName = activeName;\n}\n\nfunction faShowDetail(name) {\n  faSelectedName = name;\n  faBuildSidebarHighlight(name);\n  var driver = FA_DATA.find(function(d){ return d.name === name; });\n  var panel = document.getElementById(\"fa-detail-panel\");\n  if(!panel || !driver) return;\n\n  var yr = faYearFilter;\n  var s  = faGetStats(driver, yr);\n  var years = (yr === \"all\" ? Object.keys(driver.years||{}).sort().reverse() : [yr]).filter(function(y){return y!==\"2024\";});\n\n  var lkwEntries = Object.entries(s.lkw||{}).sort(function(a,b){return b[1]-a[1];});\n  var lkwHtml = lkwEntries.length\n    ? lkwEntries.map(function(e){\n        return \"<span style=\'display:inline-block;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;padding:3px 12px;margin:2px;font-size:12px;font-weight:700;color:#166534;\'>\"+e[0]+\" <span style=\'color:#64748b;font-weight:500;\'>\"+e[1]+\"x</span></span>\";\n      }).join(\"\")\n    : \"<span style=\'color:#94a3b8;font-size:12px;\'>Keine LKW-Daten</span>\";\n\n  var html = \"\";\n\n  // Header\n  html += \"<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;padding:16px 20px;margin-bottom:14px;\'>\";\n  html += \"<div style=\'font-size:20px;font-weight:900;color:#0b1220;margin-bottom:10px;\'>\"+driver.name+\"</div>\";\n  html += \"<div style=\'display:flex;flex-wrap:wrap;gap:7px;\'>\";\n  html += \"<span style=\'background:#dbeafe;border-radius:4px;padding:4px 14px;font-size:13px;font-weight:800;color:#1b66b3;\'>&#9733; \"+s.arbeit+\" Arbeitstage</span>\";\n  if(s.arbeit_samstag) html += \"<span style=\'background:#fef9c3;border-radius:4px;padding:4px 14px;font-size:13px;font-weight:800;color:#b45309;\'>Samstag \"+s.arbeit_samstag+\"</span>\";\n  if(s.krank)          html += \"<span style=\'background:#fee2e2;border-radius:4px;padding:4px 14px;font-size:13px;font-weight:800;color:#dc2626;\'>Krank \"+s.krank+\"</span>\";\n  if(s.urlaub)         html += \"<span style=\'background:#e0f2fe;border-radius:4px;padding:4px 14px;font-size:13px;font-weight:800;color:#0891b2;\'>Urlaub \"+s.urlaub+\"</span>\";\n  if(s.ausgleich)      html += \"<span style=\'background:#f0fdf4;border-radius:4px;padding:4px 14px;font-size:13px;font-weight:800;color:#16a34a;\'>Ausgl. \"+s.ausgleich+\"</span>\";\n  html += \"</div></div>\";\n\n  // LKW Section\n  html += \"<div style=\'background:#fff;border:1.5px solid #bbf7d0;border-radius:5px;padding:12px 16px;margin-bottom:14px;\'>\";\n  html += \"<div style=\'font-size:11px;font-weight:900;text-transform:uppercase;color:#166534;letter-spacing:.4px;margin-bottom:8px;\'>LKW-Einsätze</div>\";\n  html += \"<div>\"+lkwHtml+\"</div>\";\n  html += \"</div>\";\n\n  // Year chips\n  if(yr === \"all\" && years.length > 1) {\n    html += \"<div style=\'display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;\'>\";\n    years.forEach(function(y) {\n      var ys = driver.years[y]; if(!ys) return;\n      html += \"<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:4px;padding:8px 14px;min-width:110px;\'>\";\n      html += \"<div style=\'font-size:12px;font-weight:900;color:#1b66b3;margin-bottom:4px;\'>\"+y+\"</div>\";\n      html += \"<div style=\'font-size:13px;font-weight:800;\'>&#9733; \"+ys.arbeit+\"</div>\";\n      if(ys.arbeit_samstag) html += \"<div style=\'font-size:11px;color:#b45309;\'>Sa: \"+ys.arbeit_samstag+\"</div>\";\n      if(ys.krank)  html += \"<div style=\'font-size:11px;color:#dc2626;\'>Krank: \"+ys.krank+\"</div>\";\n      if(ys.urlaub) html += \"<div style=\'font-size:11px;color:#0891b2;\'>Urlaub: \"+ys.urlaub+\"</div>\";\n      html += \"</div>\";\n    });\n    html += \"</div>\";\n  }\n\n  // KW table\n  years.forEach(function(y) {\n    var yd = driver.years[y]; if(!yd) return;\n    var kwMap = {};\n    var dispYr = parseInt(y);\n    (yd.eintraege||[]).forEach(function(e){\n      // Skip entries whose date doesn\'t belong to the displayed year\n      var m = (e.datum||\"\").match(/(\\d{4})$/);\n      if(m && parseInt(m[1]) !== dispYr) return;\n      var k=\"KW \"+e.kw; if(!kwMap[k]) kwMap[k]=[]; kwMap[k].push(e);\n    });\n    var kwKeys = Object.keys(kwMap).sort(function(a,b){return parseInt(a.split(\" \")[1])-parseInt(b.split(\" \")[1]);});\n\n    if(years.length > 1)\n      html += \"<div style=\'font-size:13px;font-weight:900;color:#1b66b3;margin:12px 0 6px;border-left:3px solid #1b66b3;padding-left:8px;\'>\"+y+\"</div>\";\n\n    html += \"<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;overflow:hidden;margin-bottom:12px;\'>\";\n    html += \"<table style=\'width:100%;border-collapse:collapse;font-size:12px;\'>\";\n    html += \"<thead><tr style=\'background:#1e3a5f;color:#fff;\'><th style=\'padding:6px 10px;text-align:left;\'>KW</th><th style=\'padding:6px 10px;text-align:left;\'>Datum</th><th style=\'padding:6px 10px;text-align:left;\'>Tour</th><th style=\'padding:6px 10px;text-align:left;\'>Zeit</th><th style=\'padding:6px 10px;text-align:left;\'>LKW</th></tr></thead><tbody>\";\n    kwKeys.forEach(function(kw) {\n      html += \"<tr style=\'background:#dbeafe;\'><td colspan=\'5\' style=\'padding:3px 10px;font-weight:800;color:#1b66b3;font-size:11px;\'>\"+kw+\"</td></tr>\";\n      kwMap[kw].forEach(function(e,i) {\n        var bg = e.samstag ? \"#fff7ed\" : (i%2===0?\"#f8fafc\":\"#fff\");\n        var tc = /krank/i.test(e.tour)?\"color:#dc2626;font-weight:700;\":/urlaub/i.test(e.tour)?\"color:#0891b2;font-weight:700;\":/ausgleich/i.test(e.tour)?\"color:#16a34a;font-weight:700;\":\"font-weight:600;\";\n        html += \"<tr style=\'background:\"+bg+\";border-bottom:1px solid #f1f5f9;\'>\";\n        html += \"<td style=\'padding:3px 10px;\'></td>\";\n        html += \"<td style=\'padding:3px 10px;\"+(e.samstag?\"font-weight:700;color:#b45309;\":\"color:#334155;\")+\"\'>\"+e.datum+\"</td>\";\n        html += \"<td style=\'padding:3px 10px;\"+tc+\"\'>\"+e.tour+\"</td>\";\n        html += \"<td style=\'padding:3px 10px;color:#475569;\'>\"+e.zeit+\"</td>\";\n        html += \"<td style=\'padding:3px 10px;font-weight:700;color:#166534;\'>\"+(e.lkw && e.lkw!==\"0\" ? e.lkw : \"\")+\"</td>\";\n        html += \"</tr>\";\n      });\n    });\n    html += \"</tbody></table></div>\";\n  });\n\n  panel.innerHTML = html;\n  panel.scrollTop = 0;\n}\n\nfunction faPDF() {\n  if(!FA_DATA || !FA_DATA.length) { alert(\"Keine Daten vorhanden.\"); return; }\n  // If a driver is selected in sidebar, export only that driver\n  var filtered;\n  if(faSelectedName) {\n    filtered = FA_DATA.filter(function(d){ return d.name === faSelectedName; });\n  } else {\n    filtered = faGetFiltered();\n  }\n  var yr = faYearFilter;\n  var today = new Date().toLocaleDateString(\"de-DE\",{day:\"2-digit\",month:\"long\",year:\"numeric\"});\n  var yrLabel = yr === \"all\" ? \"Alle Jahre\" : yr;\n  var css = \"@page{size:A4 portrait;margin:10mm 9mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:\'Segoe UI\',Arial,sans-serif;color:#1e293b;font-size:7pt}.cover{text-align:center;padding:16mm 0 8mm;border-bottom:3px solid #1b66b3;margin-bottom:8mm}.cover h1{font-size:18pt;color:#1b66b3;font-weight:900;margin-bottom:2mm}.sub{font-size:9pt;color:#64748b}.db{page-break-inside:avoid;margin-bottom:7mm}.dh{background:#1b66b3;color:#fff;padding:2mm 4mm;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:6px}.dn{font-size:10pt;font-weight:900;flex:1}.ds{display:flex;gap:4px;flex-wrap:wrap;font-size:6.5pt}.badge{display:inline-block;border-radius:4px;padding:1px 5px;font-weight:800}.lsec{padding:2mm 4mm;background:#f0fdf4;border:1px solid #bbf7d0}.ys{margin-bottom:3mm}.yl{font-size:8pt;font-weight:900;color:#1b66b3;margin:2mm 0 1mm;border-left:2px solid #1b66b3;padding-left:3px}table{width:100%;border-collapse:collapse}thead tr{background:#1e3a5f;color:#fff}thead th{padding:2px 5px;font-weight:800;font-size:6pt;text-align:left}tbody tr.kr{background:#dbeafe}tbody tr.kr td{padding:2px 5px;font-weight:800;color:#1b66b3;font-size:5.5pt}tbody tr.dr td{padding:2px 5px;border-bottom:1px solid #f1f5f9}tbody tr.sa{background:#fff7ed!important}.ft{text-align:right;color:#94a3b8;font-size:5.5pt;margin-top:1mm;border-top:1px solid #f1f5f9}\";\n  var body = \"<div class=\'cover\'><div style=\'font-size:24pt;margin-bottom:2mm;\'>&#128101;</div><h1>Fahrerauswertung</h1><div class=\'sub\'>Fuhrpark NFC &middot; \"+yrLabel+\" &middot; \"+today+\"</div><div class=\'sub\'>\"+filtered.length+\" Fahrer</div></div>\";\n  filtered.forEach(function(driver) {\n    var years = (yr===\"all\"?Object.keys(driver.years||{}).sort().reverse():[yr]).filter(function(y){return y!==\"2024\";});\n    var ts = faGetStats(driver,yr);\n    var lkwList = Object.entries(ts.lkw||{}).sort(function(a,b){return b[1]-a[1];});\n    body += \"<div class=\'db\'><div class=\'dh\'><span class=\'dn\'>\"+driver.name+\"</span><div class=\'ds\'>\";\n    body += \"<span class=\'badge\' style=\'background:#dbeafe;color:#1b66b3;\'>&#9733; \"+ts.arbeit+\"</span>\";\n    if(ts.arbeit_samstag) body += \"<span class=\'badge\' style=\'background:#fef9c3;color:#b45309;\'>Sa \"+ts.arbeit_samstag+\"</span>\";\n    if(ts.krank)  body += \"<span style=\'background:#fee2e2;color:#dc2626;\'>K \"+ts.krank+\"</span>\";\n    if(ts.urlaub) body += \"<span class=\'badge\' style=\'background:#e0f2fe;color:#0891b2;\'>U \"+ts.urlaub+\"</span>\";\n    if(ts.ausgleich) body += \"<span class=\'badge\' style=\'background:#f0fdf4;color:#16a34a;\'>Az \"+ts.ausgleich+\"</span>\";\n    body += \"</div></div>\";\n    if(lkwList.length){body+=\"<div class=\'lsec\'><b style=\'color:#166534;font-size:6pt;\'>LKW: </b>\";lkwList.forEach(function(e){body+=\"<span style=\'display:inline-block;background:#fff;border:1px solid #bbf7d0;border-radius:2px;padding:0 4px;margin:1px;font-size:6pt;color:#166534;font-weight:700;\'>\"+e[0]+\" \"+e[1]+\"x</span>\";});body+=\"</div>\";}\n    years.forEach(function(y){var yd=driver.years[y];if(!yd)return;var kwMap={};(yd.eintraege||[]).forEach(function(e){var k=\"KW \"+e.kw;if(!kwMap[k])kwMap[k]=[];kwMap[k].push(e);});var kwKeys=Object.keys(kwMap).sort(function(a,b){return parseInt(a.split(\" \")[1])-parseInt(b.split(\" \")[1]);});body+=\"<div class=\'ys\'>\";if(years.length>1)body+=\"<div class=\'yl\'>\"+y+\"</div>\";body+=\"<table><thead><tr><th>KW</th><th>Datum</th><th>Tour</th><th>Zeit</th><th>LKW</th></tr></thead><tbody>\";kwKeys.forEach(function(kw){body+=\"<tr class=\'kr\'><td colspan=\'5\'>\"+kw+\"</td></tr>\";kwMap[kw].forEach(function(e,i){var tc=/krank/i.test(e.tour)?\"color:#dc2626;\":/urlaub/i.test(e.tour)?\"color:#0891b2;\":\"\";body+=\"<tr class=\'dr\"+(e.samstag?\" sa\":\"\")+\"\'><td></td><td style=\'\"+(e.samstag?\"color:#b45309;font-weight:700;\":\"\")+\"\'>\"+e.datum+\"</td><td style=\'font-weight:700;\"+tc+\"\'>\"+e.tour+\"</td><td>\"+e.zeit+\"</td><td style=\'color:#166534;font-weight:700;\'>\"+e.lkw+\"</td></tr>\";});});body+=\"</tbody></table></div>\";});\n    body+=\"<div class=\'ft\'>NordFrischeCenter &middot; Fahrerauswertung &middot; \"+driver.name+\"</div></div>\";\n  });\n  var w=window.open(\"\",\"_blank\",\"width=900,height=800\");\n  w.document.write(\"<!DOCTYPE html><html><head><meta charset=\'utf-8\'><title>Fahrerauswertung</title><style>\"+css+\"</style></head><body>\"+body+\"</body></html>\");\n  w.document.close();w.focus();setTimeout(function(){w.print();},600);\n}\n'
+    fa_js_code = '\n// ── Fahrerauswertung ──────────────────────────────────────────────────────────\nvar faCurrentSort  = \"name\";\nvar faYearFilter   = String(new Date().getFullYear());\nvar faSelectedName = null;\nvar faSearchQuery  = \"\";\n\nfunction faSort(mode) {\n  faCurrentSort = mode;\n  [\"name\",\"arbeit\"].forEach(function(m) {\n    var btn = document.getElementById(\"fa-sort-\"+m);\n    if(!btn) return;\n    btn.style.background = mode===m ? \"#1b66b3\" : \"#fff\";\n    btn.style.color      = mode===m ? \"#fff\"    : \"#1b66b3\";\n  });\n  faBuildSidebarHighlight(faSelectedName);\n}\n\nfunction faFilter(q) { faSearchQuery = q; faBuildSidebarHighlight(faSelectedName); }\nfunction faYearChange(yr) {\n  faYearFilter = yr;\n  faBuildSidebarHighlight(faSelectedName);\n  if(faSelectedName) faShowDetail(faSelectedName);\n}\n\nfunction faGetStats(driver, yr) {\n  if(!driver.years) return {krank:0,urlaub:0,ausgleich:0,arbeit:0,arbeit_samstag:0,touren:{},lkw:{},eintraege:[]};\n  var years = yr===\"all\" ? Object.keys(driver.years) : [yr];\n  var out = {krank:0,urlaub:0,ausgleich:0,arbeit:0,arbeit_samstag:0,touren:{},lkw:{},eintraege:[]};\n  years.forEach(function(y) {\n    var d = driver.years[y];\n    if(!d) return;\n    out.krank          += d.krank          || 0;\n    out.urlaub         += d.urlaub         || 0;\n    out.ausgleich      += d.ausgleich      || 0;\n    out.arbeit         += d.arbeit         || 0;\n    out.arbeit_samstag += d.arbeit_samstag || 0;\n    Object.keys(d.touren||{}).forEach(function(t){\n      out.touren[t] = (out.touren[t]||0) + d.touren[t];\n    });\n    // Use pre-computed lkw if available, otherwise compute from eintraege\n    var lkwSource = d.lkw && Object.keys(d.lkw).length > 0 ? d.lkw : (function(){\n      var cnt = {};\n      (d.eintraege||[]).forEach(function(e){\n        var lv = (e.lkw||\"\").trim();\n        var tl = (e.tour||\"\").toLowerCase();\n        if(lv && lv!==\"0\" && !/krank|urlaub|ausgleich/i.test(tl)){\n          cnt[lv] = (cnt[lv]||0) + 1;\n        }\n      });\n      return cnt;\n    })();\n    Object.keys(lkwSource).forEach(function(l){\n      out.lkw[l] = (out.lkw[l]||0) + lkwSource[l];\n    });\n    out.eintraege = out.eintraege.concat(d.eintraege||[]);\n  });\n  return out;\n}\n\nfunction faGetFiltered() {\n  var q = faSearchQuery.toLowerCase().trim();\n  var list = FA_DATA.filter(function(d) {\n    if(q && !d.name.toLowerCase().includes(q)) return false;\n    if(faYearFilter !== \"all\" && !d.years[faYearFilter]) return false;\n    return true;\n  });\n  if(faCurrentSort === \"arbeit\") {\n    list.sort(function(a,b){ return faGetStats(b,faYearFilter).arbeit - faGetStats(a,faYearFilter).arbeit; });\n  } else {\n    list.sort(function(a,b){ return a.name.localeCompare(b.name,\"de\"); });\n  }\n  return list;\n}\n\nfunction faRender(q) {\n  faSearchQuery = q || \"\";\n  if(!FA_DATA || !FA_DATA.length) {\n    var c = document.getElementById(\"fa-detail-panel\");\n    if(c) c.innerHTML = \"<div style=\'color:#94a3b8;padding:40px;text-align:center;font-size:14px;\'>Keine Daten vorhanden.<br>Bitte Fahrerauswertungs-Dateien in Streamlit hochladen.</div>\";\n    return;\n  }\n  faPopulateYears();\n  faBuildSidebarHighlight(null);\n}\n\nfunction faPopulateYears() {\n  var allYears = [];\n  FA_DATA.forEach(function(d) {\n    Object.keys(d.years||{}).forEach(function(y){\n      if(y !== \"2024\" && allYears.indexOf(y) === -1) allYears.push(y);\n    });\n  });\n  allYears.sort().reverse();\n  var yrSel = document.getElementById(\"fa-year-sel\");\n  if(!yrSel) return;\n  var current = yrSel.value;\n  var curYr = String(new Date().getFullYear());\n  yrSel.innerHTML = allYears.map(function(y){ return \"<option value=\'\"+y+\"\'>\"+y+\"</option>\"; }).join(\"\");\n  // Default to current year\n  if(current && allYears.indexOf(current) !== -1) yrSel.value = current;\n  else if(allYears.indexOf(curYr) !== -1) yrSel.value = curYr;\n  else if(allYears.length) yrSel.value = allYears[0];\n  faYearFilter = yrSel.value;\n}\n\nfunction faBuildSidebarHighlight(activeName) {\n  var sidebar = document.getElementById(\"fa-sidebar-list\");\n  if(!sidebar) return;\n  var filtered = faGetFiltered();\n\n  var statsEl = document.getElementById(\"fa-stats\");\n  if(statsEl) {\n    var total   = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).arbeit;    },0);\n    var totalK  = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).krank;     },0);\n    var totalU  = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).urlaub;    },0);\n    statsEl.innerHTML =\n      \"<b>\"+filtered.length+\"</b> Fahrer &nbsp;&middot;&nbsp; Σ <b>\"+total+\"</b> Arbeitstage\" +\n      (totalK ? \" &nbsp;&middot;&nbsp; <span style=\'color:#dc2626;\'>Krank Σ <b>\"+totalK+\"</b></span>\" : \"\") +\n      (totalU ? \" &nbsp;&middot;&nbsp; <span style=\'color:#0891b2;\'>Urlaub Σ <b>\"+totalU+\"</b></span>\" : \"\");\n  }\n\n  var html = \"\";\n  filtered.forEach(function(d) {\n    var s = faGetStats(d, faYearFilter);\n    var active = d.name === activeName;\n    var bg = active ? \"#1b66b3\" : \"#fff\";\n    var fg = active ? \"#fff\" : \"#0b1220\";\n    html += \"<div onclick=\'faShowDetail(\\\"\"+d.name.replace(/\"/g,\"&quot;\")+\"\\\")\'\"+\n      \" style=\'padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;background:\"+bg+\";\'>\" +\n      \"<div style=\'font-weight:700;font-size:13px;color:\"+fg+\";\'>\"+d.name+\"</div>\" +\n      \"<div style=\'display:flex;gap:3px;flex-wrap:wrap;margin-top:3px;\'>\" +\n        \"<span style=\'font-size:8px;font-weight:600;padding:0px 3px;border-radius:2px;background:\"+(active?\"rgba(255,255,255,.2)\":\"#dbeafe\")+\";color:\"+(active?\"#fff\":\"#1b66b3\")+\"\'>\"+s.arbeit+\" T</span>\" +\n        (s.arbeit_samstag ? \"<span style=\'font-size:8px;font-weight:600;padding:0px 3px;border-radius:2px;background:\"+(active?\"rgba(255,255,255,.15)\":\"#fef9c3\")+\";color:\"+(active?\"#fff\":\"#b45309\")+\"\'>Sa \"+s.arbeit_samstag+\"</span>\" : \"\") +\n        (s.krank ? \"<span style=\'font-size:8px;font-weight:600;padding:0px 3px;border-radius:2px;background:\"+(active?\"rgba(255,255,255,.15)\":\"#fee2e2\")+\";color:\"+(active?\"#fff\":\"#dc2626\")+\"\'>K \"+s.krank+\"</span>\" : \"\") +\n      \"</div></div>\";\n  });\n  sidebar.innerHTML = html || \"<div style=\'padding:20px;color:#94a3b8;font-size:12px;text-align:center;\'>Kein Fahrer gefunden</div>\";\n\n  if(!activeName && filtered.length) { faSelectedName = filtered[0].name; faShowDetail(filtered[0].name); }\n  else if(activeName) faSelectedName = activeName;\n}\n\nfunction faShowDetail(name) {\n  faSelectedName = name;\n  faBuildSidebarHighlight(name);\n  var driver = FA_DATA.find(function(d){ return d.name === name; });\n  var panel = document.getElementById(\"fa-detail-panel\");\n  if(!panel || !driver) return;\n\n  var yr = faYearFilter;\n  var s  = faGetStats(driver, yr);\n  var years = (yr === \"all\" ? Object.keys(driver.years||{}).sort().reverse() : [yr]).filter(function(y){return y!==\"2024\";});\n\n  var lkwEntries = Object.entries(s.lkw||{}).sort(function(a,b){return b[1]-a[1];});\n  var lkwHtml = lkwEntries.length\n    ? lkwEntries.map(function(e){\n        return \"<span style=\'display:inline-block;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;padding:3px 12px;margin:2px;font-size:12px;font-weight:700;color:#166534;\'>\"+e[0]+\" <span style=\'color:#64748b;font-weight:500;\'>\"+e[1]+\"x</span></span>\";\n      }).join(\"\")\n    : \"<span style=\'color:#94a3b8;font-size:12px;\'>Keine LKW-Daten</span>\";\n\n  var html = \"\";\n\n  // Header\n  html += \"<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;padding:16px 20px;margin-bottom:14px;\'>\";\n  html += \"<div style=\'font-size:20px;font-weight:900;color:#0b1220;margin-bottom:10px;\'>\"+driver.name+\"</div>\";\n  html += \"<div style=\'display:flex;flex-wrap:wrap;gap:7px;\'>\";\n  html += \"<span style=\'background:#dbeafe;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#1b66b3;\'>&#9733; \"+s.arbeit+\" Arbeitstage</span>\";\n  if(s.arbeit_samstag) html += \"<span style=\'background:#fef9c3;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#b45309;\'>Samstag \"+s.arbeit_samstag+\"</span>\";\n  if(s.krank)          html += \"<span style=\'background:#fee2e2;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#dc2626;\'>Krank \"+s.krank+\"</span>\";\n  if(s.urlaub)         html += \"<span style=\'background:#e0f2fe;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#0891b2;\'>Urlaub \"+s.urlaub+\"</span>\";\n  if(s.ausgleich)      html += \"<span style=\'background:#f0fdf4;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#16a34a;\'>Ausgl. \"+s.ausgleich+\"</span>\";\n  html += \"</div></div>\";\n\n  // LKW Section\n  html += \"<div style=\'background:#fff;border:1.5px solid #bbf7d0;border-radius:5px;padding:12px 16px;margin-bottom:14px;\'>\";\n  html += \"<div style=\'font-size:11px;font-weight:900;text-transform:uppercase;color:#166534;letter-spacing:.4px;margin-bottom:8px;\'>LKW-Einsätze</div>\";\n  html += \"<div>\"+lkwHtml+\"</div>\";\n  html += \"</div>\";\n\n  // Year chips\n  if(yr === \"all\" && years.length > 1) {\n    html += \"<div style=\'display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;\'>\";\n    years.forEach(function(y) {\n      var ys = driver.years[y]; if(!ys) return;\n      html += \"<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:4px;padding:8px 14px;min-width:110px;\'>\";\n      html += \"<div style=\'font-size:12px;font-weight:900;color:#1b66b3;margin-bottom:4px;\'>\"+y+\"</div>\";\n      html += \"<div style=\'font-size:12.5px;font-weight:800;\'>&#9733; \"+ys.arbeit+\"</div>\";\n      if(ys.arbeit_samstag) html += \"<div style=\'font-size:11px;color:#b45309;\'>Sa: \"+ys.arbeit_samstag+\"</div>\";\n      if(ys.krank)  html += \"<div style=\'font-size:11px;color:#dc2626;\'>Krank: \"+ys.krank+\"</div>\";\n      if(ys.urlaub) html += \"<div style=\'font-size:11px;color:#0891b2;\'>Urlaub: \"+ys.urlaub+\"</div>\";\n      html += \"</div>\";\n    });\n    html += \"</div>\";\n  }\n\n  // KW table\n  years.forEach(function(y) {\n    var yd = driver.years[y]; if(!yd) return;\n    var kwMap = {};\n    var dispYr = parseInt(y);\n    (yd.eintraege||[]).forEach(function(e){\n      // Skip entries whose date doesn\'t belong to the displayed year\n      var m = (e.datum||\"\").match(/(\\d{4})$/);\n      if(m && parseInt(m[1]) !== dispYr) return;\n      var k=\"KW \"+e.kw; if(!kwMap[k]) kwMap[k]=[]; kwMap[k].push(e);\n    });\n    var kwKeys = Object.keys(kwMap).sort(function(a,b){return parseInt(a.split(\" \")[1])-parseInt(b.split(\" \")[1]);});\n\n    if(years.length > 1)\n      html += \"<div style=\'font-size:13px;font-weight:900;color:#1b66b3;margin:12px 0 6px;border-left:3px solid #1b66b3;padding-left:8px;\'>\"+y+\"</div>\";\n\n    html += \"<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;overflow:hidden;margin-bottom:12px;\'>\";\n    html += \"<table style=\'width:100%;border-collapse:collapse;font-size:12px;\'>\";\n    html += \"<thead><tr style=\'background:#1e3a5f;color:#fff;\'><th style=\'padding:6px 10px;text-align:left;\'>KW</th><th style=\'padding:6px 10px;text-align:left;\'>Datum</th><th style=\'padding:6px 10px;text-align:left;\'>Tour</th><th style=\'padding:6px 10px;text-align:left;\'>Zeit</th><th style=\'padding:6px 10px;text-align:left;\'>LKW</th></tr></thead><tbody>\";\n    kwKeys.forEach(function(kw) {\n      html += \"<tr style=\'background:#dbeafe;\'><td colspan=\'5\' style=\'padding:3px 10px;font-weight:800;color:#1b66b3;font-size:11px;\'>\"+kw+\"</td></tr>\";\n      kwMap[kw].forEach(function(e,i) {\n        var bg = e.samstag ? \"#fff7ed\" : (i%2===0?\"#f8fafc\":\"#fff\");\n        var tc = /krank/i.test(e.tour)?\"color:#dc2626;font-weight:700;\":/urlaub/i.test(e.tour)?\"color:#0891b2;font-weight:700;\":/ausgleich/i.test(e.tour)?\"color:#16a34a;font-weight:700;\":\"font-weight:600;\";\n        html += \"<tr style=\'background:\"+bg+\";border-bottom:1px solid #f1f5f9;\'>\";\n        html += \"<td style=\'padding:3px 10px;\'></td>\";\n        html += \"<td style=\'padding:3px 10px;\"+(e.samstag?\"font-weight:700;color:#b45309;\":\"color:#334155;\")+\"\'>\"+e.datum+\"</td>\";\n        html += \"<td style=\'padding:3px 10px;\"+tc+\"\'>\"+e.tour+\"</td>\";\n        html += \"<td style=\'padding:3px 10px;color:#475569;\'>\"+e.zeit+\"</td>\";\n        html += \"<td style=\'padding:3px 10px;font-weight:700;color:#166534;\'>\"+(e.lkw && e.lkw!==\"0\" ? e.lkw : \"\")+\"</td>\";\n        html += \"</tr>\";\n      });\n    });\n    html += \"</tbody></table></div>\";\n  });\n\n  panel.innerHTML = html;\n  panel.scrollTop = 0;\n}\n\nfunction faPDF() {\n  if(!FA_DATA || !FA_DATA.length) { alert(\"Keine Daten vorhanden.\"); return; }\n  // If a driver is selected in sidebar, export only that driver\n  var filtered;\n  if(faSelectedName) {\n    filtered = FA_DATA.filter(function(d){ return d.name === faSelectedName; });\n  } else {\n    filtered = faGetFiltered();\n  }\n  var yr = faYearFilter;\n  var today = new Date().toLocaleDateString(\"de-DE\",{day:\"2-digit\",month:\"long\",year:\"numeric\"});\n  var yrLabel = yr === \"all\" ? \"Alle Jahre\" : yr;\n  var css = \"@page{size:A4 portrait;margin:10mm 9mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:\'Segoe UI\',Arial,sans-serif;color:#1e293b;font-size:7pt}.cover{text-align:center;padding:16mm 0 8mm;border-bottom:3px solid #1b66b3;margin-bottom:8mm}.cover h1{font-size:18pt;color:#1b66b3;font-weight:900;margin-bottom:2mm}.sub{font-size:9pt;color:#64748b}.db{page-break-inside:avoid;margin-bottom:7mm}.dh{background:#1b66b3;color:#fff;padding:2mm 4mm;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:6px}.dn{font-size:10pt;font-weight:900;flex:1}.ds{display:flex;gap:4px;flex-wrap:wrap;font-size:6.5pt}.badge{display:inline-block;border-radius:4px;padding:1px 5px;font-weight:800}.lsec{padding:2mm 4mm;background:#f0fdf4;border:1px solid #bbf7d0}.ys{margin-bottom:3mm}.yl{font-size:8pt;font-weight:900;color:#1b66b3;margin:2mm 0 1mm;border-left:2px solid #1b66b3;padding-left:3px}table{width:100%;border-collapse:collapse}thead tr{background:#1e3a5f;color:#fff}thead th{padding:2px 5px;font-weight:800;font-size:6pt;text-align:left}tbody tr.kr{background:#dbeafe}tbody tr.kr td{padding:2px 5px;font-weight:800;color:#1b66b3;font-size:5.5pt}tbody tr.dr td{padding:2px 5px;border-bottom:1px solid #f1f5f9}tbody tr.sa{background:#fff7ed!important}.ft{text-align:right;color:#94a3b8;font-size:5.5pt;margin-top:1mm;border-top:1px solid #f1f5f9}\";\n  var body = \"<div class=\'cover\'><div style=\'font-size:24pt;margin-bottom:2mm;\'>&#128101;</div><h1>Fahrerauswertung</h1><div class=\'sub\'>Fuhrpark NFC &middot; \"+yrLabel+\" &middot; \"+today+\"</div><div class=\'sub\'>\"+filtered.length+\" Fahrer</div></div>\";\n  filtered.forEach(function(driver) {\n    var years = (yr===\"all\"?Object.keys(driver.years||{}).sort().reverse():[yr]).filter(function(y){return y!==\"2024\";});\n    var ts = faGetStats(driver,yr);\n    var lkwList = Object.entries(ts.lkw||{}).sort(function(a,b){return b[1]-a[1];});\n    body += \"<div class=\'db\'><div class=\'dh\'><span class=\'dn\'>\"+driver.name+\"</span><div class=\'ds\'>\";\n    body += \"<span class=\'badge\' style=\'background:#dbeafe;color:#1b66b3;\'>&#9733; \"+ts.arbeit+\"</span>\";\n    if(ts.arbeit_samstag) body += \"<span class=\'badge\' style=\'background:#fef9c3;color:#b45309;\'>Sa \"+ts.arbeit_samstag+\"</span>\";\n    if(ts.krank)  body += \"<span style=\'background:#fee2e2;color:#dc2626;\'>K \"+ts.krank+\"</span>\";\n    if(ts.urlaub) body += \"<span class=\'badge\' style=\'background:#e0f2fe;color:#0891b2;\'>U \"+ts.urlaub+\"</span>\";\n    if(ts.ausgleich) body += \"<span class=\'badge\' style=\'background:#f0fdf4;color:#16a34a;\'>Az \"+ts.ausgleich+\"</span>\";\n    body += \"</div></div>\";\n    if(lkwList.length){body+=\"<div class=\'lsec\'><b style=\'color:#166534;font-size:6pt;\'>LKW: </b>\";lkwList.forEach(function(e){body+=\"<span style=\'display:inline-block;background:#fff;border:1px solid #bbf7d0;border-radius:2px;padding:0 4px;margin:1px;font-size:6pt;color:#166534;font-weight:700;\'>\"+e[0]+\" \"+e[1]+\"x</span>\";});body+=\"</div>\";}\n    years.forEach(function(y){var yd=driver.years[y];if(!yd)return;var kwMap={};(yd.eintraege||[]).forEach(function(e){var k=\"KW \"+e.kw;if(!kwMap[k])kwMap[k]=[];kwMap[k].push(e);});var kwKeys=Object.keys(kwMap).sort(function(a,b){return parseInt(a.split(\" \")[1])-parseInt(b.split(\" \")[1]);});body+=\"<div class=\'ys\'>\";if(years.length>1)body+=\"<div class=\'yl\'>\"+y+\"</div>\";body+=\"<table><thead><tr><th>KW</th><th>Datum</th><th>Tour</th><th>Zeit</th><th>LKW</th></tr></thead><tbody>\";kwKeys.forEach(function(kw){body+=\"<tr class=\'kr\'><td colspan=\'5\'>\"+kw+\"</td></tr>\";kwMap[kw].forEach(function(e,i){var tc=/krank/i.test(e.tour)?\"color:#dc2626;\":/urlaub/i.test(e.tour)?\"color:#0891b2;\":\"\";body+=\"<tr class=\'dr\"+(e.samstag?\" sa\":\"\")+\"\'><td></td><td style=\'\"+(e.samstag?\"color:#b45309;font-weight:700;\":\"\")+\"\'>\"+e.datum+\"</td><td style=\'font-weight:700;\"+tc+\"\'>\"+e.tour+\"</td><td>\"+e.zeit+\"</td><td style=\'color:#166534;font-weight:700;\'>\"+e.lkw+\"</td></tr>\";});});body+=\"</tbody></table></div>\";});\n    body+=\"<div class=\'ft\'>NordFrischeCenter &middot; Fahrerauswertung &middot; \"+driver.name+\"</div></div>\";\n  });\n  var w=window.open(\"\",\"_blank\",\"width=900,height=800\");\n  w.document.write(\"<!DOCTYPE html><html><head><meta charset=\'utf-8\'><title>Fahrerauswertung</title><style>\"+css+\"</style></head><body>\"+body+\"</body></html>\");\n  w.document.close();w.focus();setTimeout(function(){w.print();},600);\n}\n'
     zulage_js_code = '\n// ── ZULAGEN ──────────────────────────────────────────────────────────────\nvar _zTab = "sonder";\n\nfunction zulagenInit() { zulagenBuildMonthSel(); zulagenRender(); }\n\nfunction zulagenTab(tab) {\n  _zTab = tab;\n  ["sonder","fuengers","drittkunden"].forEach(function(t) {\n    var btn = document.getElementById("ztab-"+t);\n    if(btn){ btn.style.background=tab===t?"#1b66b3":"#fff"; btn.style.color=tab===t?"#fff":"#1b66b3"; }\n  });\n  zulagenBuildMonthSel(); zulagenRender();\n}\n\nfunction zulagenBuildMonthSel() {\n  var sel = document.getElementById("zulage-month-sel");\n  if(!sel) return;\n  var arr = _zTab==="drittkunden"\n    ? (Array.isArray(DRITTKUNDEN_DATA) ? DRITTKUNDEN_DATA : [])\n    : (_zTab==="sonder" ? (ZULAGE_DATA.sonder||[]) : (ZULAGE_DATA.fuengers||[]));\n  var cur = sel ? sel.value : "all";\n  sel.innerHTML = "<option value=\'all\'>Alle Monate</option>" +\n    arr.map(function(m){ return "<option value=\'"+m.monat+"\'"+(m.monat===cur?" selected":"")+">" + m.monat + "</option>"; }).join("");\n}\n\nfunction zulagenRender() {\n  var el = document.getElementById("zulage-content");\n  var stats = document.getElementById("zulage-stats");\n  if(!el) return;\n  if(_zTab==="drittkunden") {\n    if(!DRITTKUNDEN_DATA || !Array.isArray(DRITTKUNDEN_DATA) || !DRITTKUNDEN_DATA.length) {\n      el.innerHTML = "<div style=\'color:#94a3b8;padding:60px;text-align:center;font-size:14px;\'>Keine Drittkunden-Daten \\u2013 bitte Touren-Excel hochladen.</div>";\n      if(stats) stats.innerHTML = ""; return;\n    }\n  } else if(!ZULAGE_DATA || typeof ZULAGE_DATA !== "object" || (!ZULAGE_DATA.sonder && !ZULAGE_DATA.fuengers)) {\n    el.innerHTML = "<div style=\'color:#94a3b8;padding:60px;text-align:center;font-size:14px;\'>Keine Zulage-Daten \\u2013 bitte Touren-Excel hochladen.</div>";\n    if(stats) stats.innerHTML = ""; return;\n  }\n  var arr = _zTab==="drittkunden" ? (Array.isArray(DRITTKUNDEN_DATA) ? DRITTKUNDEN_DATA : []) : (_zTab==="sonder" ? (ZULAGE_DATA.sonder||[]) : (ZULAGE_DATA.fuengers||[]));\n  if(!arr.length) {\n    el.innerHTML = "<div style=\'color:#94a3b8;padding:60px;text-align:center;\'>Keine Daten f\\u00fcr diesen Tab.</div>";\n    if(stats) stats.innerHTML = ""; return;\n  }\n  var sel = document.getElementById("zulage-month-sel");\n  var filterM = sel ? sel.value : "all";\n  var data = filterM!=="all" ? arr.filter(function(m){return m.monat===filterM;}) : arr;\n  var totalAll = 0, html = "";\n  var isSonder = _zTab === "sonder";\n\n  data.forEach(function(monat) {\n    var mSum = monat.fahrer.reduce(function(s,f){return s+f.gesamt;},0);\n    totalAll += mSum;\n\n    // Month section header – same style as rest of app\n    html += "<div style=\'display:flex;align-items:center;gap:10px;margin-bottom:10px;\'>";\n    html += "<h3 style=\'margin:0;font-size:12px;font-weight:700;color:#1b66b3;white-space:nowrap;\'>" + monat.monat + "</h3>";\n    html += "<span style=\'flex:1;height:1px;background:#e2e8f0;display:block;\'></span>";\n    html += "<span style=\'font-size:11px;font-weight:700;color:#1b66b3;\'>\\u03a3 " + mSum.toFixed(2) + " \\u20ac</span>";\n    html += "</div>";\n\n    // 3-col card grid – same as samRender\n    html += "<div style=\'display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:stretch;margin-bottom:28px;\'>";\n\n    monat.fahrer.forEach(function(f) {\n\n      // Entry chips\n      var chipsHtml = f.tage.map(function(t) {\n        var isDK = (_zTab==="drittkunden");\n        var verdienst = isDK ? (t.zulage||0) : (t.verdienst||0);\n        var datumStr = isDK\n          ? t.datum + " <span style=\'color:#94a3b8;font-size:10px;\'>(" + (t.kw||"") + ")</span>"\n          : t.datum;\n        var rightHtml = "";\n        if(isDK) {\n          var dkLabel = (t.lkw||"") + (t.info ? " \\u00b7 " + t.info : "");\n          rightHtml = "<span style=\'color:#475569;font-weight:600;\'>" + dkLabel + "</span>";\n        } else if(isSonder) {\n          var tour = t.tour && t.tour!=="zbv" && t.tour!=="" ? t.tour : "z.b.v.";\n          var ac = t.art==="Gigaliner" ? "background:#fef3c7;color:#92400e;"\n                 : t.art==="Tandem"    ? "background:#dbeafe;color:#1e40af;"\n                 :                       "background:#dcfce7;color:#166534;";\n          rightHtml = "<span style=\'color:#475569;font-weight:600;\'>" + tour + " \\u00b7 " + t.lkw + "</span>"\n                    + "<span style=\'" + ac + "padding:1px 7px;border-radius:5px;font-size:10px;font-weight:700;\'>" + t.art + "</span>";\n        } else {\n          rightHtml = "<span style=\'color:#475569;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\'>" + (t.kommentar||"") + "</span>";\n        }\n        return "<div style=\'display:flex;align-items:center;justify-content:space-between;"\n               +"background:#edf0f5;border-radius:4px;padding:5px 8px;margin-bottom:4px;font-size:11px;\'>"\n               +"<span style=\'color:#64748b;\'>" + datumStr + "</span>"\n               +"<span style=\'display:flex;align-items:center;gap:5px;\'>"\n               + rightHtml\n               +"<span style=\'font-weight:700;color:#15803d;margin-left:4px;\'>" + verdienst.toFixed(2) + " \\u20ac</span>"\n               +"</span>"\n               +"</div>";\n      }).join("");\n\n      // Card – same shell as samRender: border:2px solid, border-radius:5px, padding:14px 16px\n      html += "<div style=\'background:#fff;border:2px solid #1b66b3;border-radius:5px;"\n             +"padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.06);\'>";\n\n      // Header row – mirroring samRender header\n      html += "<div style=\'display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px;\'>";\n      html += "<div style=\'flex:1;min-width:0;\'>";\n      html += "<div style=\'font-weight:900;font-size:14px;color:#0b1220;white-space:nowrap;"\n             +"overflow:hidden;text-overflow:ellipsis;\'>" + f.name + "</div>";\n      html += "<div style=\'margin-top:3px;font-size:10px;color:#94a3b8;\'>" + (f.persnr||"") + "</div>";\n      html += "</div>";\n      // Big total number – same style as the einsaetze count in samRender\n      html += "<div style=\'text-align:right;flex-shrink:0;\'>";\n      html += "<div style=\'font-size:24px;font-weight:900;color:#1b66b3;line-height:1;\'>" + f.gesamt.toFixed(2) + "</div>";\n      html += "<div style=\'font-size:9px;color:#94a3b8;font-weight:600;\'>" + (_zTab==="drittkunden" ? "\\u20ac Zulage" : "\\u20ac Verdienst") + "</div>";\n      html += "</div>";\n      html += "</div>";\n\n      // Chips\n      html += "<div style=\'flex:1;\'>"+chipsHtml+"</div>";\n\n      // Footer: count badge\n      html += "<div style=\'margin-top:8px;border-top:1px solid #e2e8f0;padding-top:8px;"\n             +"display:flex;align-items:center;gap:6px;\'>";\n      html += "<span style=\'background:#eff6ff;color:#1b66b3;border-radius:4px;padding:2px 8px;"\n             +"font-size:10px;font-weight:700;\'>" + f.tage.length + " Eintr\\u00e4ge</span>";\n      html += "</div>";\n\n      html += "</div>"; // end card\n    });\n\n    html += "</div>"; // end grid\n  });\n\n  el.innerHTML = html || "<div style=\'color:#94a3b8;padding:40px;text-align:center;\'>Keine Daten.</div>";\n  if(stats) stats.innerHTML = totalAll>0 ? "\\u03a3 <b>"+totalAll.toFixed(2)+" \\u20ac</b>" : "";\n}\n\n\n\nfunction zulagenExportExcel() {\n  var b64 = _zTab==="sonder" ? ZULAGE_XLSX_SONDER : _zTab==="fuengers" ? ZULAGE_XLSX_FUENGERS : ZULAGE_XLSX_DRITTKUNDEN;\n  if(!b64) { alert("Keine Excel-Daten.\\nBitte Touren-Dateien in Streamlit hochladen und App neu generieren."); return; }\n  var bc = atob(b64), bytes = new Uint8Array(bc.length);\n  for(var i=0;i<bc.length;i++) bytes[i]=bc.charCodeAt(i);\n  var blob = new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});\n  var url = URL.createObjectURL(blob);\n  var a = document.createElement("a"); a.href=url;\n  a.download = "Zulagen_"+(_zTab==="sonder"?"Sonderfahrzeuge":_zTab==="fuengers"?"Fuengers":"Drittkunden")+".xlsx";\n  a.click(); URL.revokeObjectURL(url);\n}\n'
 
     wash_js_code = '\n// ── Fahrzeugwäsche Übersicht ───────────────────────────────────────────────\nfunction fwOverviewEsc(v) {\n  return String(v == null ? "" : v)\n    .replace(/&/g, "&amp;")\n    .replace(/</g, "&lt;")\n    .replace(/>/g, "&gt;");\n}\n\nfunction fwOverviewData() {\n  return Array.isArray(FAHRZEUGWAESCHE_DATA) ? FAHRZEUGWAESCHE_DATA : [];\n}\n\nfunction fwBuildOverviewFilters() {\n  var driverSel = document.getElementById("fw-overview-driver");\n  if(!driverSel) return;\n\n  var curDriver = driverSel.value || "all";\n  var rows = fwOverviewData();\n\n  var drivers = Array.from(new Set(rows.map(function(r){ return (r.fahrer || "").trim(); }).filter(Boolean)))\n    .sort(function(a,b){ return a.localeCompare(b, "de"); });\n\n  driverSel.innerHTML = "<option value=\'all\'>Alle Fahrer</option>" + drivers.map(function(v){\n    return "<option value=\'" + fwOverviewEsc(v) + "\'>" + fwOverviewEsc(v) + "</option>";\n  }).join("");\n\n  driverSel.value = drivers.indexOf(curDriver) !== -1 ? curDriver : "all";\n}\n\nfunction fwGetOverviewRows() {\n  var rows = fwOverviewData().slice();\n  var driverEl = document.getElementById("fw-overview-driver");\n  var driver = driverEl ? driverEl.value : "all";\n\n  if(driver && driver !== "all") {\n    rows = rows.filter(function(r){ return (r.fahrer || "") === driver; });\n  }\n\n  rows.sort(function(a,b){\n    var ak = a.datetime_iso || "";\n    var bk = b.datetime_iso || "";\n    if(ak !== bk) return bk.localeCompare(ak);\n    return (a.fahrer || "").localeCompare(b.fahrer || "", "de");\n  });\n  return rows;\n}\n\nfunction fwRenderOverview() {\n  var wrap = document.getElementById("fw-overview-table");\n  var stats = document.getElementById("fw-overview-stats");\n  if(!wrap) return;\n\n  if(!fwOverviewData().length) {\n    if(stats) stats.textContent = "";\n    wrap.innerHTML = "<div style=\'padding:24px 16px;color:#94a3b8;text-align:center;font-size:13px;\'>Keine Fahrzeugwäsche-Dateien geladen.</div>";\n    return;\n  }\n\n  fwBuildOverviewFilters();\n  var rows = fwGetOverviewRows();\n  var driverCount = new Set(rows.map(function(r){ return (r.fahrer || "").trim(); }).filter(Boolean)).size;\n  var lkwCount = new Set(rows.map(function(r){ return ((r.fahrzeug || r.fahrzeug_ia || "").trim()); }).filter(Boolean)).size;\n  var waschungenCount = new Set(rows.map(function(r, idx){\n    var fz = (r.fahrzeug || r.fahrzeug_ia || \"\").trim();\n    var dt = (r.datum || \"\").trim();\n    return (dt && fz) ? (dt + \"||\" + fz) : (\"__row_\" + idx);\n  })).size;\n  if(stats) {\n    var _pc = "display:inline-flex;align-items:baseline;gap:5px;padding:4px 11px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.2";\n    var _nc = "font-size:13px;font-weight:900;letter-spacing:-.3px";\n    stats.innerHTML = "<span style=\\"" + _pc + ";background:#ecf7f1;color:#165532;border:1px solid #c7e5d4\\"><span style=\\"" + _nc + "\\">" + waschungenCount + "</span> Waschungen</span>" + "<span style=\\"" + _pc + ";background:#e8f1fb;color:#0e4a85;border:1px solid #c5dbef\\"><span style=\\"" + _nc + "\\">" + driverCount + "</span> Fahrer</span>" + "<span style=\\"" + _pc + ";background:#fff4e6;color:#9a4e00;border:1px solid #f6d9b3\\"><span style=\\"" + _nc + "\\">" + lkwCount + "</span> LKW</span>";\n  }\n\n  if(!rows.length) {\n    wrap.innerHTML = "<div style=\'padding:24px 16px;color:#94a3b8;text-align:center;font-size:13px;\'>Keine Einträge für den ausgewählten Fahrer.</div>";\n    return;\n  }\n\n  var html = "<div style=\'overflow:auto;max-height:540px;background:#fff;\'><table style=\'width:100%;border-collapse:collapse;font-size:12px;\'>";\n  html += "<thead><tr style=\'position:sticky;top:0;background:linear-gradient(180deg,#2078c9 0%,#1b66b3 100%);z-index:2;box-shadow:0 2px 4px rgba(0,0,0,.08);\'>";\n  ["Datum","Zeit","Fahrer","LKW","Produkt","Kategorie","Quelle"].forEach(function(h){\n    html += "<th style=\'padding:11px 12px;text-align:left;color:#fff;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;border-right:1px solid rgba(255,255,255,.15);white-space:nowrap;\'>" + h + "</th>";\n  });\n  html += "</tr></thead><tbody>";\n\n  rows.forEach(function(r, i){\n    var bg = i % 2 === 0 ? "#ffffff" : "#f8fafc";\n    html += "<tr onmouseover=\\"this.style.background=\'#eaf3fd\'\\" onmouseout=\\"this.style.background=\'" + bg + "\'\\" style=\'background:" + bg + ";border-bottom:1px solid #eef2f7;transition:background .1s;\'>";\n    html += "<td style=\'padding:10px 12px;white-space:nowrap;font-weight:800;color:#0f172a;\'>" + fwOverviewEsc(r.datum || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;white-space:nowrap;color:#64748b;font-variant-numeric:tabular-nums;\'>" + fwOverviewEsc(r.uhrzeit || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;font-weight:700;color:#0f172a;\'>" + fwOverviewEsc(r.fahrer || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;color:#0f172a;font-weight:600;\'>" + fwOverviewEsc(r.fahrzeug || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;color:#166534;font-weight:700;\'>" + fwOverviewEsc(r.produkt || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;color:#475569;\'>" + fwOverviewEsc(r.fahrzeug_kategorie || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;color:#94a3b8;font-size:10.5px;\'>" + fwOverviewEsc(r.quelle || "") + "</td>";\n    html += "</tr>";\n  });\n\n  html += "</tbody></table></div>";\n  wrap.innerHTML = html;\n}\n\nfunction fwInitOverview() {\n  fwBuildOverviewFilters();\n  fwRenderOverview();\n}\n'
@@ -3306,185 +3306,12 @@ function verstossFmtMin(n) {
   return sign + h + " Std. " + m + " Min.";
 }
 
-function verstossTimeKey(name, isoDay) {
-  return String(name || "").trim().toLowerCase() + "|" + String(isoDay || "").trim();
-}
-
-function verstossParseDeDateTime(value) {
-  var s = String(value || "").trim();
-  var m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{1,2}):(\d{2})/);
-  if (!m) return null;
-  return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), Number(m[4]), Number(m[5]), 0, 0).getTime();
-}
-
-function verstossShortTimeFromMs(ms) {
-  if (!Number.isFinite(ms)) return "";
-  var d = new Date(ms);
-  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
-}
-
-function verstossShortDateTimeFromMs(ms) {
-  if (!Number.isFinite(ms)) return "";
-  var d = new Date(ms);
-  return String(d.getDate()).padStart(2, "0") + "."
-    + String(d.getMonth() + 1).padStart(2, "0") + "."
-    + d.getFullYear() + " "
-    + String(d.getHours()).padStart(2, "0") + ":"
-    + String(d.getMinutes()).padStart(2, "0");
-}
-
-function verstossIsZePlaceholder(beginn, ende) {
-  function parts(v) {
-    return String(v || "")
-      .split(",")
-      .map(function(x){ return x.trim(); })
-      .filter(Boolean);
-  }
-  var bs = parts(beginn);
-  var es = parts(ende);
-  if (!bs.length || !es.length) return false;
-  // In der Zeiterfassungs-CSV kommen bei manchen Tagen Platzhalter wie
-  // 00:00 bis 24:00 oder 00:00, 00:00 bis 24:00, 24:00 vor.
-  // Das sind keine echten Schichtzeiten und dürfen nicht als 24-Stunden-Schicht
-  // angezeigt oder gerechnet werden.
-  var allStartZero = bs.every(function(x){ return x === "00:00"; });
-  var allEndFull = es.every(function(x){ return x === "24:00" || x === "00:00"; });
-  return allStartZero && allEndFull;
-}
-
-function verstossCleanFallbackZe(rec) {
-  if (!rec) return null;
-  var out = {};
-  Object.keys(rec).forEach(function(k){ out[k] = rec[k]; });
-  if (verstossIsZePlaceholder(out.beginn, out.ende)) {
-    out.beginn = "";
-    out.ende = "";
-  }
-  return out;
-}
-
-function verstossTimeFor(driverName, violation) {
-  var day = String((violation && violation.date_sort) || "").substring(0, 10);
-  if (!day) return null;
-
-  var zdata = (typeof ZEITERFASSUNG_DATA !== "undefined" && ZEITERFASSUNG_DATA) ? ZEITERFASSUNG_DATA : {};
-  var byKey = zdata.by_key || {};
-  var fallback = verstossCleanFallbackZe(byKey[verstossTimeKey(driverName, day)] || null);
-
-  var vStart = verstossParseDeDateTime(violation && violation.start);
-  var vEnd = verstossParseDeDateTime(violation && violation.end);
-  if (!Number.isFinite(vStart) || !Number.isFinite(vEnd) || vEnd <= vStart) return fallback;
-
-  var personKey = String(driverName || "").trim().toLowerCase();
-  var segments = ((zdata.by_person || {})[personKey] || []).filter(function(s) {
-    return Number.isFinite(Number(s.start_ms)) && Number.isFinite(Number(s.end_ms));
-  });
-
-  if (!segments.length) return fallback;
-
-  // Bei Schichten über 0 Uhr darf nicht der ganze Kalendertag genommen werden.
-  // Es werden nur Segmente verwendet, die den Verstoß wirklich schneiden.
-  // Volltag-Platzhalter aus der Zeiterfassung, zum Beispiel 00:00-24:00,
-  // werden verworfen, sobald echte Teilsegmente vorhanden sind. Sonst entstehen
-  // falsche Werte wie 48 Stunden und mehrere LKW an einem Verstoß.
-  var overlap = segments.filter(function(s) {
-    var a = Number(s.start_ms), b = Number(s.end_ms);
-    return a < vEnd && b > vStart;
-  });
-
-  if (!overlap.length) return fallback;
-
-  var realOverlap = overlap.filter(function(s) {
-    return !s.is_placeholder;
-  });
-  if (realOverlap.length) {
-    overlap = realOverlap;
-  } else {
-    // Wenn nur Platzhalter-Segmente (00:00-24:00) gefunden wurden, nicht daraus
-    // 24 Stunden Arbeitszeit bauen. Dann lieber die Tageswerte aus der CSV zeigen
-    // und Beginn/Ende leer lassen.
-    return fallback;
-  }
-
-  // Falls ein Tag mehrere Segmente hat (z. B. 00:46 und 22:40), nimm nur
-  // das Segment nahe am Verstoßbeginn. Nicht weitere Folgetags-Platzhalter
-  // dazunehmen, sonst werden mehrere Schichten zusammengerechnet.
-  var nearStart = overlap.filter(function(s) {
-    var a = Number(s.start_ms);
-    return a >= (vStart - 2 * 60 * 60 * 1000) && a <= (vStart + 4 * 60 * 60 * 1000);
-  });
-  if (nearStart.length) {
-    overlap = nearStart;
-  } else {
-    // Fallback: bestes einzelnes Segment nach Überschneidung und Nähe zum Start.
-    overlap.sort(function(x, y) {
-      function score(s) {
-        var a = Number(s.start_ms), b = Number(s.end_ms);
-        var ov = Math.max(0, Math.min(b, vEnd) - Math.max(a, vStart));
-        var dist = Math.abs(a - vStart);
-        return ov - (dist / 20);
-      }
-      return score(y) - score(x);
-    });
-    overlap = [overlap[0]];
-  }
-
-  overlap.sort(function(a, b) { return Number(a.start_ms) - Number(b.start_ms); });
-
-  var startMs = Number(overlap[0].start_ms);
-  var endMs = Number(overlap[0].end_ms);
-  var gross = 0;
-  var pause = 0;
-  var lkws = [];
-
-  overlap.forEach(function(s) {
-    var dur = Number(s.duration);
-    if (Number.isFinite(dur) && dur > 0) {
-      gross += Math.round(dur);
-    } else {
-      var a = Number(s.start_ms);
-      var b = Number(s.end_ms);
-      if (Number.isFinite(a) && Number.isFinite(b) && b > a) gross += Math.round((b - a) / 60000);
-    }
-    startMs = Math.min(startMs, Number(s.start_ms));
-    endMs = Math.max(endMs, Number(s.end_ms));
-
-    var p = Number(s.pause || 0);
-    if (Number.isFinite(p) && p > 0) pause += p;
-
-    String(s.lkw || "").split(",").forEach(function(part) {
-      part = part.trim();
-      if (part && lkws.indexOf(part) < 0) lkws.push(part);
-    });
-  });
-
-  // Wenn Pause durch segmentierte Tageszeilen doppelt oder falsch wirkt:
-  // Arbeitszeit nie negativ und nicht größer als Bruttozeit.
-  pause = Math.max(0, Math.min(pause, gross));
-  var work = Math.max(0, gross - pause);
-
-  return {
-    person: driverName,
-    date: day,
-    beginn: verstossShortDateTimeFromMs(startMs),
-    ende: verstossShortDateTimeFromMs(endMs),
-    arbeitszeit: work,
-    pause: pause || (fallback && fallback.pause) || null,
-    ruhezeit: (fallback && fallback.ruhezeit) || null,
-    lkw: lkws.join(", ") || (fallback && fallback.lkw) || ""
-  };
-}
-
 function verstossVal(v) {
   return (v === null || v === undefined || v === "") ? "\u2014" : verstossEsc(v);
 }
 
 function verstossTimeMin(v) {
   return (v === null || v === undefined || v === "") ? "\u2014" : verstossFmtMin(v);
-}
-
-function verstossLkw(v) {
-  return v && v.lkw ? verstossEsc(v.lkw) : "\u2014";
 }
 
 function verstossInit() {
@@ -3626,7 +3453,7 @@ function verstossRenderGraph() {
   if (!body) return;
   var all = verstossGetFlatViolations();
   if (!all.length) {
-    body.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Verstoßdaten – bitte CSV in Streamlit hochladen.</div>";
+    body.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Verstoßdaten – bitte Verstoß-CSV in Streamlit hochladen.</div>";
     if (stats) stats.innerHTML = "";
     return;
   }
@@ -3791,7 +3618,7 @@ function verstossRender() {
   var data = (VERSTOSS_DATA && Array.isArray(VERSTOSS_DATA.drivers)) ? VERSTOSS_DATA.drivers : [];
   if (!data.length) {
     body.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>"
-      + "Keine Verstoßdaten \u2013 bitte CSV in Streamlit hochladen.</div>";
+      + "Keine Verstoßdaten \u2013 bitte Verstoß-CSV in Streamlit hochladen.</div>";
     if (stats) stats.innerHTML = "";
     return;
   }
@@ -3920,8 +3747,8 @@ function verstossRender() {
       html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;max-height:400px;overflow-y:auto;'>";
       html += "<table style='width:100%;border-collapse:collapse;font-size:11px;'>";
       html += "<thead><tr style='background:#475569;color:#fff;position:sticky;top:0;'>";
-      ["Start", "Ende", "Verstoß", "Soll", "Ist", "Differenz", "Beginn ZE", "Ende ZE", "Arbeitszeit", "Pause", "Ruhezeit", "LKW", "Fahrer", "Firma"].forEach(function(h, idx) {
-        var align = ([3,4,5,8,9,10,12,13].indexOf(idx) >= 0) ? "right" : "left";
+      ["Start", "Ende", "Verstoß", "Soll", "Ist", "Differenz", "Strafe Fahrer", "Strafe Firma"].forEach(function(h, idx) {
+        var align = ([3,4,5,6,7].indexOf(idx) >= 0) ? "right" : "left";
         html += "<th style='padding:6px 8px;text-align:" + align + ";font-size:10px;font-weight:800;letter-spacing:.3px;white-space:nowrap;'>"
               + h + "</th>";
       });
@@ -3942,13 +3769,7 @@ function verstossRender() {
               + verstossFmtMin(v.ist) + "</td>";
         html += "<td style='padding:5px 8px;text-align:right;color:" + (v.diff > 0 ? "#dc2626" : "#64748b") + ";font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
               + verstossFmtMin(v.diff) + "</td>";
-        var z = verstossTimeFor(d.name, v);
-        html += "<td style='padding:5px 8px;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + verstossVal(z && z.beginn) + "</td>";
-        html += "<td style='padding:5px 8px;color:#64748b;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + verstossVal(z && z.ende) + "</td>";
-        html += "<td style='padding:5px 8px;text-align:right;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + verstossTimeMin(z && z.arbeitszeit) + "</td>";
-        html += "<td style='padding:5px 8px;text-align:right;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + verstossTimeMin(z && z.pause) + "</td>";
-        html += "<td style='padding:5px 8px;text-align:right;color:#334155;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + verstossTimeMin(z && z.ruhezeit) + "</td>";
-        html += "<td style='padding:5px 8px;color:#334155;font-weight:700;white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis;' title='" + verstossLkw(z) + "'>" + verstossLkw(z) + "</td>";
+
         html += "<td style='padding:5px 8px;text-align:right;font-weight:700;color:" + (v.driver_penalty > 0 ? "#dc2626" : "#cbd5e1") + ";white-space:nowrap;'>"
               + (v.driver_penalty > 0 ? verstossFmtEuro(v.driver_penalty) : "\u2014") + "</td>";
         html += "<td style='padding:5px 8px;text-align:right;font-weight:700;color:" + (v.company_penalty > 0 ? "#b45309" : "#cbd5e1") + ";white-space:nowrap;'>"
@@ -4384,7 +4205,7 @@ iframe.active{{display:block}}
                  border-radius:5px;font-size:13px;font-family:inherit;outline:none">
         <button onclick="telPDF()"
           style="padding:8px 18px;background:#dc2626;border:none;color:#fff;border-radius:5px;
-                 font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap">
+                 font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap">
           &#128196; PDF exportieren
         </button>
       </div>
@@ -4506,7 +4327,7 @@ iframe.active{{display:block}}
         <span id="verstoss-stats" style="font-size:12px;font-weight:700;color:#64748b;margin-left:auto;"></span>
       </div>
       <div id="verstoss-body" style="flex:1;overflow-y:auto;padding:4px 2px 30px 2px;">
-        <div style="color:#94a3b8;padding:60px;text-align:center;font-size:14px;">Keine Verstoßdaten &ndash; bitte CSV in Streamlit hochladen.</div>
+        <div style="color:#94a3b8;padding:60px;text-align:center;font-size:14px;">Keine Verstoßdaten &ndash; bitte Verstoß-CSV in Streamlit hochladen.</div>
       </div>
     </div>
   </div>
@@ -4517,25 +4338,30 @@ iframe.active{{display:block}}
       <div style="display:flex;align-items:center;gap:10px;padding:14px 0;flex-wrap:wrap;flex-shrink:0;">
         <h2 style="margin:0;font-size:17px;font-weight:900;color:#991b1b;">&#9888;&#65039; Versto&#223;auswertung &ndash; Graph pro Jahr</h2>
         <select id="verstoss-graph-year" onchange="verstossGraphYearChange(this.value)"
-          style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:13px;font-weight:800;font-family:inherit;outline:none;background:#fff;color:#991b1b;cursor:pointer;"></select>
+          style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:800;font-family:inherit;outline:none;background:#fff;color:#991b1b;cursor:pointer;"></select>
         <span id="verstoss-graph-stats" style="font-size:12px;font-weight:700;color:#64748b;margin-left:auto;"></span>
       </div>
       <div id="verstoss-graph-content" style="flex:1;overflow-y:auto;padding:4px 2px 30px 2px;">
-        <div style="color:#94a3b8;padding:60px;text-align:center;font-size:14px;">Keine Versto&#223;daten &ndash; bitte CSV in Streamlit hochladen.</div>
+        <div style="color:#94a3b8;padding:60px;text-align:center;font-size:14px;">Keine Versto&#223;daten &ndash; bitte Versto&#223;-CSV in Streamlit hochladen.</div>
       </div>
     </div>
   </div>
 
   <!-- ── Großkunden Panel ───────────────────────────────────────────────────── -->
-  <div id="panel-gk" style="display:none;flex:1;overflow:hidden;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
-    <!-- Kacheln oben -->
-    <div style="flex-shrink:0;background:#fff;border-bottom:1px solid #dde3ea;padding:14px 20px;">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;margin-bottom:10px;">Großkunden <span id="gk-count" style="font-weight:600;color:#64748b;"></span></div>
-      <div id="gk-tiles" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+  <div id="panel-gk" style="display:none;flex:1;overflow:hidden;background:#eef2f7;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
+    <!-- Kopf / Suche -->
+    <div style="flex-shrink:0;background:#fff;border-bottom:1px solid #dde3ea;padding:10px 16px;box-shadow:0 1px 4px rgba(15,23,42,.04);">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <div style="font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.45px;color:#0f172a;white-space:nowrap;">Gro&#223;kunden <span id="gk-count" style="font-weight:700;color:#64748b;"></span></div>
+        <input id="gk-search" placeholder="Gro&#223;kunden suchen..." oninput="gkFilter(this.value)"
+          style="flex:1;max-width:320px;padding:7px 11px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:12px;font-family:inherit;outline:none;background:#fff;color:#0f172a;">
+        <span id="gk-stats" style="margin-left:auto;font-size:11px;font-weight:700;color:#64748b;"></span>
+      </div>
+      <div id="gk-tiles" style="display:flex;flex-wrap:wrap;gap:6px;max-height:94px;overflow-y:auto;padding-right:4px;"></div>
     </div>
     <!-- Detail unten -->
-    <div id="gk-detail" style="flex:1;overflow-y:auto;padding:24px 28px 40px;">
-      <div style="color:#94a3b8;padding:80px;text-align:center;font-size:14px;">Keine Gro&#223;kundendaten &ndash; bitte Excel in Streamlit hochladen.</div>
+    <div id="gk-detail" style="flex:1;overflow-y:auto;padding:16px 18px 28px;">
+      <div style="color:#94a3b8;padding:70px;text-align:center;font-size:14px;">Keine Gro&#223;kundendaten &ndash; bitte Excel in Streamlit hochladen.</div>
     </div>
   </div>
 
@@ -4935,7 +4761,6 @@ var ZULAGE_XLSX_FUENGERS    = "{zulage_xlsx_fuengers}";
 var DRITTKUNDEN_DATA        = {drittkunden_json};
 var ZULAGE_XLSX_DRITTKUNDEN = "{zulage_xlsx_drittkunden}";
 var VERSTOSS_DATA           = {verstoss_json};
-var ZEITERFASSUNG_DATA      = {zeiterfassung_json};
 var SPESEN_DATA            = {spesen_json};
 var GK_DATA                = {grosskunden_json};
 
@@ -4943,6 +4768,7 @@ var GK_DATA                = {grosskunden_json};
 
 // ── Großkunden ────────────────────────────────────────────────────────────────
 var gkSelected = 0;
+var gkSearchQ = "";
 
 function gkEsc(v) {{
   return String(v == null ? "" : v)
@@ -4966,41 +4792,80 @@ function gkIsSection(v) {{
   return t.endsWith(":") && t.length < 60 && !t.includes("@");
 }}
 
+function gkCustomerText(k) {{
+  var parts = [k && k.name ? k.name : ""];
+  if (k && k.type === "structured") {{
+    (k.entries || []).forEach(function(e) {{
+      parts.push(e.name || "");
+      parts.push(e.kundennummer || "");
+    }});
+  }} else if (k && k.lines) {{
+    parts = parts.concat(k.lines.slice(0, 60));
+  }}
+  return parts.join(" ").toLowerCase();
+}}
+
+function gkVisibleIndexes() {{
+  var q = (gkSearchQ || "").toLowerCase().trim();
+  var out = [];
+  (GK_DATA || []).forEach(function(k, i) {{
+    if (!q || gkCustomerText(k).indexOf(q) >= 0) out.push(i);
+  }});
+  return out;
+}}
+
+function gkFilter(q) {{
+  gkSearchQ = q || "";
+  var visible = gkVisibleIndexes();
+  if (visible.indexOf(gkSelected) < 0) gkSelected = visible.length ? visible[0] : -1;
+  gkBuildTiles(gkSelected);
+  if (gkSelected >= 0) gkShow(gkSelected, true);
+  else {{
+    var detail = document.getElementById("gk-detail");
+    if (detail) detail.innerHTML = "<div style='color:#94a3b8;padding:70px;text-align:center;font-size:14px;'>Kein Gro&#223;kunde f&#252;r diese Suche.</div>";
+  }}
+}}
+
 function gkBuildTiles(activeIdx) {{
   var tilesEl = document.getElementById("gk-tiles");
   var countEl = document.getElementById("gk-count");
+  var statsEl = document.getElementById("gk-stats");
   if (!tilesEl) return;
-  if (countEl) countEl.textContent = "(" + GK_DATA.length + ")";
+  var total = (GK_DATA || []).length;
+  var visible = gkVisibleIndexes();
+  if (countEl) countEl.textContent = "(" + total + ")";
+  if (statsEl) statsEl.textContent = visible.length + " angezeigt";
   var html = "";
-  GK_DATA.forEach(function(k, i) {{
-    var active = i === activeIdx;
+  visible.forEach(function(realIdx) {{
+    var k = GK_DATA[realIdx];
+    var active = realIdx === activeIdx;
     var sub = "";
     if (k.type === "structured" && k.entries && k.entries.length) {{
       sub = k.entries.length === 1
         ? (k.entries[0].kundennummer || "")
-        : k.entries.length + " Eintr.";
+        : k.entries.length + " Eintr.";
     }}
     var bg      = active ? "#1e3a5f" : "#fff";
-    var border  = active ? "#1e3a5f" : "#dde3ea";
+    var border  = active ? "#1e3a5f" : "#d8e0ea";
     var txtMain = active ? "#fff"    : "#0f172a";
-    var txtSub  = active ? "rgba(255,255,255,.6)" : "#94a3b8";
+    var txtSub  = active ? "rgba(255,255,255,.70)" : "#64748b";
     var tileColors = ["#1b66b3","#166534","#b45309","#7c3aed","#0891b2","#dc2626","#059669","#d97706","#4f46e5","#0f766e","#c2410c","#7e22ce","#1d4ed8","#15803d","#b91c1c","#6d28d9"];
-    var accent = tileColors[i % tileColors.length];
-    var topBar = active ? "border-top:3px solid #fff;" : "border-top:3px solid " + accent + ";";
-    html += "<div onclick='gkShow(" + i + ")'"
-          + " style='cursor:pointer;border-radius:6px;padding:8px 13px;"
-          + "border:1.5px solid " + border + ";background:" + bg + ";"
+    var accent = tileColors[realIdx % tileColors.length];
+    var topBar = active ? "border-left:4px solid #fbbf24;" : "border-left:4px solid " + accent + ";";
+    html += "<button type='button' onclick='gkShow(" + realIdx + ")'"
+          + " style='cursor:pointer;border-radius:6px;padding:6px 10px;text-align:left;font-family:inherit;"
+          + "border:1px solid " + border + ";background:" + bg + ";"
           + topBar
-          + "transition:all .12s;min-width:90px;user-select:none;box-shadow:" + (active ? "0 2px 8px rgba(30,58,95,.25)" : "0 1px 3px rgba(0,0,0,.06)") + ";'>"
-          + "<div style='font-size:12px;font-weight:700;color:" + txtMain + ";white-space:nowrap;line-height:1.3;'>"
+          + "transition:all .12s;min-width:96px;max-width:220px;user-select:none;box-shadow:" + (active ? "0 2px 8px rgba(30,58,95,.20)" : "none") + ";'>"
+          + "<div style='font-size:11.5px;font-weight:800;color:" + txtMain + ";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25;'>"
           + gkEsc(k.name) + "</div>";
     if (sub) {{
-      html += "<div style='font-size:10px;color:" + txtSub + ";margin-top:2px;font-variant-numeric:tabular-nums;'>"
+      html += "<div style='font-size:10px;color:" + txtSub + ";margin-top:1px;font-variant-numeric:tabular-nums;'>"
             + gkEsc(sub) + "</div>";
     }}
-    html += "</div>";
+    html += "</button>";
   }});
-  tilesEl.innerHTML = html;
+  tilesEl.innerHTML = html || "<div style='color:#94a3b8;font-size:12px;padding:8px 4px;'>Keine Treffer.</div>";
 }}
 
 function gkRender() {{
@@ -5011,16 +4876,20 @@ function gkRender() {{
     detail.innerHTML = "<div style='color:#94a3b8;padding:80px;text-align:center;font-size:14px;'>Keine Gro\u00dfkundendaten \u2013 bitte Excel in Streamlit hochladen.</div>";
     return;
   }}
-  gkShow(0);
+  var visible = gkVisibleIndexes();
+  gkShow(visible.length ? visible[0] : 0);
 }}
 
-function gkShow(idx) {{
+function gkShow(idx, skipTiles) {{
   gkSelected = idx;
-  gkBuildTiles(idx);
+  if (!skipTiles) gkBuildTiles(idx);
   var detail = document.getElementById("gk-detail");
   if (!detail) return;
   var customer = GK_DATA[idx];
-  if (!customer) return;
+  if (!customer) {{
+    detail.innerHTML = "<div style='color:#94a3b8;padding:70px;text-align:center;font-size:14px;'>Kein Gro&#223;kunde ausgew&#228;hlt.</div>";
+    return;
+  }}
   if (customer.type === "structured") gkRenderStructured(customer, detail);
   else gkRenderFreeform(customer, detail);
   detail.scrollTop = 0;
@@ -5059,8 +4928,8 @@ function gkRenderStructured(customer, detail) {{
   var html = "<div style='width:100%;'>";
 
   // ── Sheet-Titel ──────────────────────────────────────────────────────────────
-  html += "<div style='margin-bottom:20px;'>"
-        + "<h1 style='font-size:21px;font-weight:900;color:#0f172a;margin:0 0 4px;letter-spacing:-.3px;'>"
+  html += "<div style='margin-bottom:12px;'>"
+        + "<h1 style='font-size:19px;font-weight:900;color:#0f172a;margin:0 0 4px;letter-spacing:-.3px;'>"
         + gkEsc(customer.name) + "</h1>"
         + "<div style='height:3px;width:36px;background:#1e3a5f;border-radius:2px;'></div>"
         + "</div>";
@@ -5068,8 +4937,8 @@ function gkRenderStructured(customer, detail) {{
   // ════════════════════════════════════════════════════════════════════════════
   // BLOCK 1: Namen + Adressen aller Entries
   // ════════════════════════════════════════════════════════════════════════════
-  html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:10px;margin-bottom:20px;overflow:hidden;box-shadow:0 1px 6px rgba(15,23,42,.06);'>";
-  html += "<div style='padding:10px 16px;background:linear-gradient(90deg,#1e3a5f 0%,#1b66b3 100%);display:flex;align-items:center;gap:8px;'>"
+  html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:8px;margin-bottom:12px;overflow:hidden;box-shadow:0 1px 6px rgba(15,23,42,.06);'>";
+  html += "<div style='padding:8px 12px;background:linear-gradient(90deg,#1e3a5f 0%,#1b66b3 100%);display:flex;align-items:center;gap:8px;'>"
         + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:rgba(255,255,255,.8);'>Name &amp; Adresse</span>"
         + "</div>";
 
@@ -5087,9 +4956,9 @@ function gkRenderStructured(customer, detail) {{
     var entryColors2 = ["#1b66b3","#166534","#b45309","#7c3aed","#0891b2","#dc2626","#059669","#d97706","#4f46e5","#0f766e","#c2410c","#7e22ce","#1d4ed8","#15803d","#b91c1c","#6d28d9"];
     var ec = entryColors2[ei % entryColors2.length];
     var borderTop = ei > 0 ? "border-top:1px solid #eef2f7;" : "";
-    html += "<div style='padding:10px 16px 10px 14px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;" + borderTop + "border-left:3px solid " + ec + ";'>";
+    html += "<div style='padding:8px 12px 8px 11px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;" + borderTop + "border-left:3px solid " + ec + ";'>";
     html += "<div style='min-width:160px;flex:0 0 auto;'>"
-          + "<div style='font-size:13px;font-weight:800;color:#0f172a;'>" + gkEsc(entry.name) + "</div>";
+          + "<div style='font-size:12.5px;font-weight:800;color:#0f172a;'>" + gkEsc(entry.name) + "</div>";
     if (entry.kundennummer) {{
       html += "<div style='margin-top:5px;'><span style='display:inline-block;background:#1e3a5f;color:#fff;"
             + "font-size:12px;font-weight:800;border-radius:4px;padding:2px 10px;"
@@ -5174,19 +5043,19 @@ function gkRenderStructured(customer, detail) {{
   }});
 
   // Zweispaltiges Layout: Kontakte links, Hinweise rechts
-  html += "<div style='display:flex;gap:16px;align-items:stretch;'>";
+  html += "<div style='display:grid;grid-template-columns:minmax(360px,1.1fr) minmax(280px,.9fr);gap:12px;align-items:stretch;'>";
 
   // ── LINKE SPALTE: Kontaktkarte ─────────────────────────────────────────────
   html += "<div style='flex:1 1 0;min-width:0;display:flex;flex-direction:column;'>";
   if (hasAnyContact && allContactRows.length) {{
-    html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:10px;overflow:hidden;box-shadow:0 1px 6px rgba(15,23,42,.06);flex:1;display:flex;flex-direction:column;'>";
+    html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:8px;overflow:hidden;box-shadow:0 1px 6px rgba(15,23,42,.06);flex:1;display:flex;flex-direction:column;'>";
     // KNr aller Entries für den Header sammeln
     var headerKnrs = customer.entries
       .map(function(e){{ return e.kundennummer; }})
       .filter(Boolean);
-    html += "<div style='padding:11px 18px 11px 15px;background:#f8fafc;border-bottom:1px solid #e8edf2;"
+    html += "<div style='padding:9px 12px;background:#f8fafc;border-bottom:1px solid #e8edf2;"
           + "border-left:4px solid #1b66b3;display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
-          + "<span style='font-size:13px;font-weight:800;color:#0f172a;flex:1;'>" + gkEsc(customer.name) + "</span>";
+          + "<span style='font-size:12.5px;font-weight:800;color:#0f172a;flex:1;'>" + gkEsc(customer.name) + "</span>";
     headerKnrs.forEach(function(k) {{
       html += "<span style='display:inline-block;background:#1e3a5f;color:#fff;"
             + "font-size:12px;font-weight:800;border-radius:4px;padding:2px 10px;"
@@ -5256,8 +5125,8 @@ function gkRenderStructured(customer, detail) {{
   // ── RECHTE SPALTE: Hinweise ────────────────────────────────────────────────
   if (allHints.length) {{
     html += "<div style='flex:1 1 0;min-width:0;display:flex;flex-direction:column;'>";
-    html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:10px;overflow:hidden;box-shadow:0 1px 6px rgba(15,23,42,.06);flex:1;display:flex;flex-direction:column;'>";
-    html += "<div style='padding:11px 18px 11px 15px;background:#fffbeb;border-bottom:1px solid #fde68a;border-left:4px solid #d97706;'>"
+    html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:8px;overflow:hidden;box-shadow:0 1px 6px rgba(15,23,42,.06);flex:1;display:flex;flex-direction:column;'>";
+    html += "<div style='padding:9px 12px;background:#fffbeb;border-bottom:1px solid #fde68a;border-left:4px solid #d97706;'>"
           + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#92400e;'>Hinweise</span>"
           + "</div>";
     allHints.forEach(function(h, i) {{
@@ -5285,7 +5154,7 @@ function gkRenderFreeform(customer, detail) {{
   var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   var html = "<div style='max-width:700px;'>";
 
-  html += "<div style='margin-bottom:20px;'>"
+  html += "<div style='margin-bottom:12px;'>"
         + "<h1 style='font-size:22px;font-weight:900;color:#0f172a;margin:0;'>" + gkEsc(customer.name) + "</h1>"
         + "<div style='height:3px;width:40px;background:#1e3a5f;border-radius:2px;margin-top:6px;'></div>"
         + "</div>";
@@ -6510,242 +6379,6 @@ def parse_spesen_csv(uploaded_file) -> str:
     }, ensure_ascii=False)
 
 
-def parse_zeiterfassung_csv(uploaded_file) -> str:
-    """Parst die Zeiterfassungs-CSV und erzeugt einen Lookup je Fahrer + Datum."""
-    import csv as _csv
-    from io import StringIO as _SIO
-
-    empty = json.dumps({"by_key": {}, "total_rows": 0, "matched_rows": 0}, ensure_ascii=False)
-    payload = read_upload_bytes(uploaded_file)
-    if not payload:
-        return empty
-
-    text = None
-    for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
-        try:
-            text = payload.decode(enc)
-            break
-        except Exception:
-            continue
-    if text is None:
-        return empty
-    if text.startswith("\ufeff"):
-        text = text[1:]
-
-    def _clean(v):
-        s = "" if v is None else str(v).strip()
-        return "" if s.lower() in ("nan", "none") else s
-
-    def _to_int(v):
-        s = _clean(v)
-        if not s:
-            return None
-        # Werte kommen in der Datei in Minuten, teils mit deutschem Dezimalformat.
-        try:
-            return int(round(float(s.replace(".", "").replace(",", "."))))
-        except Exception:
-            return None
-
-    def _iso_date(v):
-        s = _clean(v)
-        m = re.match(r"^(\d{2})\.(\d{2})\.(\d{4})", s)
-        if m:
-            return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
-        m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
-        if m:
-            return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
-        return ""
-
-    def _time(v):
-        s = _clean(v)
-        m = re.match(r"^(\d{1,2}):(\d{2})", s)
-        if m:
-            return f"{int(m.group(1)):02d}:{m.group(2)}"
-        return s
-
-    def _key(name, iso_day):
-        return f"{_clean(name).lower()}|{iso_day}"
-
-    def _minutes_of_day(t):
-        t = _time(t)
-        m = re.match(r"^(\d{1,2}):(\d{2})$", t or "")
-        if not m:
-            return None
-        return int(m.group(1)) * 60 + int(m.group(2))
-
-    def _date_obj(iso_day):
-        try:
-            return datetime.datetime.strptime(iso_day, "%Y-%m-%d").date()
-        except Exception:
-            return None
-
-    def _berlin_offset_minutes(dt):
-        try:
-            return int(dt.replace(tzinfo=ZoneInfo("Europe/Berlin")).utcoffset().total_seconds() / 60)
-        except Exception:
-            return 0
-
-    def _js_ms_for_time_recording(dt):
-        # Die Zeiten aus dem Zeiterfassungs-Export sind gegenüber den Verstößen
-        # um die lokale Berlin-Zeitzone verschoben. Zusätzlich würde JavaScript
-        # beim Anzeigen eines Unix-Zeitstempels die Zeitzone erneut addieren.
-        # Deshalb wird hier zweimal der lokale Offset abgezogen, damit im Browser
-        # die gleiche Ortszeit wie in der Verstoßdatei erscheint.
-        off = _berlin_offset_minutes(dt)
-        adjusted = dt - datetime.timedelta(minutes=2 * off)
-        return int(adjusted.timestamp() * 1000)
-
-    def _display_shifted_dt(dt):
-        # Lokaler Anzeigezeitpunkt, der fachlich zum Verstoß passt.
-        off = _berlin_offset_minutes(dt)
-        return dt - datetime.timedelta(minutes=off)
-
-    def _split_times(v):
-        s = _clean(v)
-        if not s:
-            return []
-        return [_time(x.strip()) for x in s.split(",") if _time(x.strip())]
-
-    try:
-        reader = _csv.DictReader(_SIO(text), delimiter=";", quotechar='"')
-    except Exception as e:
-        st.warning(f"Zeiterfassungs-CSV konnte nicht gelesen werden: {e}")
-        return empty
-
-    by_key = {}
-    by_person = {}
-    total = 0
-
-    for row in reader:
-        total += 1
-        norm = {(k or "").strip().lstrip("\ufeff"): v for k, v in row.items()}
-        # Zusätzlich kleingeschriebene Suche, falls Überschriften anders geschrieben sind.
-        lower = {k.lower(): v for k, v in norm.items()}
-
-        name = _clean(norm.get("Person") or lower.get("person"))
-        iso_day = _iso_date(norm.get("Datum") or lower.get("datum"))
-        if not name or not iso_day:
-            continue
-
-        beginn = _time(norm.get("Beginn") or lower.get("beginn"))
-        ende = _time(norm.get("Ende") or lower.get("ende"))
-        arbeitszeit = _to_int(norm.get("gewertete Arbeitszeit") or lower.get("gewertete arbeitszeit") or norm.get("gebuchte Arbeitszeit") or lower.get("gebuchte arbeitszeit"))
-        pause = _to_int(norm.get("gewertete Pause") or lower.get("gewertete pause") or norm.get("gebuchte Pausen") or lower.get("gebuchte pausen"))
-        ruhezeit = _to_int(norm.get("Ruhezeit") or lower.get("ruhezeit"))
-        lkw = _clean(norm.get("Terminal") or lower.get("terminal"))
-
-        key = _key(name, iso_day)
-        rec = {
-            "person": name,
-            "date": iso_day,
-            "beginn": beginn,
-            "ende": ende,
-            "arbeitszeit": arbeitszeit,
-            "pause": pause,
-            "ruhezeit": ruhezeit,
-            "lkw": lkw,
-        }
-
-        # Segmentliste je Person für sauberen Abgleich über Mitternacht.
-        # Wichtig bei Zeilen wie "00:46, 22:40" bis "24:00, 24:00":
-        # Für Nachtverstöße wird später das Segment nahe dem Verstoßbeginn genommen,
-        # damit nicht fälschlich 00:46 bis 24:00 angezeigt wird.
-        base_day = _date_obj(iso_day)
-        begins = _split_times(norm.get("Beginn") or lower.get("beginn"))
-        ends = _split_times(norm.get("Ende") or lower.get("ende"))
-        if base_day and begins and ends:
-            if len(ends) < len(begins):
-                ends += [ends[-1]] * (len(begins) - len(ends))
-
-            # LKW/Terminal kann ebenfalls kommagetrennt sein. Wenn die Anzahl passt,
-            # wird je Zeitsegment der passende LKW verwendet. Dadurch wird aus
-            # "LWL E 551, LWL E 554" nicht pauschal jeder LKW jedem Segment zugeordnet.
-            lkw_parts = [x.strip() for x in str(lkw or "").split(",") if x.strip()]
-
-            total_segments = []
-            seen_segments = set()
-            for idx, btxt in enumerate(begins):
-                etxt = ends[idx] if idx < len(ends) else ends[-1]
-                bmin = _minutes_of_day(btxt)
-                emin = _minutes_of_day(etxt)
-                if bmin is None or emin is None:
-                    continue
-                start_dt = datetime.datetime.combine(base_day, datetime.time.min) + datetime.timedelta(minutes=bmin)
-                end_dt = datetime.datetime.combine(base_day, datetime.time.min) + datetime.timedelta(minutes=emin)
-                if emin >= 1440:
-                    end_dt = datetime.datetime.combine(base_day, datetime.time.min) + datetime.timedelta(days=1)
-                elif end_dt <= start_dt:
-                    end_dt += datetime.timedelta(days=1)
-                duration = int(round((end_dt - start_dt).total_seconds() / 60))
-                if duration <= 0:
-                    continue
-
-                # Identische Platzhalter wie 00:00-24:00, 00:00-24:00 nur einmal übernehmen.
-                seg_key = (btxt, etxt, int(start_dt.timestamp()), int(end_dt.timestamp()))
-                if seg_key in seen_segments:
-                    continue
-                seen_segments.add(seg_key)
-
-                seg_lkw = lkw_parts[idx] if len(lkw_parts) == len(begins) and idx < len(lkw_parts) else lkw
-                is_placeholder = (
-                    duration >= 18 * 60
-                    or (bmin == 0 and emin >= 1440)
-                    or (bmin == emin)
-                )
-                total_segments.append((idx, btxt, etxt, start_dt, end_dt, duration, seg_lkw, is_placeholder))
-
-            if total_segments:
-                # Pausen nur dem längsten echten Segment zuordnen. Das verhindert doppelte Pausen,
-                # wenn ein Tag in mehrere Teilsegmente getrennt ist oder Volltag-Platzhalter enthält.
-                longest_idx = max(range(len(total_segments)), key=lambda i: (0 if total_segments[i][7] else 1, total_segments[i][5]))
-                person_key = _clean(name).lower()
-                by_person.setdefault(person_key, [])
-                for i, (idx, btxt, etxt, start_dt, end_dt, duration, seg_lkw, is_placeholder) in enumerate(total_segments):
-                    seg_pause = pause if i == longest_idx else 0
-                    by_person[person_key].append({
-                        "date": iso_day,
-                        "beginn": _display_shifted_dt(start_dt).strftime("%d.%m.%Y %H:%M"),
-                        "ende": _display_shifted_dt(end_dt).strftime("%d.%m.%Y %H:%M"),
-                        "start_ms": _js_ms_for_time_recording(start_dt),
-                        "end_ms": _js_ms_for_time_recording(end_dt),
-                        "duration": duration,
-                        "pause": seg_pause,
-                        "ruhezeit": ruhezeit,
-                        "lkw": seg_lkw,
-                        "is_placeholder": is_placeholder,
-                    })
-
-        if key not in by_key:
-            by_key[key] = rec
-            continue
-
-        # Falls es mehrere Zeilen pro Fahrer/Tag gibt: sinnvoll zusammenführen.
-        old = by_key[key]
-        times = [t for t in [old.get("beginn"), beginn] if t]
-        if times:
-            old["beginn"] = min(times)
-        times = [t for t in [old.get("ende"), ende] if t]
-        if times:
-            old["ende"] = max(times)
-
-        for field in ("arbeitszeit", "pause"):
-            vals = [v for v in [old.get(field), rec.get(field)] if isinstance(v, int)]
-            old[field] = sum(vals) if vals else old.get(field)
-
-        if old.get("ruhezeit") is None and rec.get("ruhezeit") is not None:
-            old["ruhezeit"] = rec.get("ruhezeit")
-
-        lkws = []
-        for value in (old.get("lkw"), lkw):
-            for part in str(value or "").split(","):
-                part = part.strip()
-                if part and part not in lkws:
-                    lkws.append(part)
-        old["lkw"] = ", ".join(lkws)
-
-    return json.dumps({"by_key": by_key, "by_person": by_person, "total_rows": total, "matched_rows": len(by_key)}, ensure_ascii=False)
-
-
 def parse_verstoss_csv(uploaded_file) -> str:
     """Parst die Digitacho-Verstoßauswertungs-CSV (Semikolon-getrennt) und aggregiert pro Fahrer."""
     import csv as _csv
@@ -7085,14 +6718,8 @@ def parse_fahrzeugwaesche_excel(uploaded_files) -> str:
 def parse_grosskunden_excel(uploaded_file) -> str:
     """Liest alle Blätter der Großkunden-Excel aus und liefert JSON.
 
-    Output pro strukturiertem Blatt:
-      {name, type:"structured", content_headers:[str,...],
-       entries:[{name, kundennummer, rows:[[cell,...],...]}]}
-    Die rows enthalten nur die content_headers-Spalten (ohne Name/KNr).
-    Zeilen-Zugehörigkeit bleibt erhalten – Email und Telefon auf derselben
-    Zeile bleiben im selben row-Eintrag.
-
-    Freitext-Blätter: {name, type:"freeform", lines:[str,...]}
+    Performance: read_only=True und Streaming über die Zeilen, damit große
+    Großkunden-Dateien nicht komplett als Liste im Speicher landen.
     """
     import openpyxl as _opxl
 
@@ -7105,90 +6732,105 @@ def parse_grosskunden_excel(uploaded_file) -> str:
         "name", "kundennummer", "mail", "telefon", "hinweise",
         "e-mail", "email", "adresse", "ansprechpartner", "bemerkung",
         "info", "kontakt", "anmerkung", "lieferzeit", "hinweis",
-        "knr", "strasse", "plz", "ort",
+        "knr", "strasse", "straße", "plz", "ort",
     }
 
     def _is_structured(first_row):
-        cells = [_clean(c).lower().strip() for c in first_row]
-        return bool(HEADER_KEYWORDS & set(cells))
+        cells = {_clean(c).lower().strip() for c in first_row}
+        return bool(HEADER_KEYWORDS & cells)
+
+    def _row_has_value(row):
+        return any(_clean(c) for c in row)
 
     empty = "[]"
     payload = read_upload_bytes(uploaded_file)
     if not payload:
         return empty
     try:
-        wb = _opxl.load_workbook(io.BytesIO(payload), data_only=True)
+        wb = _opxl.load_workbook(io.BytesIO(payload), data_only=True, read_only=True)
     except Exception:
         return empty
 
     result = []
-    for sname in wb.sheetnames:
-        ws = wb[sname]
-        all_rows = list(ws.iter_rows(values_only=True))
-        if not any(any(c is not None for c in r) for r in all_rows):
-            continue
+    try:
+        for sname in wb.sheetnames:
+            ws = wb[sname]
+            row_iter = ws.iter_rows(values_only=True)
+            first_row = None
+            for row in row_iter:
+                if _row_has_value(row):
+                    first_row = row
+                    break
+            if first_row is None:
+                continue
 
-        first_row = all_rows[0]
-        if _is_structured(first_row):
-            headers = [_clean(c) for c in first_row]
+            if _is_structured(first_row):
+                headers = [_clean(c) for c in first_row]
 
-            # Name- und Kundennummer-Spalte bestimmen
-            name_col = next(
-                (i for i, h in enumerate(headers) if h.lower().strip() in ("name", "name ")),
-                -1
-            )
-            knr_col = next(
-                (i for i, h in enumerate(headers)
-                 if "kundennummer" in h.lower() or h.lower().strip() in ("knr",)),
-                -1
-            )
-            # Alle anderen Spalten → content
-            content_idx = [i for i, h in enumerate(headers)
-                           if i != name_col and i != knr_col and h.strip()]
-            content_headers = [headers[i] for i in content_idx]
+                name_col = next(
+                    (i for i, h in enumerate(headers) if h.lower().strip() == "name"),
+                    -1
+                )
+                knr_col = next(
+                    (i for i, h in enumerate(headers)
+                     if "kundennummer" in h.lower() or h.lower().strip() == "knr"),
+                    -1
+                )
+                content_idx = [i for i, h in enumerate(headers)
+                               if i != name_col and i != knr_col and h.strip()]
+                content_headers = [headers[i] for i in content_idx]
 
-            def _get(row, idx):
-                if idx < 0 or idx >= len(row):
-                    return ""
-                return _clean(row[idx])
+                def _get(row, idx):
+                    if idx < 0 or idx >= len(row):
+                        return ""
+                    return _clean(row[idx])
 
-            entries = []
-            current = None
-            for row in all_rows[1:]:
-                # Zeile komplett leer → überspringen
-                if not any(c is not None for c in row):
-                    continue
-                name = _get(row, name_col)
-                knr  = _get(row, knr_col)
-                # Content-Werte dieser Zeile
-                content_row = [_get(row, i) for i in content_idx]
+                entries = []
+                current = None
+                for row in row_iter:
+                    if not _row_has_value(row):
+                        continue
+                    name = _get(row, name_col)
+                    knr = _get(row, knr_col)
+                    content_row = [_get(row, i) for i in content_idx]
 
-                if name:
-                    current = {
-                        "name": name,
-                        "kundennummer": knr,
-                        "rows": [content_row],
-                    }
-                    entries.append(current)
-                elif current and any(v for v in content_row):
-                    current["rows"].append(content_row)
+                    if name:
+                        current = {
+                            "name": name,
+                            "kundennummer": knr,
+                            "rows": [content_row] if any(content_row) else [],
+                        }
+                        entries.append(current)
+                    elif current and any(content_row):
+                        current["rows"].append(content_row)
 
-            if entries:
-                result.append({
-                    "name": sname,
-                    "type": "structured",
-                    "content_headers": content_headers,
-                    "entries": entries,
-                })
-        else:
-            lines = []
-            for row in all_rows:
-                for cell in row:
+                if entries:
+                    result.append({
+                        "name": sname,
+                        "type": "structured",
+                        "content_headers": content_headers,
+                        "entries": entries,
+                    })
+            else:
+                lines = []
+                for cell in first_row:
                     val = _clean(cell)
                     if val and val != "None":
                         lines.append(val)
-            if lines:
-                result.append({"name": sname, "type": "freeform", "lines": lines})
+                for row in row_iter:
+                    if not _row_has_value(row):
+                        continue
+                    for cell in row:
+                        val = _clean(cell)
+                        if val and val != "None":
+                            lines.append(val)
+                if lines:
+                    result.append({"name": sname, "type": "freeform", "lines": lines})
+    finally:
+        try:
+            wb.close()
+        except Exception:
+            pass
 
     return json.dumps(result, ensure_ascii=False)
 
@@ -7384,7 +7026,7 @@ if spesen_up:
 elif st.session_state.get("spesen_json"):
     st.caption("Spesen geladen")
 
-verstoss_up = st.file_uploader("Verstossauswertung Digitacho (CSV)", type=["csv"], key="verstoss_upload_v1")
+verstoss_up = st.file_uploader("Verstoßauswertung Digitacho (CSV)", type=["csv"], key="verstoss_upload_v1")
 if verstoss_up:
     verstoss_sig = upload_signature(verstoss_up)
     if st.session_state.get("verstoss_sig") != verstoss_sig:
@@ -7398,28 +7040,13 @@ if verstoss_up:
         _vs_dp      = sum(d.get("sum_driver_penalty", 0) for d in _vs_drivers)
         _vs_cp      = sum(d.get("sum_company_penalty", 0) for d in _vs_drivers)
         st.caption(
-            f"{len(_vs_drivers)} Fahrer, {_vs_total} Verstoesse, "
+            f"{len(_vs_drivers)} Fahrer, {_vs_total} Verstöße, "
             f"Fahrer {_vs_dp:,} EUR, Firma {_vs_cp:,} EUR".replace(",", ".")
         )
     except Exception:
-        st.caption("Verstoesse geladen")
+        st.caption("Verstöße geladen")
 elif st.session_state.get("verstoss_json"):
-    st.caption("Verstoesse geladen")
-
-zeiterfassung_up = st.file_uploader("Zeiterfassung (CSV)", type=["csv"], key="zeiterfassung_upload_v1")
-if zeiterfassung_up:
-    zeiterfassung_sig = upload_signature(zeiterfassung_up)
-    if st.session_state.get("zeiterfassung_sig") != zeiterfassung_sig:
-        with st.spinner("Verarbeite ..."):
-            st.session_state.zeiterfassung_json = parse_zeiterfassung_csv(zeiterfassung_up)
-            st.session_state.zeiterfassung_sig = zeiterfassung_sig
-    try:
-        _ze = json.loads(st.session_state.zeiterfassung_json)
-        st.caption(f"{_ze.get('total_rows', 0)} Zeilen, {_ze.get('matched_rows', 0)} Fahrer-Tage")
-    except Exception:
-        st.caption("Zeiterfassung geladen")
-elif st.session_state.get("zeiterfassung_json"):
-    st.caption("Zeiterfassung geladen")
+    st.caption("Verstöße geladen")
 
 grosskunden_up = st.file_uploader("Großkunden (Excel)", type=["xlsx"], key="grosskunden_upload_v1")
 if grosskunden_up:
@@ -7469,7 +7096,6 @@ if ready:
             zulage_xlsx_drittkunden=zulage_xlsx_drittkunden,
             fahrzeugwaesche_json=st.session_state.get("fahrzeugwaesche_json", "[]"),
             verstoss_json=st.session_state.get("verstoss_json", '{"drivers":[],"total_violations":0}'),
-            zeiterfassung_json=st.session_state.get("zeiterfassung_json", '{"by_key":{},"total_rows":0}'),
             spesen_json=st.session_state.get("spesen_json", '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}'),
             grosskunden_json=st.session_state.get("grosskunden_json", "[]"),
             last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
