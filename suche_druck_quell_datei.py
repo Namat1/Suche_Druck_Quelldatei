@@ -15,6 +15,7 @@ import datetime
 from zoneinfo import ZoneInfo
 import hashlib
 import io
+import zlib
 from pathlib import Path
 from typing import List
 
@@ -4058,8 +4059,8 @@ function verstossPdfOne(name) {
     # Alle Instanzen als JS-Array vorbereiten
     inst_js_parts = []
     for inst in instances:
-        s_b64 = base64.b64encode(inst["suche_html"].encode("utf-8")).decode("ascii")
-        d_b64 = base64.b64encode(inst["druck_html"].encode("utf-8")).decode("ascii")
+        s_b64 = base64.b64encode(zlib.compress(inst["suche_html"].encode("utf-8"), 9)).decode("ascii")
+        d_b64 = base64.b64encode(zlib.compress(inst["druck_html"].encode("utf-8"), 9)).decode("ascii")
         s_js  = to_js_array(s_b64)
         d_js  = to_js_array(d_b64)
         name_escaped = inst["name"].replace('"', '&quot;').replace("'", "&#39;")
@@ -4518,13 +4519,17 @@ iframe.active{{display:block}}
 
 
 <script>
-// ── Base64-Chunks → UTF-8-String ─────────────────────────────────────────────
-function b64ChunksToString(chunks) {{
+// ── Base64-Chunks → UTF-8-String (zlib-compressed) ──────────────────────────
+async function b64ChunksToString(chunks) {{
   var b64 = chunks.join("");
   var bin = atob(b64);
   var bytes = new Uint8Array(bin.length);
   for (var i = 0; i < bin.length; i++) {{ bytes[i] = bin.charCodeAt(i); }}
-  return new TextDecoder("utf-8").decode(bytes);
+  var ds = new DecompressionStream("deflate");
+  var writer = ds.writable.getWriter();
+  writer.write(bytes);
+  writer.close();
+  return new Response(ds.readable).text();
 }}
 
 // ── Instanzen ─────────────────────────────────────────────────────────────────
@@ -4539,11 +4544,11 @@ var currentInst = 0;
 var currentInst = 0;
 var currentArea = "suche";
 
-function loadInst(i) {{
+async function loadInst(i) {{
   currentInst = i;
   var inst = INSTANCES[i];
-  document.getElementById("frame-suche").srcdoc = b64ChunksToString(inst.s);
-  document.getElementById("frame-druck" ).srcdoc = b64ChunksToString(inst.d);
+  document.getElementById("frame-suche").srcdoc = await b64ChunksToString(inst.s);
+  document.getElementById("frame-druck" ).srcdoc = await b64ChunksToString(inst.d);
   vzAllData = null;
   // Dropdown-Items aktualisieren
   ["suche","vz"].forEach(function(area) {{
@@ -4679,10 +4684,12 @@ function showArea(s) {{
 // showKundenListeTop removed — Kunden Liste is now a standalone panel
 
 if(INSTANCES.length > 0) {{
-  document.getElementById("frame-suche").srcdoc = b64ChunksToString(INSTANCES[0].s);
-  document.getElementById("frame-druck" ).srcdoc = b64ChunksToString(INSTANCES[0].d);
-  updateInstLabels();
-  fwInitDatePicker();
+  (async function() {{
+    document.getElementById("frame-suche").srcdoc = await b64ChunksToString(INSTANCES[0].s);
+    document.getElementById("frame-druck" ).srcdoc = await b64ChunksToString(INSTANCES[0].d);
+    updateInstLabels();
+    fwInitDatePicker();
+  }})();
 }}
 
 var normalInstData = null;  // ALL_DATA der Normalwochen (Instanz 0)
