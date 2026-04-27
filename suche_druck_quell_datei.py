@@ -5056,7 +5056,7 @@ function gkRenderStructured(customer, detail) {{
     }});
   }});
 
-  var html = "<div style='max-width:860px;'>";
+  var html = "<div style='width:100%;'>";
 
   // ── Sheet-Titel ──────────────────────────────────────────────────────────────
   html += "<div style='margin-bottom:20px;'>"
@@ -5138,6 +5138,14 @@ function gkRenderStructured(customer, detail) {{
         if (v && isPhone(v)) rowTels.push(v);
       }});
       if (rowEmails.length || rowTels.length) {{
+        // Tel-only-Zeile? → zur letzten Kontaktzeile ohne Tel mergen
+        if (!rowEmails.length && rowTels.length) {{
+          var last = allContactRows.length ? allContactRows[allContactRows.length-1] : null;
+          if (last && !last.isLabel && !last.isOther && (!last.tels || !last.tels.length)) {{
+            last.tels = rowTels;
+            return; // Merge done, no new row
+          }}
+        }}
         allContactRows.push({{isLabel:false, emails:rowEmails, tels:rowTels}});
       }}
     }});
@@ -5219,7 +5227,7 @@ function gkRenderStructured(customer, detail) {{
 
   // ── RECHTE SPALTE: Hinweise ────────────────────────────────────────────────
   if (allHints.length) {{
-    html += "<div style='flex:0 0 320px;max-width:320px;'>";
+    html += "<div style='flex:0 0 36%;min-width:260px;max-width:420px;'>";
     html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:6px;overflow:hidden;'>";
     html += "<div style='padding:9px 14px 9px 12px;background:#fffbeb;border-bottom:1px solid #fde68a;border-left:3px solid #d97706;'>"
           + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#92400e;'>Hinweise</span>"
