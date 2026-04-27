@@ -6642,307 +6642,442 @@ def parse_fahrzeugwaesche_excel(uploaded_files) -> str:
     return json.dumps(rows, ensure_ascii=False)
 
 # ── Kombination & Download ─────────────────────────────────────────────────────
-st.divider()
-st.subheader("🔗 Wochen & suche.html herunterladen")
-st.caption("Globale Dateien einmalig hochladen. Pro Instanz (Woche) nur die Wochen-Excel hochladen.")
+# Neue, übersichtlichere Streamlit-Oberfläche. Die bestehenden Parser und Generatoren
+# bleiben unverändert; nur Uploads, Status und Download sind besser gegliedert.
 
-# ── Globale Dateien (einmalig für alle Wochen) ────────────────────────────────
-st.markdown("**Globale Dateien** – einmalig hochladen, gelten für alle Wochen")
-gc1, gc2, gc3, gc4, gc5, gc6 = st.columns(6)
-with gc1:
-    _up = st.file_uploader("🖼️ Logo", type=["png","jpg","jpeg","svg"], key="global_up_logo_v2")
-    if _up: st.session_state.g_logo = _up
-with gc2:
-    _up = st.file_uploader("🔑 Marktschlüssel", type=["xlsx"], key="global_up_key_v2")
-    if _up: st.session_state.g_key = _up
-with gc3:
-    _up = st.file_uploader("👤 Telefonnummern Fachberater", type=["xlsx"], key="global_up_fach_v2")
-    if _up: st.session_state.g_fach = _up
-with gc4:
-    _up = st.file_uploader("🔗 Kundenliste Original", type=["xlsx"], key="global_up_fcsb_v2")
-    if _up: st.session_state.g_fcsb = _up
-with gc5:
-    _up = st.file_uploader("📋 Lieferhinweise CSV", type=["csv"], key="global_up_lh_csv_v2")
-    if _up: st.session_state.g_lh_csv = _up
-with gc6:
-    _up = st.file_uploader("🗺️ Rahmentourprofil CSV", type=["csv"], key="global_up_rahmen_csv_v2")
-    if _up: st.session_state.g_rahmen_csv = _up
 
-_glob_status = []
-for _k, _lbl in [("g_logo","Logo"),("g_key","Marktschlüssel"),("g_fach","Tel. Fachberater"),("g_fcsb","Kundenliste"),("g_lh_csv","Lieferhinweise CSV"),("g_rahmen_csv","Rahmentourprofil CSV")]:
-    _glob_status.append("✅ "+_lbl if st.session_state.get(_k) else "❌ "+_lbl)
-st.caption(" · ".join(_glob_status))
-
-st.divider()
-
-# ── Instanzen initialisieren ──────────────────────────────────────────────────
 def _empty_inst(name="Normalwochen"):
     return {"name": name, "suche_html": None, "druck_html": None, "source_sig": None}
+
+
+def _file_name(uploaded_file) -> str:
+    if not uploaded_file:
+        return ""
+    return getattr(uploaded_file, "name", "geladen") or "geladen"
+
+
+def _file_names(uploaded_files) -> str:
+    uploaded_files = uploaded_files or []
+    if not uploaded_files:
+        return ""
+    names = [_file_name(file) for file in uploaded_files]
+    return ", ".join(names[:3]) + (f" … (+{len(names) - 3})" if len(names) > 3 else "")
+
+
+def _has(key: str) -> bool:
+    return bool(st.session_state.get(key))
+
+
+def _fmt_euro(value) -> str:
+    try:
+        return f"{float(value):,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+    except Exception:
+        return "0,00 €"
+
+
+def _status_card(title: str, done: bool, detail: str = "", required: bool = False):
+    status = "Bereit" if done else ("Fehlt" if required else "Optional")
+    cls = "ok" if done else ("missing" if required else "optional")
+    req = "Pflicht" if required else "Optional"
+    st.markdown(
+        f"""
+        <div class="upload-card {cls}">
+          <div class="upload-title">{title}</div>
+          <div class="upload-meta">{req}</div>
+          <div class="upload-status">{status}</div>
+          <div class="upload-detail">{detail or '&nbsp;'}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+st.set_page_config(
+    page_title="Suche & Druck Generator",
+    page_icon="🔎",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+st.markdown(
+    """
+    <style>
+      .block-container { padding-top: 1.1rem; padding-bottom: 2.5rem; max-width: 1500px; }
+      div[data-testid="stVerticalBlock"] { gap: .65rem; }
+      .main-hero { border:1px solid #d8dee9; background:linear-gradient(180deg,#fff,#f6f8fb); border-radius:16px; padding:18px 20px; margin-bottom:12px; box-shadow:0 2px 10px rgba(15,23,42,.05); }
+      .main-hero h1 { margin:0; font-size:30px; line-height:1.15; color:#0f172a; }
+      .main-hero p { margin:8px 0 0; color:#475569; font-size:15px; }
+      .section-box { border:1px solid #d8dee9; background:#fff; border-radius:14px; padding:14px 16px; margin:8px 0 14px; box-shadow:0 1px 8px rgba(15,23,42,.04); }
+      .section-title { font-size:20px; font-weight:800; color:#0f172a; margin-bottom:2px; }
+      .section-sub { color:#64748b; font-size:13px; margin-bottom:4px; }
+      .upload-card { min-height:116px; border:1px solid #d8dee9; background:#fff; border-radius:14px; padding:12px 13px; box-shadow:0 1px 6px rgba(15,23,42,.04); }
+      .upload-card.ok { border-color:#86efac; background:#f0fdf4; }
+      .upload-card.missing { border-color:#fecaca; background:#fff7f7; }
+      .upload-card.optional { border-color:#e2e8f0; background:#f8fafc; }
+      .upload-title { font-weight:800; color:#0f172a; font-size:14px; }
+      .upload-meta { color:#64748b; font-size:12px; margin-top:2px; }
+      .upload-status { font-weight:850; font-size:18px; margin-top:10px; }
+      .upload-card.ok .upload-status { color:#15803d; }
+      .upload-card.missing .upload-status { color:#dc2626; }
+      .upload-card.optional .upload-status { color:#64748b; }
+      .upload-detail { color:#475569; font-size:12px; margin-top:6px; overflow-wrap:anywhere; }
+      .ready-line, .missing-line { display:inline-flex; align-items:center; gap:7px; padding:5px 10px; border-radius:999px; font-size:13px; font-weight:750; }
+      .ready-line { border:1px solid #bbf7d0; background:#f0fdf4; color:#166534; }
+      .missing-line { border:1px solid #fecaca; background:#fff7f7; color:#991b1b; }
+      .stTabs [data-baseweb="tab-list"] { gap:8px; }
+      .stTabs [data-baseweb="tab"] { border:1px solid #d8dee9; border-radius:999px; padding:8px 14px; background:#fff; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    """
+    <div class="main-hero">
+      <h1>Suche, Druck und Auswertungen</h1>
+      <p>Pflichtdateien laden, Wochen erzeugen, Zusatzmodule ergänzen und am Ende eine fertige <b>suche.html</b> herunterladen.</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 if "instances" not in st.session_state:
     st.session_state.instances = [_empty_inst("Normalwochen")]
 
-st.markdown("**Wochen** – pro Woche eine Wochen-Excel hochladen")
+with st.sidebar:
+    st.markdown("### Ablauf")
+    st.markdown("1. Pflichtdateien laden")
+    st.markdown("2. Normalwoche oder Sonderwochen hochladen")
+    st.markdown("3. Zusatzdateien nur bei Bedarf laden")
+    st.markdown("4. Fertige HTML herunterladen")
+    st.divider()
+    st.markdown("### Pflichtstatus")
+    st.markdown("✅ Logo" if _has("g_logo") else "❌ Logo")
+    st.markdown("✅ Marktschlüssel" if _has("g_key") else "❌ Marktschlüssel")
+    st.markdown("✅ Woche bereit" if any(i.get("suche_html") and i.get("druck_html") for i in st.session_state.instances) else "❌ Woche bereit")
+    st.divider()
+    if st.button("Ansicht neu laden", use_container_width=True):
+        st.rerun()
 
-for i, inst in enumerate(st.session_state.instances):
-    _is_normal = (i == 0)
-    _expander_label = f"📋 Normalwoche (Referenz Massendruck-Sortierung): {inst['name']}" if _is_normal else f"📅 Woche {i+1}: {inst['name']}"
-    with st.expander(_expander_label, expanded=(i == 0)):
+haupt_tab, wochen_tab, zusatz_tab, download_tab = st.tabs([
+    "1  Start / Pflichtdateien",
+    "2  Wochen",
+    "3  Zusatzdateien",
+    "4  Download",
+])
 
-        if _is_normal:
-            st.info("⭐ Diese Woche ist die **Normalwoche** – nach ihr wird der Massendruck sortiert und die Ladefolge ausgerichtet.")
+with haupt_tab:
+    st.markdown("<div class='section-box'><div class='section-title'>Pflichtdateien und Stammdaten</div><div class='section-sub'>Logo und Marktschlüssel sind Pflicht. Alles Weitere ergänzt die fertige Suche.</div></div>", unsafe_allow_html=True)
 
-        col_name, col_del = st.columns([5, 1])
-        with col_name:
-            new_name = st.text_input("Bezeichnung", value=inst["name"], key=f"inst_name_{i}")
-            st.session_state.instances[i]["name"] = new_name
-        with col_del:
-            if i > 0:
-                st.write(""); st.write("")
-                if st.button("🗑️ Löschen", key=f"del_inst_{i}"):
-                    st.session_state.instances.pop(i)
-                    st.rerun()
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        _up = st.file_uploader("Logo", type=["png", "jpg", "jpeg", "svg"], key="global_up_logo_v2")
+        if _up:
+            st.session_state.g_logo = _up
+        _status_card("Logo", _has("g_logo"), _file_name(st.session_state.get("g_logo")), required=True)
+    with c2:
+        _up = st.file_uploader("Marktschlüssel", type=["xlsx"], key="global_up_key_v2")
+        if _up:
+            st.session_state.g_key = _up
+        _status_card("Marktschlüssel", _has("g_key"), _file_name(st.session_state.get("g_key")), required=True)
+    with c3:
+        _up = st.file_uploader("Kundenliste Original", type=["xlsx"], key="global_up_fcsb_v2")
+        if _up:
+            st.session_state.g_fcsb = _up
+        _status_card("Kundenliste Original", _has("g_fcsb"), _file_name(st.session_state.get("g_fcsb")), required=False)
 
-        _excel_label = "📊 Normalwochen-Excel (Referenzdatei) *" if _is_normal else "📊 Wochen-Excel *"
-        excel = st.file_uploader(_excel_label, type=["xlsx"], key=f"excel_{i}")
+    c4, c5, c6 = st.columns(3)
+    with c4:
+        _up = st.file_uploader("Telefonnummern Fachberater", type=["xlsx"], key="global_up_fach_v2")
+        if _up:
+            st.session_state.g_fach = _up
+        _status_card("Telefonnummern Fachberater", _has("g_fach"), _file_name(st.session_state.get("g_fach")), required=False)
+    with c5:
+        _up = st.file_uploader("Lieferhinweise CSV", type=["csv"], key="global_up_lh_csv_v2")
+        if _up:
+            st.session_state.g_lh_csv = _up
+        _status_card("Lieferhinweise CSV", _has("g_lh_csv"), _file_name(st.session_state.get("g_lh_csv")), required=False)
+    with c6:
+        _up = st.file_uploader("Rahmentourprofil CSV", type=["csv"], key="global_up_rahmen_csv_v2")
+        if _up:
+            st.session_state.g_rahmen_csv = _up
+        _status_card("Rahmentourprofil CSV", _has("g_rahmen_csv"), _file_name(st.session_state.get("g_rahmen_csv")), required=False)
 
-        _logo = st.session_state.get("g_logo")
-        _key  = st.session_state.get("g_key")
-        _fach = st.session_state.get("g_fach")
-        _fcsb = st.session_state.get("g_fcsb")
-        _lh_csv     = st.session_state.get("g_lh_csv")
-        _rahmen_csv = st.session_state.get("g_rahmen_csv")
+    if _has("g_logo") and _has("g_key"):
+        st.success("Pflichtdateien sind geladen. Weiter mit dem Reiter Wochen.")
+    else:
+        st.warning("Es fehlen noch Pflichtdateien: Logo und Marktschlüssel werden benötigt.")
 
-        if excel and _logo and _key:
-            current_source_sig = combine_signatures(
-                upload_signature(excel),
-                upload_signature(_logo),
-                upload_signature(_key),
-                upload_signature(_fach),
-                upload_signature(_fcsb),
-                upload_signature(_lh_csv),
-                upload_signature(_rahmen_csv),
-            )
-            if inst.get("source_sig") != current_source_sig or not inst.get("suche_html") or not inst.get("druck_html"):
-                try:
-                    with st.spinner("Generiere Suche + Druck …"):
-                        st.session_state.instances[i]["suche_html"] = generate_suche_html(
-                            excel, _key, _logo, _fach, _fcsb,
-                            lieferhinweis_csv=_lh_csv, rahmentour_csv=_rahmen_csv
-                        )
-                        st.session_state.instances[i]["druck_html"] = generate_druck_html(excel, _logo, _fcsb, lieferhinweis_csv=_lh_csv)
-                        st.session_state.instances[i]["source_sig"] = current_source_sig
-                    kb_s = len(st.session_state.instances[i]["suche_html"]) // 1024
-                    kb_d = len(st.session_state.instances[i]["druck_html"]) // 1024
-                    st.success(f"✅ Suche ({kb_s} KB) + Druck ({kb_d} KB) bereit")
-                except Exception as e:
-                    st.error(f"Fehler: {e}")
-            else:
+with wochen_tab:
+    st.markdown("<div class='section-box'><div class='section-title'>Wochen verwalten</div><div class='section-sub'>Die erste Woche ist die Normalwoche. Nach ihr wird der Massendruck sortiert.</div></div>", unsafe_allow_html=True)
+
+    top_a, top_b, top_c = st.columns([1.2, 1.2, 1])
+    ready_count = sum(1 for inst in st.session_state.instances if inst.get("suche_html") and inst.get("druck_html"))
+    top_a.metric("Angelegte Wochen", len(st.session_state.instances))
+    top_b.metric("Bereit", ready_count)
+    with top_c:
+        if st.button("➕ Woche hinzufügen", use_container_width=True):
+            n = len(st.session_state.instances)
+            st.session_state.instances.append(_empty_inst(f"Sonderwoche {n}"))
+            st.rerun()
+
+    _logo = st.session_state.get("g_logo")
+    _key = st.session_state.get("g_key")
+    _fach = st.session_state.get("g_fach")
+    _fcsb = st.session_state.get("g_fcsb")
+    _lh_csv = st.session_state.get("g_lh_csv")
+    _rahmen_csv = st.session_state.get("g_rahmen_csv")
+
+    for i, inst in enumerate(st.session_state.instances):
+        _is_normal = (i == 0)
+        label = f"⭐ Normalwoche: {inst['name']}" if _is_normal else f"📅 Sonderwoche {i}: {inst['name']}"
+        with st.expander(label, expanded=(i == 0)):
+            left, right = st.columns([3, 1])
+            with left:
+                new_name = st.text_input("Bezeichnung", value=inst["name"], key=f"inst_name_{i}")
+                st.session_state.instances[i]["name"] = new_name
+            with right:
+                if i > 0:
+                    st.write("")
+                    if st.button("🗑️ Woche löschen", key=f"del_inst_{i}", use_container_width=True):
+                        st.session_state.instances.pop(i)
+                        st.rerun()
+                else:
+                    st.info("Referenz")
+
+            excel = st.file_uploader("Normalwochen-Excel / Referenzdatei" if _is_normal else "Wochen-Excel", type=["xlsx"], key=f"excel_{i}")
+            missing = []
+            if not excel and not (inst.get("suche_html") and inst.get("druck_html")):
+                missing.append("Wochen-Excel")
+            if not _logo:
+                missing.append("Logo")
+            if not _key:
+                missing.append("Marktschlüssel")
+
+            if excel and _logo and _key:
+                current_source_sig = combine_signatures(
+                    upload_signature(excel), upload_signature(_logo), upload_signature(_key),
+                    upload_signature(_fach), upload_signature(_fcsb), upload_signature(_lh_csv), upload_signature(_rahmen_csv),
+                )
+                if inst.get("source_sig") != current_source_sig or not inst.get("suche_html") or not inst.get("druck_html"):
+                    try:
+                        with st.spinner("Erzeuge Suche und Druckansicht …"):
+                            st.session_state.instances[i]["suche_html"] = generate_suche_html(
+                                excel, _key, _logo, _fach, _fcsb,
+                                lieferhinweis_csv=_lh_csv, rahmentour_csv=_rahmen_csv,
+                            )
+                            st.session_state.instances[i]["druck_html"] = generate_druck_html(excel, _logo, _fcsb, lieferhinweis_csv=_lh_csv)
+                            st.session_state.instances[i]["source_sig"] = current_source_sig
+                        kb_s = len(st.session_state.instances[i]["suche_html"]) // 1024
+                        kb_d = len(st.session_state.instances[i]["druck_html"]) // 1024
+                        st.success(f"Bereit: Suche {kb_s} KB · Druck {kb_d} KB")
+                    except Exception as e:
+                        st.error(f"Fehler beim Erzeugen dieser Woche: {e}")
+                else:
+                    kb_s = len(inst["suche_html"]) // 1024
+                    kb_d = len(inst["druck_html"]) // 1024
+                    st.markdown(f"<span class='ready-line'>✅ Bereits erzeugt · Suche {kb_s} KB · Druck {kb_d} KB</span>", unsafe_allow_html=True)
+            elif inst.get("suche_html") and inst.get("druck_html"):
                 kb_s = len(inst["suche_html"]) // 1024
                 kb_d = len(inst["druck_html"]) // 1024
-                st.caption(f"✅ Bereits generiert — Suche {kb_s} KB · Druck {kb_d} KB")
-        elif inst["suche_html"] and inst["druck_html"]:
-            kb_s = len(inst["suche_html"]) // 1024
-            kb_d = len(inst["druck_html"]) // 1024
-            st.caption(f"✅ Bereits generiert — Suche {kb_s} KB · Druck {kb_d} KB")
+                st.markdown(f"<span class='ready-line'>✅ Bereits erzeugt · Suche {kb_s} KB · Druck {kb_d} KB</span>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<span class='missing-line'>❌ Fehlt: {', '.join(missing)}</span>", unsafe_allow_html=True)
+
+with zusatz_tab:
+    st.markdown("<div class='section-box'><div class='section-title'>Zusatzdateien</div><div class='section-sub'>Optional. Jeder Bereich ist einzeln aufklappbar und zeigt sofort eine kurze Zusammenfassung.</div></div>", unsafe_allow_html=True)
+
+    with st.expander("📞 Telefonliste", expanded=False):
+        tel_up = st.file_uploader("Telefonliste hochladen", type=["xlsx"], key="extra_tel_upload_v2")
+        if tel_up:
+            tel_sig = upload_signature(tel_up)
+            if st.session_state.get("tel_sig") != tel_sig:
+                with st.spinner("Lese Telefonliste …"):
+                    st.session_state.tel_json = parse_telefon_excel(tel_up)
+                    st.session_state.tel_sig = tel_sig
+            st.success(f"Telefonliste geladen: {len(json.loads(st.session_state.tel_json))} Gruppen")
+        elif st.session_state.get("tel_json"):
+            st.success("Telefonliste bereits geladen")
         else:
-            missing = []
-            if not excel: missing.append("Wochen-Excel")
-            if not _logo: missing.append("Logo (global)")
-            if not _key:  missing.append("Marktschlüssel (global)")
-            if missing: st.info(f"Fehlend: {', '.join(missing)}")
+            st.info("Optional: Für Telefonbereiche in der Suche.")
 
-if st.button("➕ Woche hinzufügen"):
-    n = len(st.session_state.instances)
-    st.session_state.instances.append(_empty_inst(f"Sonderwoche {n}"))
-    st.rerun()
-
-st.divider()
-
-# ── Telefonliste + Samstags Fahrer (global) ──────────────────────────────────
-tel_up = st.file_uploader("📞 Telefonliste (Excel, optional)", type=["xlsx"], key="extra_tel_upload_v2")
-if tel_up:
-    tel_sig = upload_signature(tel_up)
-    if st.session_state.get("tel_sig") != tel_sig:
-        st.session_state.tel_json = parse_telefon_excel(tel_up)
-        st.session_state.tel_sig = tel_sig
-    n = len(json.loads(st.session_state.tel_json))
-    st.caption(f"✅ Telefonliste: {n} Gruppen")
-elif st.session_state.get("tel_json"):
-    st.caption("✅ Telefonliste bereits geladen")
-
-
-touren_ups = st.file_uploader(
-    "📂 Touren-Dateien hochladen (Samstag, Zulagen, Drittkunden, Fahrerauswertung – alle auf einmal)",
-    type=["xlsx"],
-    accept_multiple_files=True,
-    key="touren_upload_v2"
-)
-if touren_ups:
-    touren_sig = uploads_signature(touren_ups)
-    if st.session_state.get("touren_sig") != touren_sig:
-        with st.spinner("Verarbeite Dateien …"):
-            st.session_state.sam_json = parse_samstag_excel(touren_ups)
-            st.session_state.zulage_json = parse_zulage_excel(touren_ups)
-            st.session_state.drittkunden_json = parse_drittkunden_excel(touren_ups)
-            st.session_state.fa_json = parse_fahrer_excel(touren_ups)
-            st.session_state.touren_sig = touren_sig
-    _sn = len(json.loads(st.session_state.sam_json))
-    _zd = json.loads(st.session_state.zulage_json)
-    _zns = sum(len(m["fahrer"]) for m in _zd.get("sonder", []))
-    _znf = sum(len(m["fahrer"]) for m in _zd.get("fuengers", []))
-    _dkd = json.loads(st.session_state.drittkunden_json)
-    _fan = len(json.loads(st.session_state.fa_json))
-    st.caption(
-        f"✅ {len(touren_ups)} Datei(en) verarbeitet – "
-        f"Samstag: {_sn} Fahrer · "
-        f"Sonder: {_zns} · Füngers: {_znf} · Drittkunden: {len(_dkd)} · "
-        f"Fahrerauswertung: {_fan} Fahrer"
-    )
-elif any(st.session_state.get(k) for k in ("sam_json","zulage_json","drittkunden_json","fa_json")):
-    st.caption("✅ Touren-Dateien bereits geladen")
-
-fahrzeugwaesche_ups = st.file_uploader(
-    "🚿 Fahrzeugwäsche-Dateien hochladen (Excel, optional)",
-    type=["xlsx", "xls"],
-    accept_multiple_files=True,
-    key="fahrzeugwaesche_upload_v1"
-)
-if fahrzeugwaesche_ups:
-    fahrzeugwaesche_sig = uploads_signature(fahrzeugwaesche_ups)
-    if st.session_state.get("fahrzeugwaesche_sig") != fahrzeugwaesche_sig:
-        with st.spinner("Verarbeite Fahrzeugwäsche-Dateien …"):
-            st.session_state.fahrzeugwaesche_json = parse_fahrzeugwaesche_excel(fahrzeugwaesche_ups)
-            st.session_state.fahrzeugwaesche_sig = fahrzeugwaesche_sig
-    _fw_rows = json.loads(st.session_state.get("fahrzeugwaesche_json", "[]"))
-    _fw_driver_count = len({(r.get("fahrer") or "").strip() for r in _fw_rows if (r.get("fahrer") or "").strip()})
-    _fw_lkw_count = len({((r.get("fahrzeug") or r.get("fahrzeug_ia") or "").strip()) for r in _fw_rows if ((r.get("fahrzeug") or r.get("fahrzeug_ia") or "").strip())})
-    st.caption(
-        f"✅ {len(fahrzeugwaesche_ups)} Datei(en) verarbeitet – "
-        f"{len(_fw_rows)} Waschungen · {_fw_driver_count} Fahrer · {_fw_lkw_count} LKW"
-    )
-elif st.session_state.get("fahrzeugwaesche_json"):
-    st.caption("✅ Fahrzeugwäsche-Dateien bereits geladen")
-
-
-spesen_up = st.file_uploader(
-    "💶 Spesen/Reisekosten-CSV hochladen (optional)",
-    type=["csv"],
-    key="spesen_upload_v1"
-)
-if spesen_up:
-    spesen_sig = upload_signature(spesen_up)
-    if st.session_state.get("spesen_sig") != spesen_sig:
-        with st.spinner("Verarbeite Spesen-CSV …"):
-            st.session_state.spesen_json = parse_spesen_csv(spesen_up)
-            st.session_state.spesen_sig = spesen_sig
-    try:
-        _sp = json.loads(st.session_state.get("spesen_json", "{}"))
-        _sp_drivers = _sp.get("drivers", [])
-        _sp_total = float(_sp.get("total_cost", 0) or 0)
-        _sp_rows = int(_sp.get("total_rows", 0) or 0)
-        st.caption(
-            f"✅ Spesen geladen – {_sp_rows} Zeilen · {len(_sp_drivers)} Fahrer · "
-            f"Gesamt {_sp_total:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+    with st.expander("📂 Touren-Dateien / Samstag / Zulagen / Drittkunden / Fahrerauswertung", expanded=True):
+        touren_ups = st.file_uploader(
+            "Touren-Dateien hochladen",
+            type=["xlsx"],
+            accept_multiple_files=True,
+            key="touren_upload_v2",
+            help="Mehrere Excel-Dateien können zusammen hochgeladen werden.",
         )
-    except Exception:
-        st.caption("✅ Spesen-CSV geladen")
-elif st.session_state.get("spesen_json"):
-    st.caption("✅ Spesen/Reisekosten bereits geladen")
+        if touren_ups:
+            touren_sig = uploads_signature(touren_ups)
+            if st.session_state.get("touren_sig") != touren_sig:
+                with st.spinner("Verarbeite Touren-Dateien …"):
+                    st.session_state.sam_json = parse_samstag_excel(touren_ups)
+                    st.session_state.zulage_json = parse_zulage_excel(touren_ups)
+                    st.session_state.drittkunden_json = parse_drittkunden_excel(touren_ups)
+                    st.session_state.fa_json = parse_fahrer_excel(touren_ups)
+                    st.session_state.touren_sig = touren_sig
+            _sn = len(json.loads(st.session_state.sam_json))
+            _zd = json.loads(st.session_state.zulage_json)
+            _zns = sum(len(m["fahrer"]) for m in _zd.get("sonder", []))
+            _znf = sum(len(m["fahrer"]) for m in _zd.get("fuengers", []))
+            _dkd = json.loads(st.session_state.drittkunden_json)
+            _fan = len(json.loads(st.session_state.fa_json))
+            c1, c2, c3, c4, c5 = st.columns(5)
+            c1.metric("Dateien", len(touren_ups))
+            c2.metric("Samstag", _sn)
+            c3.metric("Sonder", _zns)
+            c4.metric("Füngers", _znf)
+            c5.metric("Fahrer", _fan)
+            st.caption(f"Drittkunden: {len(_dkd)} · Dateien: {_file_names(touren_ups)}")
+        elif any(st.session_state.get(k) for k in ("sam_json", "zulage_json", "drittkunden_json", "fa_json")):
+            st.success("Touren-Dateien bereits geladen")
+        else:
+            st.info("Optional: Füllt Samstagsfahrer, Zulagen, Drittkunden und Fahrerauswertung.")
 
-
-verstoss_up = st.file_uploader(
-    "⚠️ Verstoßauswertung (Digitacho-CSV)",
-    type=["csv"],
-    key="verstoss_upload_v1"
-)
-if verstoss_up:
-    verstoss_sig = upload_signature(verstoss_up)
-    if st.session_state.get("verstoss_sig") != verstoss_sig:
-        with st.spinner("Verarbeite Verstoß-CSV …"):
-            st.session_state.verstoss_json = parse_verstoss_csv(verstoss_up)
-            st.session_state.verstoss_sig = verstoss_sig
-    try:
-        _vs = json.loads(st.session_state.verstoss_json)
-        _vs_drivers = _vs.get("drivers", [])
-        _vs_total   = _vs.get("total_violations", 0)
-        _vs_dp      = sum(d.get("sum_driver_penalty", 0) for d in _vs_drivers)
-        _vs_cp      = sum(d.get("sum_company_penalty", 0) for d in _vs_drivers)
-        st.caption(
-            f"✅ {len(_vs_drivers)} Fahrer · {_vs_total} Verstöße · "
-            f"Fahrer-Bußgeld {_vs_dp:,} € · Firma-Bußgeld {_vs_cp:,} €".replace(",", ".")
+    with st.expander("🚿 Fahrzeugwäsche", expanded=False):
+        fahrzeugwaesche_ups = st.file_uploader(
+            "Fahrzeugwäsche-Dateien hochladen",
+            type=["xlsx", "xls"],
+            accept_multiple_files=True,
+            key="fahrzeugwaesche_upload_v1",
         )
-    except Exception:
-        st.caption("✅ Verstoß-CSV geladen")
-elif st.session_state.get("verstoss_json"):
-    st.caption("✅ Verstoßauswertung bereits geladen")
+        if fahrzeugwaesche_ups:
+            fahrzeugwaesche_sig = uploads_signature(fahrzeugwaesche_ups)
+            if st.session_state.get("fahrzeugwaesche_sig") != fahrzeugwaesche_sig:
+                with st.spinner("Verarbeite Fahrzeugwäsche-Dateien …"):
+                    st.session_state.fahrzeugwaesche_json = parse_fahrzeugwaesche_excel(fahrzeugwaesche_ups)
+                    st.session_state.fahrzeugwaesche_sig = fahrzeugwaesche_sig
+            _fw_rows = json.loads(st.session_state.get("fahrzeugwaesche_json", "[]"))
+            _fw_driver_count = len({(r.get("fahrer") or "").strip() for r in _fw_rows if (r.get("fahrer") or "").strip()})
+            _fw_lkw_count = len({((r.get("fahrzeug") or r.get("fahrzeug_ia") or "").strip()) for r in _fw_rows if ((r.get("fahrzeug") or r.get("fahrzeug_ia") or "").strip())})
+            a, b, c = st.columns(3)
+            a.metric("Waschungen", len(_fw_rows))
+            b.metric("Fahrer", _fw_driver_count)
+            c.metric("LKW", _fw_lkw_count)
+            st.caption(f"Dateien: {_file_names(fahrzeugwaesche_ups)}")
+        elif st.session_state.get("fahrzeugwaesche_json"):
+            st.success("Fahrzeugwäsche-Dateien bereits geladen")
+        else:
+            st.info("Optional: Übersicht, welcher Fahrer wann welchen LKW gewaschen hat.")
 
+    col_spesen, col_verstoss = st.columns(2)
+    with col_spesen:
+        with st.expander("💶 Spesen / Reisekosten", expanded=False):
+            spesen_up = st.file_uploader("Spesen/Reisekosten CSV hochladen", type=["csv"], key="spesen_upload_v1")
+            if spesen_up:
+                spesen_sig = upload_signature(spesen_up)
+                if st.session_state.get("spesen_sig") != spesen_sig:
+                    with st.spinner("Verarbeite Spesen CSV …"):
+                        st.session_state.spesen_json = parse_spesen_csv(spesen_up)
+                        st.session_state.spesen_sig = spesen_sig
+                try:
+                    _sp = json.loads(st.session_state.get("spesen_json", "{}"))
+                    _sp_total = float(_sp.get("total_cost", 0) or 0)
+                    st.metric("Gesamt", _fmt_euro(_sp_total))
+                    st.caption(f"{int(_sp.get('total_rows', 0) or 0)} Zeilen · {len(_sp.get('drivers', []))} Fahrer")
+                except Exception:
+                    st.success("Spesen CSV geladen")
+            elif st.session_state.get("spesen_json"):
+                st.success("Spesen/Reisekosten bereits geladen")
+            else:
+                st.info("Optional: Spesenbereich in der Suche.")
 
-zeiterfassung_up = st.file_uploader(
-    "🕒 Zeiterfassung zur Verstoßauswertung (CSV, optional)",
-    type=["csv"],
-    key="zeiterfassung_upload_v1"
-)
-if zeiterfassung_up:
-    zeiterfassung_sig = upload_signature(zeiterfassung_up)
-    if st.session_state.get("zeiterfassung_sig") != zeiterfassung_sig:
-        with st.spinner("Verarbeite Zeiterfassungs-CSV …"):
-            st.session_state.zeiterfassung_json = parse_zeiterfassung_csv(zeiterfassung_up)
-            st.session_state.zeiterfassung_sig = zeiterfassung_sig
-    try:
-        _ze = json.loads(st.session_state.zeiterfassung_json)
-        st.caption(
-            f"✅ Zeiterfassung geladen · {_ze.get('total_rows', 0)} Zeilen · "
-            f"{_ze.get('matched_rows', 0)} Fahrer-Tage"
+    with col_verstoss:
+        with st.expander("⚠️ Verstoßauswertung", expanded=False):
+            verstoss_up = st.file_uploader("Verstoßauswertung Digitacho CSV hochladen", type=["csv"], key="verstoss_upload_v1")
+            if verstoss_up:
+                verstoss_sig = upload_signature(verstoss_up)
+                if st.session_state.get("verstoss_sig") != verstoss_sig:
+                    with st.spinner("Verarbeite Verstoß CSV …"):
+                        st.session_state.verstoss_json = parse_verstoss_csv(verstoss_up)
+                        st.session_state.verstoss_sig = verstoss_sig
+                try:
+                    _vs = json.loads(st.session_state.verstoss_json)
+                    _vs_drivers = _vs.get("drivers", [])
+                    _vs_total = _vs.get("total_violations", 0)
+                    _vs_dp = sum(d.get("sum_driver_penalty", 0) for d in _vs_drivers)
+                    _vs_cp = sum(d.get("sum_company_penalty", 0) for d in _vs_drivers)
+                    st.metric("Verstöße", _vs_total)
+                    st.caption(f"{len(_vs_drivers)} Fahrer · Fahrer-Bußgeld {_vs_dp:,} € · Firma-Bußgeld {_vs_cp:,} €".replace(",", "."))
+                except Exception:
+                    st.success("Verstoß CSV geladen")
+            elif st.session_state.get("verstoss_json"):
+                st.success("Verstoßauswertung bereits geladen")
+            else:
+                st.info("Optional: Verstoßauswertung im Untermenü.")
+
+    with st.expander("🕒 Zeiterfassung zur Verstoßauswertung", expanded=False):
+        zeiterfassung_up = st.file_uploader("Zeiterfassung CSV hochladen", type=["csv"], key="zeiterfassung_upload_v1")
+        if zeiterfassung_up:
+            zeiterfassung_sig = upload_signature(zeiterfassung_up)
+            if st.session_state.get("zeiterfassung_sig") != zeiterfassung_sig:
+                with st.spinner("Verarbeite Zeiterfassungs CSV …"):
+                    st.session_state.zeiterfassung_json = parse_zeiterfassung_csv(zeiterfassung_up)
+                    st.session_state.zeiterfassung_sig = zeiterfassung_sig
+            try:
+                _ze = json.loads(st.session_state.zeiterfassung_json)
+                a, b = st.columns(2)
+                a.metric("Zeilen", _ze.get("total_rows", 0))
+                b.metric("Fahrer-Tage", _ze.get("matched_rows", 0))
+            except Exception:
+                st.success("Zeiterfassung geladen")
+        elif st.session_state.get("zeiterfassung_json"):
+            st.success("Zeiterfassung bereits geladen")
+        else:
+            st.info("Optional: Ergänzt die Verstoßauswertung um Zeiterfassungswerte.")
+
+with download_tab:
+    st.markdown("<div class='section-box'><div class='section-title'>Fertige suche.html erstellen</div><div class='section-sub'>Sobald mindestens eine Woche bereit ist, wird alles zu einer einzelnen HTML-Datei kombiniert.</div></div>", unsafe_allow_html=True)
+
+    ready = [inst for inst in st.session_state.instances if inst.get("suche_html") and inst.get("druck_html")]
+    if ready:
+        zulage_json_state = st.session_state.get("zulage_json", "{}")
+        drittkunden_json_state = st.session_state.get("drittkunden_json", "[]")
+        zulage_xlsx_sonder = (
+            get_cached_export_b64("zulage_sonder", zulage_json_state, lambda value: generate_zulage_excel(value, tab="sonder"))
+            if zulage_json_state not in ("{}", "") else ""
         )
-    except Exception:
-        st.caption("✅ Zeiterfassung geladen")
-elif st.session_state.get("zeiterfassung_json"):
-    st.caption("✅ Zeiterfassung bereits geladen")
-
-
-# ── Download ──────────────────────────────────────────────────────────────────
-st.divider()
-ready = [inst for inst in st.session_state.instances if inst["suche_html"] and inst["druck_html"]]
-if ready:
-    zulage_json_state = st.session_state.get("zulage_json", "{}")
-    drittkunden_json_state = st.session_state.get("drittkunden_json", "[]")
-    zulage_xlsx_sonder = (
-        get_cached_export_b64("zulage_sonder", zulage_json_state, lambda value: generate_zulage_excel(value, tab="sonder"))
-        if zulage_json_state not in ("{}", "") else ""
-    )
-    zulage_xlsx_fuengers = (
-        get_cached_export_b64("zulage_fuengers", zulage_json_state, lambda value: generate_zulage_excel(value, tab="fuengers"))
-        if zulage_json_state not in ("{}", "") else ""
-    )
-    zulage_xlsx_drittkunden = (
-        get_cached_export_b64("drittkunden", drittkunden_json_state, generate_drittkunden_excel)
-        if drittkunden_json_state not in ("[]", "") else ""
-    )
-    with st.spinner("Kombiniere …"):
-        app_html = combine_html(
-            instances=ready,
-            tel_json=st.session_state.get("tel_json", "[]"),
-            sam_json=st.session_state.get("sam_json", "[]"),
-            fa_json=st.session_state.get("fa_json", "[]"),
-            zulage_json=zulage_json_state,
-            zulage_xlsx_sonder=zulage_xlsx_sonder,
-            zulage_xlsx_fuengers=zulage_xlsx_fuengers,
-            drittkunden_json=drittkunden_json_state,
-            zulage_xlsx_drittkunden=zulage_xlsx_drittkunden,
-            fahrzeugwaesche_json=st.session_state.get("fahrzeugwaesche_json", "[]"),
-            verstoss_json=st.session_state.get("verstoss_json", '{"drivers":[],"total_violations":0}'),
-            zeiterfassung_json=st.session_state.get("zeiterfassung_json", '{"by_key":{},"total_rows":0}'),
-            spesen_json=st.session_state.get("spesen_json", '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}'),
-            last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
+        zulage_xlsx_fuengers = (
+            get_cached_export_b64("zulage_fuengers", zulage_json_state, lambda value: generate_zulage_excel(value, tab="fuengers"))
+            if zulage_json_state not in ("{}", "") else ""
         )
-    st.download_button(
-        label=f"⬇️  suche.html herunterladen ({len(ready)} Woche{'n' if len(ready) > 1 else ''})",
-        data=app_html.encode("utf-8"),
-        file_name="suche.html",
-        mime="text/html",
-        type="primary",
-    )
-    st.caption(f"Gesamtgröße: ca. {len(app_html)//1024} KB | Wochen: {', '.join(i['name'] for i in ready)}")
-else:
-    st.warning("Bitte mindestens eine Woche mit Wochen-Excel befüllen (globale Dateien nicht vergessen).")
+        zulage_xlsx_drittkunden = (
+            get_cached_export_b64("drittkunden", drittkunden_json_state, generate_drittkunden_excel)
+            if drittkunden_json_state not in ("[]", "") else ""
+        )
+        with st.spinner("Kombiniere alle Bereiche …"):
+            app_html = combine_html(
+                instances=ready,
+                tel_json=st.session_state.get("tel_json", "[]"),
+                sam_json=st.session_state.get("sam_json", "[]"),
+                fa_json=st.session_state.get("fa_json", "[]"),
+                zulage_json=zulage_json_state,
+                zulage_xlsx_sonder=zulage_xlsx_sonder,
+                zulage_xlsx_fuengers=zulage_xlsx_fuengers,
+                drittkunden_json=drittkunden_json_state,
+                zulage_xlsx_drittkunden=zulage_xlsx_drittkunden,
+                fahrzeugwaesche_json=st.session_state.get("fahrzeugwaesche_json", "[]"),
+                verstoss_json=st.session_state.get("verstoss_json", '{"drivers":[],"total_violations":0}'),
+                zeiterfassung_json=st.session_state.get("zeiterfassung_json", '{"by_key":{},"total_rows":0}'),
+                spesen_json=st.session_state.get("spesen_json", '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}'),
+                last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
+            )
+
+        d1, d2, d3 = st.columns(3)
+        d1.metric("Wochen", len(ready))
+        d2.metric("Größe", f"{len(app_html)//1024} KB")
+        d3.metric("Stand", datetime.datetime.now().strftime("%d.%m.%Y %H:%M"))
+
+        st.download_button(
+            label=f"⬇️ suche.html herunterladen ({len(ready)} Woche{'n' if len(ready) > 1 else ''})",
+            data=app_html.encode("utf-8"),
+            file_name="suche.html",
+            mime="text/html",
+            type="primary",
+            use_container_width=True,
+        )
+        st.caption(f"Enthaltene Wochen: {', '.join(i['name'] for i in ready)}")
+    else:
+        st.warning("Bitte zuerst im Reiter Wochen mindestens eine Woche vollständig erzeugen. Dafür werden Logo, Marktschlüssel und eine Wochen-Excel benötigt.")
