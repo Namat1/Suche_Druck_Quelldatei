@@ -2308,7 +2308,7 @@ def parse_fahrer_excel(dateien: list) -> str:
     return _json.dumps(result, ensure_ascii=False)
 
 
-def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', zeiterfassung_json: str = '{"by_key":{},"total_rows":0}', last_updated: str = "") -> str:
+def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', zeiterfassung_json: str = '{"by_key":{},"total_rows":0}', spesen_json: str = '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}', last_updated: str = "") -> str:
     try:
         _logo_up = st.session_state.get("g_logo")
     except Exception:
@@ -2319,6 +2319,185 @@ def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa
     Bettet beliebig viele Suche+Druck-Paare (Instanzen) in eine HTML ein.
     Instanz-Wechsler im Topnav. BLP Druck ist intern (hidden iframe für FW-Daten).
     """
+    spesen_js_code = r"""
+// ── Spesen / Reisekosten ───────────────────────────────────────────────────
+var spesenSearchQuery = "";
+var spesenMonthFilter = "all";
+var spesenSelectedName = null;
+var spesenSortMode = "gesamt";
+
+function spEsc(v) {
+  return String(v == null ? "" : v)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+function spMoney(v) {
+  var n = Number(v || 0);
+  return n.toLocaleString("de-DE", {minimumFractionDigits:2, maximumFractionDigits:2}) + " €";
+}
+function spDuration(mins) {
+  mins = Math.round(Number(mins || 0));
+  if(!mins) return "0 Minuten";
+  var h = Math.floor(mins / 60), m = mins % 60;
+  if(h && m) return h + " Stunden " + m + " Minuten";
+  if(h) return h + " Stunden";
+  return m + " Minuten";
+}
+function spMonthLabel(value) {
+  if(!SPESEN_DATA || !Array.isArray(SPESEN_DATA.months)) return value;
+  var m = SPESEN_DATA.months.find(function(x){ return x.value === value; });
+  return m ? m.label : value;
+}
+function spGetDrivers() {
+  return (SPESEN_DATA && Array.isArray(SPESEN_DATA.drivers)) ? SPESEN_DATA.drivers : [];
+}
+function spRowsForDriver(d) {
+  var rows = Array.isArray(d.rows) ? d.rows.slice() : [];
+  if(spesenMonthFilter !== "all") rows = rows.filter(function(r){ return r.month === spesenMonthFilter; });
+  rows.sort(function(a,b){ return String(a.date_sort||"").localeCompare(String(b.date_sort||"")); });
+  return rows;
+}
+function spStatsForDriver(d) {
+  var rows = spRowsForDriver(d);
+  var out = {rows:rows, meal:0, night:0, total:0, duration:0, rideDays:0};
+  rows.forEach(function(r){
+    out.meal += Number(r.meal || 0);
+    out.night += Number(r.night || 0);
+    out.total += Number(r.total || 0);
+    out.duration += Number(r.duration_minutes || 0);
+    if(Number(r.duration_minutes || 0) > 0 || r.start || r.end || r.vehicles) out.rideDays += 1;
+  });
+  return out;
+}
+function spesenPopulateMonths() {
+  var sel = document.getElementById("spesen-month-sel");
+  if(!sel) return;
+  var cur = sel.value || "all";
+  var months = (SPESEN_DATA && Array.isArray(SPESEN_DATA.months)) ? SPESEN_DATA.months : [];
+  sel.innerHTML = "<option value='all'>Alle Monate</option>" + months.map(function(m){
+    return "<option value='" + spEsc(m.value) + "'>" + spEsc(m.label) + "</option>";
+  }).join("");
+  if(cur !== "all" && months.some(function(m){ return m.value === cur; })) sel.value = cur;
+  else sel.value = "all";
+  spesenMonthFilter = sel.value;
+}
+function spesenSort(mode) {
+  spesenSortMode = mode;
+  ["gesamt","name","tage"].forEach(function(m){
+    var btn = document.getElementById("spesen-sort-" + m);
+    if(btn){ btn.style.background = mode === m ? "#1b66b3" : "#fff"; btn.style.color = mode === m ? "#fff" : "#1b66b3"; }
+  });
+  spesenBuildSidebar(spesenSelectedName);
+}
+function spesenFilter(q) { spesenSearchQuery = q || ""; spesenBuildSidebar(spesenSelectedName); }
+function spesenMonthChange(value) { spesenMonthFilter = value || "all"; spesenBuildSidebar(spesenSelectedName); if(spesenSelectedName) spesenShowDetail(spesenSelectedName); }
+function spesenInit() {
+  spesenPopulateMonths();
+  spesenBuildSidebar(null);
+}
+function spesenFilteredDrivers() {
+  var q = (spesenSearchQuery || "").trim().toLowerCase();
+  var list = spGetDrivers().filter(function(d){
+    if(q && String(d.name||"").toLowerCase().indexOf(q) === -1 && String(d.employee_nr||"").toLowerCase().indexOf(q) === -1) return false;
+    return spStatsForDriver(d).rows.length > 0;
+  });
+  list.sort(function(a,b){
+    var sa = spStatsForDriver(a), sb = spStatsForDriver(b);
+    if(spesenSortMode === "name") return String(a.name||"").localeCompare(String(b.name||""), "de");
+    if(spesenSortMode === "tage") return (sb.rows.length - sa.rows.length) || String(a.name||"").localeCompare(String(b.name||""), "de");
+    return (sb.total - sa.total) || String(a.name||"").localeCompare(String(b.name||""), "de");
+  });
+  return list;
+}
+function spesenBuildSidebar(activeName) {
+  var sidebar = document.getElementById("spesen-sidebar-list");
+  var statsEl = document.getElementById("spesen-stats");
+  if(!sidebar) return;
+  var list = spesenFilteredDrivers();
+  var sumTotal = 0, sumRows = 0;
+  list.forEach(function(d){ var s = spStatsForDriver(d); sumTotal += s.total; sumRows += s.rows.length; });
+  if(statsEl) statsEl.innerHTML = "<b>" + list.length + "</b> Fahrer &nbsp;&middot;&nbsp; " + spMoney(sumTotal) + " gesamt &nbsp;&middot;&nbsp; " + sumRows + " Einträge";
+
+  var html = "";
+  list.forEach(function(d){
+    var s = spStatsForDriver(d), active = d.name === activeName;
+    var bg = active ? "#1b66b3" : "#fff";
+    var fg = active ? "#fff" : "#0b1220";
+    var sub = s.rows.length + " Einträge · " + spMoney(s.total);
+    html += "<div onclick='spesenShowDetail(" + JSON.stringify(d.name) + ")' style='padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;background:"+bg+";'>";
+    html += "<div style='font-weight:800;font-size:13px;color:"+fg+";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + spEsc(d.name) + "</div>";
+    html += "<div style='margin-top:3px;font-size:10px;font-weight:700;color:" + (active ? "rgba(255,255,255,.85)" : "#64748b") + ";'>" + spEsc(sub) + "</div>";
+    html += "</div>";
+  });
+  sidebar.innerHTML = html || "<div style='padding:24px;color:#94a3b8;font-size:12px;text-align:center;'>Keine Spesendaten gefunden</div>";
+  if(!activeName && list.length) { spesenSelectedName = list[0].name; spesenShowDetail(list[0].name); }
+  else if(activeName && !list.some(function(d){ return d.name === activeName; }) && list.length) { spesenSelectedName = list[0].name; spesenShowDetail(list[0].name); }
+  else if(activeName) spesenSelectedName = activeName;
+  else {
+    var panel = document.getElementById("spesen-detail-panel");
+    if(panel) panel.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Daten.</div>";
+  }
+}
+function spesenShowDetail(name) {
+  spesenSelectedName = name;
+  spesenBuildSidebar(name);
+  var d = spGetDrivers().find(function(x){ return x.name === name; });
+  var panel = document.getElementById("spesen-detail-panel");
+  if(!panel || !d) return;
+  var s = spStatsForDriver(d);
+  var subtitle = spesenMonthFilter === "all" ? "Alle Monate" : spMonthLabel(spesenMonthFilter);
+  var cards = [
+    ["Gesamt", spMoney(s.total), "#1b66b3"],
+    ["Verpflegung", spMoney(s.meal), "#15803d"],
+    ["Übernachtung", spMoney(s.night), "#92400e"],
+    ["Dauer", spDuration(s.duration), "#334155"],
+    ["Fahrtage", String(s.rideDays), "#334155"]
+  ];
+  var html = "";
+  html += "<div style='background:#fff;border:1px solid #d7dee7;border-radius:10px;padding:16px 18px;margin-bottom:14px;box-shadow:0 2px 8px rgba(15,23,42,.05);'>";
+  html += "<div style='display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;'>";
+  html += "<div><div style='font-size:20px;font-weight:900;color:#0f172a;'>" + spEsc(d.name) + "</div>";
+  html += "<div style='font-size:12px;color:#64748b;margin-top:2px;'>" + spEsc(subtitle) + (d.employee_nr ? " · Personalnummer " + spEsc(d.employee_nr) : "") + "</div></div>";
+  html += "</div><div style='display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;margin-top:14px;'>";
+  cards.forEach(function(c){ html += "<div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;'><div style='font-size:10px;font-weight:900;color:#64748b;text-transform:uppercase;letter-spacing:.35px;'>"+c[0]+"</div><div style='font-size:17px;font-weight:900;color:"+c[2]+";margin-top:3px;'>"+c[1]+"</div></div>"; });
+  html += "</div></div>";
+
+  html += "<div style='background:#fff;border:1px solid #d7dee7;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.05);'>";
+  html += "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
+  html += "<thead><tr style='background:#e8f1fb;color:#1b66b3;text-align:left;'>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;'>Datum</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;'>Start</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;'>Ende</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;'>Dauer</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;'>Fahrzeug</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;'>Strecke</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;'>Verpflegung</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;'>Übernachtung</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;'>Gesamt</th>" +
+          "</tr></thead><tbody>";
+  if(!s.rows.length) {
+    html += "<tr><td colspan='9' style='padding:28px;text-align:center;color:#94a3b8;'>Keine Einträge für diesen Zeitraum.</td></tr>";
+  } else {
+    s.rows.forEach(function(r, idx){
+      var route = (r.pos_start || r.pos_end) ? ((r.pos_start||"") + (r.pos_end ? " → " + r.pos_end : "")) : "";
+      html += "<tr style='background:" + (idx%2 ? "#fff" : "#f8fafc") + ";'>";
+      html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;font-weight:800;color:#0f172a;white-space:nowrap;'>" + spEsc(r.date_label || r.date_iso || "") + "<div style='font-size:10px;font-weight:700;color:#94a3b8;'>" + spEsc(r.weekday || "") + "</div></td>";
+      html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;'>" + spEsc(r.start_time || "—") + "</td>";
+      html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;'>" + spEsc(r.end_time || "—") + "</td>";
+      html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;'>" + spEsc(r.duration_label || "0 Minuten") + "</td>";
+      html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;'>" + spEsc(r.vehicles || "—") + "</td>";
+      html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#475569;'>" + spEsc(route || "—") + "</td>";
+      html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:800;color:#15803d;'>" + spMoney(r.meal) + "</td>";
+      html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:800;color:#92400e;'>" + spMoney(r.night) + "</td>";
+      html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:900;color:#1b66b3;'>" + spMoney(r.total) + "</td>";
+      html += "</tr>";
+    });
+  }
+  html += "</tbody></table></div>";
+  panel.innerHTML = html;
+}
+"""
+
     fa_js_code = '\n// ── Fahrerauswertung ──────────────────────────────────────────────────────────\nvar faCurrentSort  = \"name\";\nvar faYearFilter   = String(new Date().getFullYear());\nvar faSelectedName = null;\nvar faSearchQuery  = \"\";\n\nfunction faSort(mode) {\n  faCurrentSort = mode;\n  [\"name\",\"arbeit\"].forEach(function(m) {\n    var btn = document.getElementById(\"fa-sort-\"+m);\n    if(!btn) return;\n    btn.style.background = mode===m ? \"#1b66b3\" : \"#fff\";\n    btn.style.color      = mode===m ? \"#fff\"    : \"#1b66b3\";\n  });\n  faBuildSidebarHighlight(faSelectedName);\n}\n\nfunction faFilter(q) { faSearchQuery = q; faBuildSidebarHighlight(faSelectedName); }\nfunction faYearChange(yr) {\n  faYearFilter = yr;\n  faBuildSidebarHighlight(faSelectedName);\n  if(faSelectedName) faShowDetail(faSelectedName);\n}\n\nfunction faGetStats(driver, yr) {\n  if(!driver.years) return {krank:0,urlaub:0,ausgleich:0,arbeit:0,arbeit_samstag:0,touren:{},lkw:{},eintraege:[]};\n  var years = yr===\"all\" ? Object.keys(driver.years) : [yr];\n  var out = {krank:0,urlaub:0,ausgleich:0,arbeit:0,arbeit_samstag:0,touren:{},lkw:{},eintraege:[]};\n  years.forEach(function(y) {\n    var d = driver.years[y];\n    if(!d) return;\n    out.krank          += d.krank          || 0;\n    out.urlaub         += d.urlaub         || 0;\n    out.ausgleich      += d.ausgleich      || 0;\n    out.arbeit         += d.arbeit         || 0;\n    out.arbeit_samstag += d.arbeit_samstag || 0;\n    Object.keys(d.touren||{}).forEach(function(t){\n      out.touren[t] = (out.touren[t]||0) + d.touren[t];\n    });\n    // Use pre-computed lkw if available, otherwise compute from eintraege\n    var lkwSource = d.lkw && Object.keys(d.lkw).length > 0 ? d.lkw : (function(){\n      var cnt = {};\n      (d.eintraege||[]).forEach(function(e){\n        var lv = (e.lkw||\"\").trim();\n        var tl = (e.tour||\"\").toLowerCase();\n        if(lv && lv!==\"0\" && !/krank|urlaub|ausgleich/i.test(tl)){\n          cnt[lv] = (cnt[lv]||0) + 1;\n        }\n      });\n      return cnt;\n    })();\n    Object.keys(lkwSource).forEach(function(l){\n      out.lkw[l] = (out.lkw[l]||0) + lkwSource[l];\n    });\n    out.eintraege = out.eintraege.concat(d.eintraege||[]);\n  });\n  return out;\n}\n\nfunction faGetFiltered() {\n  var q = faSearchQuery.toLowerCase().trim();\n  var list = FA_DATA.filter(function(d) {\n    if(q && !d.name.toLowerCase().includes(q)) return false;\n    if(faYearFilter !== \"all\" && !d.years[faYearFilter]) return false;\n    return true;\n  });\n  if(faCurrentSort === \"arbeit\") {\n    list.sort(function(a,b){ return faGetStats(b,faYearFilter).arbeit - faGetStats(a,faYearFilter).arbeit; });\n  } else {\n    list.sort(function(a,b){ return a.name.localeCompare(b.name,\"de\"); });\n  }\n  return list;\n}\n\nfunction faRender(q) {\n  faSearchQuery = q || \"\";\n  if(!FA_DATA || !FA_DATA.length) {\n    var c = document.getElementById(\"fa-detail-panel\");\n    if(c) c.innerHTML = \"<div style=\'color:#94a3b8;padding:40px;text-align:center;font-size:14px;\'>Keine Daten vorhanden.<br>Bitte Fahrerauswertungs-Dateien in Streamlit hochladen.</div>\";\n    return;\n  }\n  faPopulateYears();\n  faBuildSidebarHighlight(null);\n}\n\nfunction faPopulateYears() {\n  var allYears = [];\n  FA_DATA.forEach(function(d) {\n    Object.keys(d.years||{}).forEach(function(y){\n      if(y !== \"2024\" && allYears.indexOf(y) === -1) allYears.push(y);\n    });\n  });\n  allYears.sort().reverse();\n  var yrSel = document.getElementById(\"fa-year-sel\");\n  if(!yrSel) return;\n  var current = yrSel.value;\n  var curYr = String(new Date().getFullYear());\n  yrSel.innerHTML = allYears.map(function(y){ return \"<option value=\'\"+y+\"\'>\"+y+\"</option>\"; }).join(\"\");\n  // Default to current year\n  if(current && allYears.indexOf(current) !== -1) yrSel.value = current;\n  else if(allYears.indexOf(curYr) !== -1) yrSel.value = curYr;\n  else if(allYears.length) yrSel.value = allYears[0];\n  faYearFilter = yrSel.value;\n}\n\nfunction faBuildSidebarHighlight(activeName) {\n  var sidebar = document.getElementById(\"fa-sidebar-list\");\n  if(!sidebar) return;\n  var filtered = faGetFiltered();\n\n  var statsEl = document.getElementById(\"fa-stats\");\n  if(statsEl) {\n    var total   = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).arbeit;    },0);\n    var totalK  = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).krank;     },0);\n    var totalU  = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).urlaub;    },0);\n    statsEl.innerHTML =\n      \"<b>\"+filtered.length+\"</b> Fahrer &nbsp;&middot;&nbsp; Σ <b>\"+total+\"</b> Arbeitstage\" +\n      (totalK ? \" &nbsp;&middot;&nbsp; <span style=\'color:#dc2626;\'>Krank Σ <b>\"+totalK+\"</b></span>\" : \"\") +\n      (totalU ? \" &nbsp;&middot;&nbsp; <span style=\'color:#0891b2;\'>Urlaub Σ <b>\"+totalU+\"</b></span>\" : \"\");\n  }\n\n  var html = \"\";\n  filtered.forEach(function(d) {\n    var s = faGetStats(d, faYearFilter);\n    var active = d.name === activeName;\n    var bg = active ? \"#1b66b3\" : \"#fff\";\n    var fg = active ? \"#fff\" : \"#0b1220\";\n    html += \"<div onclick=\'faShowDetail(\\\"\"+d.name.replace(/\"/g,\"&quot;\")+\"\\\")\'\"+\n      \" style=\'padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;background:\"+bg+\";\'>\" +\n      \"<div style=\'font-weight:700;font-size:13px;color:\"+fg+\";\'>\"+d.name+\"</div>\" +\n      \"<div style=\'display:flex;gap:3px;flex-wrap:wrap;margin-top:3px;\'>\" +\n        \"<span style=\'font-size:8px;font-weight:600;padding:0px 3px;border-radius:2px;background:\"+(active?\"rgba(255,255,255,.2)\":\"#dbeafe\")+\";color:\"+(active?\"#fff\":\"#1b66b3\")+\"\'>\"+s.arbeit+\" T</span>\" +\n        (s.arbeit_samstag ? \"<span style=\'font-size:8px;font-weight:600;padding:0px 3px;border-radius:2px;background:\"+(active?\"rgba(255,255,255,.15)\":\"#fef9c3\")+\";color:\"+(active?\"#fff\":\"#b45309\")+\"\'>Sa \"+s.arbeit_samstag+\"</span>\" : \"\") +\n        (s.krank ? \"<span style=\'font-size:8px;font-weight:600;padding:0px 3px;border-radius:2px;background:\"+(active?\"rgba(255,255,255,.15)\":\"#fee2e2\")+\";color:\"+(active?\"#fff\":\"#dc2626\")+\"\'>K \"+s.krank+\"</span>\" : \"\") +\n      \"</div></div>\";\n  });\n  sidebar.innerHTML = html || \"<div style=\'padding:20px;color:#94a3b8;font-size:12px;text-align:center;\'>Kein Fahrer gefunden</div>\";\n\n  if(!activeName && filtered.length) { faSelectedName = filtered[0].name; faShowDetail(filtered[0].name); }\n  else if(activeName) faSelectedName = activeName;\n}\n\nfunction faShowDetail(name) {\n  faSelectedName = name;\n  faBuildSidebarHighlight(name);\n  var driver = FA_DATA.find(function(d){ return d.name === name; });\n  var panel = document.getElementById(\"fa-detail-panel\");\n  if(!panel || !driver) return;\n\n  var yr = faYearFilter;\n  var s  = faGetStats(driver, yr);\n  var years = (yr === \"all\" ? Object.keys(driver.years||{}).sort().reverse() : [yr]).filter(function(y){return y!==\"2024\";});\n\n  var lkwEntries = Object.entries(s.lkw||{}).sort(function(a,b){return b[1]-a[1];});\n  var lkwHtml = lkwEntries.length\n    ? lkwEntries.map(function(e){\n        return \"<span style=\'display:inline-block;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;padding:3px 12px;margin:2px;font-size:12px;font-weight:700;color:#166534;\'>\"+e[0]+\" <span style=\'color:#64748b;font-weight:500;\'>\"+e[1]+\"x</span></span>\";\n      }).join(\"\")\n    : \"<span style=\'color:#94a3b8;font-size:12px;\'>Keine LKW-Daten</span>\";\n\n  var html = \"\";\n\n  // Header\n  html += \"<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;padding:16px 20px;margin-bottom:14px;\'>\";\n  html += \"<div style=\'font-size:20px;font-weight:900;color:#0b1220;margin-bottom:10px;\'>\"+driver.name+\"</div>\";\n  html += \"<div style=\'display:flex;flex-wrap:wrap;gap:7px;\'>\";\n  html += \"<span style=\'background:#dbeafe;border-radius:4px;padding:4px 14px;font-size:13px;font-weight:800;color:#1b66b3;\'>&#9733; \"+s.arbeit+\" Arbeitstage</span>\";\n  if(s.arbeit_samstag) html += \"<span style=\'background:#fef9c3;border-radius:4px;padding:4px 14px;font-size:13px;font-weight:800;color:#b45309;\'>Samstag \"+s.arbeit_samstag+\"</span>\";\n  if(s.krank)          html += \"<span style=\'background:#fee2e2;border-radius:4px;padding:4px 14px;font-size:13px;font-weight:800;color:#dc2626;\'>Krank \"+s.krank+\"</span>\";\n  if(s.urlaub)         html += \"<span style=\'background:#e0f2fe;border-radius:4px;padding:4px 14px;font-size:13px;font-weight:800;color:#0891b2;\'>Urlaub \"+s.urlaub+\"</span>\";\n  if(s.ausgleich)      html += \"<span style=\'background:#f0fdf4;border-radius:4px;padding:4px 14px;font-size:13px;font-weight:800;color:#16a34a;\'>Ausgl. \"+s.ausgleich+\"</span>\";\n  html += \"</div></div>\";\n\n  // LKW Section\n  html += \"<div style=\'background:#fff;border:1.5px solid #bbf7d0;border-radius:5px;padding:12px 16px;margin-bottom:14px;\'>\";\n  html += \"<div style=\'font-size:11px;font-weight:900;text-transform:uppercase;color:#166534;letter-spacing:.4px;margin-bottom:8px;\'>LKW-Einsätze</div>\";\n  html += \"<div>\"+lkwHtml+\"</div>\";\n  html += \"</div>\";\n\n  // Year chips\n  if(yr === \"all\" && years.length > 1) {\n    html += \"<div style=\'display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;\'>\";\n    years.forEach(function(y) {\n      var ys = driver.years[y]; if(!ys) return;\n      html += \"<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:4px;padding:8px 14px;min-width:110px;\'>\";\n      html += \"<div style=\'font-size:12px;font-weight:900;color:#1b66b3;margin-bottom:4px;\'>\"+y+\"</div>\";\n      html += \"<div style=\'font-size:13px;font-weight:800;\'>&#9733; \"+ys.arbeit+\"</div>\";\n      if(ys.arbeit_samstag) html += \"<div style=\'font-size:11px;color:#b45309;\'>Sa: \"+ys.arbeit_samstag+\"</div>\";\n      if(ys.krank)  html += \"<div style=\'font-size:11px;color:#dc2626;\'>Krank: \"+ys.krank+\"</div>\";\n      if(ys.urlaub) html += \"<div style=\'font-size:11px;color:#0891b2;\'>Urlaub: \"+ys.urlaub+\"</div>\";\n      html += \"</div>\";\n    });\n    html += \"</div>\";\n  }\n\n  // KW table\n  years.forEach(function(y) {\n    var yd = driver.years[y]; if(!yd) return;\n    var kwMap = {};\n    var dispYr = parseInt(y);\n    (yd.eintraege||[]).forEach(function(e){\n      // Skip entries whose date doesn\'t belong to the displayed year\n      var m = (e.datum||\"\").match(/(\\d{4})$/);\n      if(m && parseInt(m[1]) !== dispYr) return;\n      var k=\"KW \"+e.kw; if(!kwMap[k]) kwMap[k]=[]; kwMap[k].push(e);\n    });\n    var kwKeys = Object.keys(kwMap).sort(function(a,b){return parseInt(a.split(\" \")[1])-parseInt(b.split(\" \")[1]);});\n\n    if(years.length > 1)\n      html += \"<div style=\'font-size:13px;font-weight:900;color:#1b66b3;margin:12px 0 6px;border-left:3px solid #1b66b3;padding-left:8px;\'>\"+y+\"</div>\";\n\n    html += \"<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;overflow:hidden;margin-bottom:12px;\'>\";\n    html += \"<table style=\'width:100%;border-collapse:collapse;font-size:12px;\'>\";\n    html += \"<thead><tr style=\'background:#1e3a5f;color:#fff;\'><th style=\'padding:6px 10px;text-align:left;\'>KW</th><th style=\'padding:6px 10px;text-align:left;\'>Datum</th><th style=\'padding:6px 10px;text-align:left;\'>Tour</th><th style=\'padding:6px 10px;text-align:left;\'>Zeit</th><th style=\'padding:6px 10px;text-align:left;\'>LKW</th></tr></thead><tbody>\";\n    kwKeys.forEach(function(kw) {\n      html += \"<tr style=\'background:#dbeafe;\'><td colspan=\'5\' style=\'padding:3px 10px;font-weight:800;color:#1b66b3;font-size:11px;\'>\"+kw+\"</td></tr>\";\n      kwMap[kw].forEach(function(e,i) {\n        var bg = e.samstag ? \"#fff7ed\" : (i%2===0?\"#f8fafc\":\"#fff\");\n        var tc = /krank/i.test(e.tour)?\"color:#dc2626;font-weight:700;\":/urlaub/i.test(e.tour)?\"color:#0891b2;font-weight:700;\":/ausgleich/i.test(e.tour)?\"color:#16a34a;font-weight:700;\":\"font-weight:600;\";\n        html += \"<tr style=\'background:\"+bg+\";border-bottom:1px solid #f1f5f9;\'>\";\n        html += \"<td style=\'padding:3px 10px;\'></td>\";\n        html += \"<td style=\'padding:3px 10px;\"+(e.samstag?\"font-weight:700;color:#b45309;\":\"color:#334155;\")+\"\'>\"+e.datum+\"</td>\";\n        html += \"<td style=\'padding:3px 10px;\"+tc+\"\'>\"+e.tour+\"</td>\";\n        html += \"<td style=\'padding:3px 10px;color:#475569;\'>\"+e.zeit+\"</td>\";\n        html += \"<td style=\'padding:3px 10px;font-weight:700;color:#166534;\'>\"+(e.lkw && e.lkw!==\"0\" ? e.lkw : \"\")+\"</td>\";\n        html += \"</tr>\";\n      });\n    });\n    html += \"</tbody></table></div>\";\n  });\n\n  panel.innerHTML = html;\n  panel.scrollTop = 0;\n}\n\nfunction faPDF() {\n  if(!FA_DATA || !FA_DATA.length) { alert(\"Keine Daten vorhanden.\"); return; }\n  // If a driver is selected in sidebar, export only that driver\n  var filtered;\n  if(faSelectedName) {\n    filtered = FA_DATA.filter(function(d){ return d.name === faSelectedName; });\n  } else {\n    filtered = faGetFiltered();\n  }\n  var yr = faYearFilter;\n  var today = new Date().toLocaleDateString(\"de-DE\",{day:\"2-digit\",month:\"long\",year:\"numeric\"});\n  var yrLabel = yr === \"all\" ? \"Alle Jahre\" : yr;\n  var css = \"@page{size:A4 portrait;margin:10mm 9mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:\'Segoe UI\',Arial,sans-serif;color:#1e293b;font-size:7pt}.cover{text-align:center;padding:16mm 0 8mm;border-bottom:3px solid #1b66b3;margin-bottom:8mm}.cover h1{font-size:18pt;color:#1b66b3;font-weight:900;margin-bottom:2mm}.sub{font-size:9pt;color:#64748b}.db{page-break-inside:avoid;margin-bottom:7mm}.dh{background:#1b66b3;color:#fff;padding:2mm 4mm;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:6px}.dn{font-size:10pt;font-weight:900;flex:1}.ds{display:flex;gap:4px;flex-wrap:wrap;font-size:6.5pt}.badge{display:inline-block;border-radius:4px;padding:1px 5px;font-weight:800}.lsec{padding:2mm 4mm;background:#f0fdf4;border:1px solid #bbf7d0}.ys{margin-bottom:3mm}.yl{font-size:8pt;font-weight:900;color:#1b66b3;margin:2mm 0 1mm;border-left:2px solid #1b66b3;padding-left:3px}table{width:100%;border-collapse:collapse}thead tr{background:#1e3a5f;color:#fff}thead th{padding:2px 5px;font-weight:800;font-size:6pt;text-align:left}tbody tr.kr{background:#dbeafe}tbody tr.kr td{padding:2px 5px;font-weight:800;color:#1b66b3;font-size:5.5pt}tbody tr.dr td{padding:2px 5px;border-bottom:1px solid #f1f5f9}tbody tr.sa{background:#fff7ed!important}.ft{text-align:right;color:#94a3b8;font-size:5.5pt;margin-top:1mm;border-top:1px solid #f1f5f9}\";\n  var body = \"<div class=\'cover\'><div style=\'font-size:24pt;margin-bottom:2mm;\'>&#128101;</div><h1>Fahrerauswertung</h1><div class=\'sub\'>Fuhrpark NFC &middot; \"+yrLabel+\" &middot; \"+today+\"</div><div class=\'sub\'>\"+filtered.length+\" Fahrer</div></div>\";\n  filtered.forEach(function(driver) {\n    var years = (yr===\"all\"?Object.keys(driver.years||{}).sort().reverse():[yr]).filter(function(y){return y!==\"2024\";});\n    var ts = faGetStats(driver,yr);\n    var lkwList = Object.entries(ts.lkw||{}).sort(function(a,b){return b[1]-a[1];});\n    body += \"<div class=\'db\'><div class=\'dh\'><span class=\'dn\'>\"+driver.name+\"</span><div class=\'ds\'>\";\n    body += \"<span class=\'badge\' style=\'background:#dbeafe;color:#1b66b3;\'>&#9733; \"+ts.arbeit+\"</span>\";\n    if(ts.arbeit_samstag) body += \"<span class=\'badge\' style=\'background:#fef9c3;color:#b45309;\'>Sa \"+ts.arbeit_samstag+\"</span>\";\n    if(ts.krank)  body += \"<span style=\'background:#fee2e2;color:#dc2626;\'>K \"+ts.krank+\"</span>\";\n    if(ts.urlaub) body += \"<span class=\'badge\' style=\'background:#e0f2fe;color:#0891b2;\'>U \"+ts.urlaub+\"</span>\";\n    if(ts.ausgleich) body += \"<span class=\'badge\' style=\'background:#f0fdf4;color:#16a34a;\'>Az \"+ts.ausgleich+\"</span>\";\n    body += \"</div></div>\";\n    if(lkwList.length){body+=\"<div class=\'lsec\'><b style=\'color:#166534;font-size:6pt;\'>LKW: </b>\";lkwList.forEach(function(e){body+=\"<span style=\'display:inline-block;background:#fff;border:1px solid #bbf7d0;border-radius:2px;padding:0 4px;margin:1px;font-size:6pt;color:#166534;font-weight:700;\'>\"+e[0]+\" \"+e[1]+\"x</span>\";});body+=\"</div>\";}\n    years.forEach(function(y){var yd=driver.years[y];if(!yd)return;var kwMap={};(yd.eintraege||[]).forEach(function(e){var k=\"KW \"+e.kw;if(!kwMap[k])kwMap[k]=[];kwMap[k].push(e);});var kwKeys=Object.keys(kwMap).sort(function(a,b){return parseInt(a.split(\" \")[1])-parseInt(b.split(\" \")[1]);});body+=\"<div class=\'ys\'>\";if(years.length>1)body+=\"<div class=\'yl\'>\"+y+\"</div>\";body+=\"<table><thead><tr><th>KW</th><th>Datum</th><th>Tour</th><th>Zeit</th><th>LKW</th></tr></thead><tbody>\";kwKeys.forEach(function(kw){body+=\"<tr class=\'kr\'><td colspan=\'5\'>\"+kw+\"</td></tr>\";kwMap[kw].forEach(function(e,i){var tc=/krank/i.test(e.tour)?\"color:#dc2626;\":/urlaub/i.test(e.tour)?\"color:#0891b2;\":\"\";body+=\"<tr class=\'dr\"+(e.samstag?\" sa\":\"\")+\"\'><td></td><td style=\'\"+(e.samstag?\"color:#b45309;font-weight:700;\":\"\")+\"\'>\"+e.datum+\"</td><td style=\'font-weight:700;\"+tc+\"\'>\"+e.tour+\"</td><td>\"+e.zeit+\"</td><td style=\'color:#166534;font-weight:700;\'>\"+e.lkw+\"</td></tr>\";});});body+=\"</tbody></table></div>\";});\n    body+=\"<div class=\'ft\'>NordFrischeCenter &middot; Fahrerauswertung &middot; \"+driver.name+\"</div></div>\";\n  });\n  var w=window.open(\"\",\"_blank\",\"width=900,height=800\");\n  w.document.write(\"<!DOCTYPE html><html><head><meta charset=\'utf-8\'><title>Fahrerauswertung</title><style>\"+css+\"</style></head><body>\"+body+\"</body></html>\");\n  w.document.close();w.focus();setTimeout(function(){w.print();},600);\n}\n'
     zulage_js_code = '\n// ── ZULAGEN ──────────────────────────────────────────────────────────────\nvar _zTab = "sonder";\n\nfunction zulagenInit() { zulagenBuildMonthSel(); zulagenRender(); }\n\nfunction zulagenTab(tab) {\n  _zTab = tab;\n  ["sonder","fuengers","drittkunden"].forEach(function(t) {\n    var btn = document.getElementById("ztab-"+t);\n    if(btn){ btn.style.background=tab===t?"#1b66b3":"#fff"; btn.style.color=tab===t?"#fff":"#1b66b3"; }\n  });\n  zulagenBuildMonthSel(); zulagenRender();\n}\n\nfunction zulagenBuildMonthSel() {\n  var sel = document.getElementById("zulage-month-sel");\n  if(!sel) return;\n  var arr = _zTab==="drittkunden"\n    ? (Array.isArray(DRITTKUNDEN_DATA) ? DRITTKUNDEN_DATA : [])\n    : (_zTab==="sonder" ? (ZULAGE_DATA.sonder||[]) : (ZULAGE_DATA.fuengers||[]));\n  var cur = sel ? sel.value : "all";\n  sel.innerHTML = "<option value=\'all\'>Alle Monate</option>" +\n    arr.map(function(m){ return "<option value=\'"+m.monat+"\'"+(m.monat===cur?" selected":"")+">" + m.monat + "</option>"; }).join("");\n}\n\nfunction zulagenRender() {\n  var el = document.getElementById("zulage-content");\n  var stats = document.getElementById("zulage-stats");\n  if(!el) return;\n  if(_zTab==="drittkunden") {\n    if(!DRITTKUNDEN_DATA || !Array.isArray(DRITTKUNDEN_DATA) || !DRITTKUNDEN_DATA.length) {\n      el.innerHTML = "<div style=\'color:#94a3b8;padding:60px;text-align:center;font-size:14px;\'>Keine Drittkunden-Daten \\u2013 bitte Touren-Excel hochladen.</div>";\n      if(stats) stats.innerHTML = ""; return;\n    }\n  } else if(!ZULAGE_DATA || typeof ZULAGE_DATA !== "object" || (!ZULAGE_DATA.sonder && !ZULAGE_DATA.fuengers)) {\n    el.innerHTML = "<div style=\'color:#94a3b8;padding:60px;text-align:center;font-size:14px;\'>Keine Zulage-Daten \\u2013 bitte Touren-Excel hochladen.</div>";\n    if(stats) stats.innerHTML = ""; return;\n  }\n  var arr = _zTab==="drittkunden" ? (Array.isArray(DRITTKUNDEN_DATA) ? DRITTKUNDEN_DATA : []) : (_zTab==="sonder" ? (ZULAGE_DATA.sonder||[]) : (ZULAGE_DATA.fuengers||[]));\n  if(!arr.length) {\n    el.innerHTML = "<div style=\'color:#94a3b8;padding:60px;text-align:center;\'>Keine Daten f\\u00fcr diesen Tab.</div>";\n    if(stats) stats.innerHTML = ""; return;\n  }\n  var sel = document.getElementById("zulage-month-sel");\n  var filterM = sel ? sel.value : "all";\n  var data = filterM!=="all" ? arr.filter(function(m){return m.monat===filterM;}) : arr;\n  var totalAll = 0, html = "";\n  var isSonder = _zTab === "sonder";\n\n  data.forEach(function(monat) {\n    var mSum = monat.fahrer.reduce(function(s,f){return s+f.gesamt;},0);\n    totalAll += mSum;\n\n    // Month section header – same style as rest of app\n    html += "<div style=\'display:flex;align-items:center;gap:10px;margin-bottom:10px;\'>";\n    html += "<h3 style=\'margin:0;font-size:12px;font-weight:700;color:#1b66b3;white-space:nowrap;\'>" + monat.monat + "</h3>";\n    html += "<span style=\'flex:1;height:1px;background:#e2e8f0;display:block;\'></span>";\n    html += "<span style=\'font-size:11px;font-weight:700;color:#1b66b3;\'>\\u03a3 " + mSum.toFixed(2) + " \\u20ac</span>";\n    html += "</div>";\n\n    // 3-col card grid – same as samRender\n    html += "<div style=\'display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:stretch;margin-bottom:28px;\'>";\n\n    monat.fahrer.forEach(function(f) {\n\n      // Entry chips\n      var chipsHtml = f.tage.map(function(t) {\n        var isDK = (_zTab==="drittkunden");\n        var verdienst = isDK ? (t.zulage||0) : (t.verdienst||0);\n        var datumStr = isDK\n          ? t.datum + " <span style=\'color:#94a3b8;font-size:10px;\'>(" + (t.kw||"") + ")</span>"\n          : t.datum;\n        var rightHtml = "";\n        if(isDK) {\n          var dkLabel = (t.lkw||"") + (t.info ? " \\u00b7 " + t.info : "");\n          rightHtml = "<span style=\'color:#475569;font-weight:600;\'>" + dkLabel + "</span>";\n        } else if(isSonder) {\n          var tour = t.tour && t.tour!=="zbv" && t.tour!=="" ? t.tour : "z.b.v.";\n          var ac = t.art==="Gigaliner" ? "background:#fef3c7;color:#92400e;"\n                 : t.art==="Tandem"    ? "background:#dbeafe;color:#1e40af;"\n                 :                       "background:#dcfce7;color:#166534;";\n          rightHtml = "<span style=\'color:#475569;font-weight:600;\'>" + tour + " \\u00b7 " + t.lkw + "</span>"\n                    + "<span style=\'" + ac + "padding:1px 7px;border-radius:5px;font-size:10px;font-weight:700;\'>" + t.art + "</span>";\n        } else {\n          rightHtml = "<span style=\'color:#475569;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\'>" + (t.kommentar||"") + "</span>";\n        }\n        return "<div style=\'display:flex;align-items:center;justify-content:space-between;"\n               +"background:#edf0f5;border-radius:4px;padding:5px 8px;margin-bottom:4px;font-size:11px;\'>"\n               +"<span style=\'color:#64748b;\'>" + datumStr + "</span>"\n               +"<span style=\'display:flex;align-items:center;gap:5px;\'>"\n               + rightHtml\n               +"<span style=\'font-weight:700;color:#15803d;margin-left:4px;\'>" + verdienst.toFixed(2) + " \\u20ac</span>"\n               +"</span>"\n               +"</div>";\n      }).join("");\n\n      // Card – same shell as samRender: border:2px solid, border-radius:5px, padding:14px 16px\n      html += "<div style=\'background:#fff;border:2px solid #1b66b3;border-radius:5px;"\n             +"padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.06);\'>";\n\n      // Header row – mirroring samRender header\n      html += "<div style=\'display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px;\'>";\n      html += "<div style=\'flex:1;min-width:0;\'>";\n      html += "<div style=\'font-weight:900;font-size:14px;color:#0b1220;white-space:nowrap;"\n             +"overflow:hidden;text-overflow:ellipsis;\'>" + f.name + "</div>";\n      html += "<div style=\'margin-top:3px;font-size:10px;color:#94a3b8;\'>" + (f.persnr||"") + "</div>";\n      html += "</div>";\n      // Big total number – same style as the einsaetze count in samRender\n      html += "<div style=\'text-align:right;flex-shrink:0;\'>";\n      html += "<div style=\'font-size:24px;font-weight:900;color:#1b66b3;line-height:1;\'>" + f.gesamt.toFixed(2) + "</div>";\n      html += "<div style=\'font-size:9px;color:#94a3b8;font-weight:600;\'>" + (_zTab==="drittkunden" ? "\\u20ac Zulage" : "\\u20ac Verdienst") + "</div>";\n      html += "</div>";\n      html += "</div>";\n\n      // Chips\n      html += "<div style=\'flex:1;\'>"+chipsHtml+"</div>";\n\n      // Footer: count badge\n      html += "<div style=\'margin-top:8px;border-top:1px solid #e2e8f0;padding-top:8px;"\n             +"display:flex;align-items:center;gap:6px;\'>";\n      html += "<span style=\'background:#eff6ff;color:#1b66b3;border-radius:4px;padding:2px 8px;"\n             +"font-size:10px;font-weight:700;\'>" + f.tage.length + " Eintr\\u00e4ge</span>";\n      html += "</div>";\n\n      html += "</div>"; // end card\n    });\n\n    html += "</div>"; // end grid\n  });\n\n  el.innerHTML = html || "<div style=\'color:#94a3b8;padding:40px;text-align:center;\'>Keine Daten.</div>";\n  if(stats) stats.innerHTML = totalAll>0 ? "\\u03a3 <b>"+totalAll.toFixed(2)+" \\u20ac</b>" : "";\n}\n\n\n\nfunction zulagenExportExcel() {\n  var b64 = _zTab==="sonder" ? ZULAGE_XLSX_SONDER : _zTab==="fuengers" ? ZULAGE_XLSX_FUENGERS : ZULAGE_XLSX_DRITTKUNDEN;\n  if(!b64) { alert("Keine Excel-Daten.\\nBitte Touren-Dateien in Streamlit hochladen und App neu generieren."); return; }\n  var bc = atob(b64), bytes = new Uint8Array(bc.length);\n  for(var i=0;i<bc.length;i++) bytes[i]=bc.charCodeAt(i);\n  var blob = new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});\n  var url = URL.createObjectURL(blob);\n  var a = document.createElement("a"); a.href=url;\n  a.download = "Zulagen_"+(_zTab==="sonder"?"Sonderfahrzeuge":_zTab==="fuengers"?"Fuengers":"Drittkunden")+".xlsx";\n  a.click(); URL.revokeObjectURL(url);\n}\n'
 
@@ -3700,6 +3879,7 @@ iframe.active{{display:block}}
   <button class="nav-btn" id="btn-sam" onclick="showArea('sam')">&#128664; Sa + So Einsätze</button>
   <button class="nav-btn" id="btn-fa" onclick="showArea('fa')">&#128101; Fahrerauswertung</button>
   <button class="nav-btn" id="btn-zulage" onclick="showArea('zulage')">&#128176; Zulagen</button>
+  <button class="nav-btn" id="btn-spesen" onclick="showArea('spesen')">&#128181; Spesen</button>
   </div>
   <span class="topnav-stamp">{last_updated}</span>
 </nav>
@@ -3893,6 +4073,32 @@ iframe.active{{display:block}}
 
 
 
+  <!-- ── Spesen Panel ───────────────────────────────────── -->
+  <div id="panel-spesen" style="display:none;flex:1;overflow:hidden;background:#e8ecf1;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:#f0f2f6;border-bottom:1.5px solid #c8cfd9;flex-wrap:wrap;flex-shrink:0;">
+      <h2 style="color:#1b66b3;font-size:16px;font-weight:900;margin:0;">&#128181; Spesen</h2>
+      <input id="spesen-search" placeholder="Fahrer suchen..." oninput="spesenFilter(this.value)"
+        style="flex:1;min-width:130px;max-width:220px;padding:5px 12px;border:2px solid #1b66b3;border-radius:5px;font-size:12px;font-family:inherit;outline:none">
+      <select id="spesen-month-sel" onchange="spesenMonthChange(this.value)"
+        style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;font-size:12px;font-weight:700;color:#1b66b3;cursor:pointer;font-family:inherit;outline:none;background:#fff;">
+      </select>
+      <div style="display:flex;gap:4px;">
+        <button onclick="spesenSort('gesamt')" id="spesen-sort-gesamt" style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#1b66b3;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Kosten</button>
+        <button onclick="spesenSort('tage')" id="spesen-sort-tage" style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Einträge</button>
+        <button onclick="spesenSort('name')" id="spesen-sort-name" style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">A–Z</button>
+      </div>
+      <div id="spesen-stats" style="font-size:11px;color:#64748b;margin-left:auto;font-weight:700;"></div>
+    </div>
+    <div style="display:flex;flex:1;overflow:hidden;">
+      <div style="width:240px;flex-shrink:0;border-right:1.5px solid #c8cfd9;overflow-y:auto;background:#f0f2f6;">
+        <div id="spesen-sidebar-list"></div>
+      </div>
+      <div id="spesen-detail-panel" style="flex:1;overflow-y:auto;padding:20px 24px;background:#e8ecf1;">
+        <div style="color:#94a3b8;padding:60px;text-align:center;font-size:14px;">Keine Spesendaten &ndash; bitte Reisekosten-CSV in Streamlit hochladen.</div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Verstoßauswertung Panel ───────────────────────────────────── -->
   <div id="panel-verstoss" style="display:none;flex:1;flex-direction:column;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;">
     <div style="width:92%;margin:0 auto;display:flex;flex-direction:column;flex:1;overflow:hidden;">
@@ -4052,6 +4258,10 @@ function showArea(s) {{
   if(zulagePanel) zulagePanel.style.display = (s==="zulage") ? "flex" : "none";
   var zuBtn = document.getElementById("btn-zulage");
   if(zuBtn) zuBtn.className = "nav-btn" + (s==="zulage" ? " active" : "");
+  var spesenBtn = document.getElementById("btn-spesen");
+  if(spesenBtn) spesenBtn.className = "nav-btn" + (s==="spesen" ? " active" : "");
+  var spesenPanel = document.getElementById("panel-spesen");
+  if(spesenPanel) spesenPanel.style.display = (s==="spesen") ? "flex" : "none";
   var verstossPanel = document.getElementById("panel-verstoss");
   if(verstossPanel) verstossPanel.style.display = (s==="verstoss") ? "flex" : "none";
   var verstossGraphPanel = document.getElementById("panel-verstoss-graph");
@@ -4068,6 +4278,10 @@ function showArea(s) {{
   if(s==="tel" && !telPanel.dataset.loaded) {{ telRender(""); telPanel.dataset.loaded="1"; }}
   if(s==="sam" && samPanel && !samPanel.dataset.loaded) {{ samRender(""); samPanel.dataset.loaded="1"; }}
   if(s==="zulage" && zulagePanel && !zulagePanel.dataset.loaded) {{ zulagenInit(); zulagePanel.dataset.loaded="1"; }}
+  if(s==="spesen") {{
+    if(spesenPanel && !spesenPanel.dataset.loaded) {{ spesenInit(); spesenPanel.dataset.loaded="1"; }}
+    else {{ spesenBuildSidebar(spesenSelectedName); if(spesenSelectedName) spesenShowDetail(spesenSelectedName); }}
+  }}
   if(s==="verstoss") {{
     if(verstossPanel && !verstossPanel.dataset.loaded) {{ verstossInit(); verstossPanel.dataset.loaded="1"; }}
     else {{ verstossRender(); }}
@@ -4302,8 +4516,9 @@ var DRITTKUNDEN_DATA        = {drittkunden_json};
 var ZULAGE_XLSX_DRITTKUNDEN = "{zulage_xlsx_drittkunden}";
 var VERSTOSS_DATA           = {verstoss_json};
 var ZEITERFASSUNG_DATA      = {zeiterfassung_json};
+var SPESEN_DATA            = {spesen_json};
 
-
+{spesen_js_code}
 
 function telPDF() {{
   var w = window.open("","_blank","width=900,height=700");
@@ -5267,6 +5482,223 @@ def parse_telefon_excel(up) -> str:
 
 
 
+def parse_spesen_csv(uploaded_file) -> str:
+    """Parst die Reisekosten-/Spesen-CSV und aggregiert sie pro Fahrer."""
+    import csv as _csv
+    from io import StringIO as _SIO
+
+    empty = json.dumps({"drivers": [], "months": [], "total_cost": 0, "total_meal": 0, "total_night": 0, "total_rows": 0}, ensure_ascii=False)
+    payload = read_upload_bytes(uploaded_file)
+    if not payload:
+        return empty
+
+    text = None
+    for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+        try:
+            text = payload.decode(enc)
+            break
+        except Exception:
+            continue
+    if text is None:
+        return empty
+    if text.startswith("\ufeff"):
+        text = text[1:]
+
+    def _clean(v):
+        s = "" if v is None else str(v).strip()
+        return "" if s.lower() in ("nan", "none", "null") else s
+
+    def _money(v) -> float:
+        s = _clean(v)
+        if not s:
+            return 0.0
+        s = s.replace("€", "").replace(" ", "")
+        if "," in s:
+            s = s.replace(".", "").replace(",", ".")
+        try:
+            return round(float(s), 2)
+        except Exception:
+            return 0.0
+
+    def _duration(v) -> int:
+        s = _clean(v)
+        if not s:
+            return 0
+        if ":" in s:
+            parts = s.split(":")
+            try:
+                h = int(float(parts[0] or 0))
+                m = int(float(parts[1] or 0)) if len(parts) > 1 else 0
+                return h * 60 + m
+            except Exception:
+                return 0
+        try:
+            return int(round(float(s.replace(".", "").replace(",", "."))))
+        except Exception:
+            return 0
+
+    def _dt(v):
+        s = _clean(v).strip('"')
+        if not s:
+            return None
+        for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%d.%m.%Y %H:%M", "%d.%m.%Y"):
+            try:
+                return datetime.datetime.strptime(s[:19], fmt)
+            except Exception:
+                pass
+        try:
+            ts = pd.to_datetime(s, dayfirst=True, errors="coerce")
+            if pd.notna(ts):
+                return ts.to_pydatetime()
+        except Exception:
+            pass
+        return None
+
+    def _date_from_value(v):
+        s = _clean(v).strip('"')
+        if not s:
+            return None
+        for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%Y-%m-%d %H:%M", "%d.%m.%Y %H:%M"):
+            try:
+                return datetime.datetime.strptime(s[:16], fmt).date()
+            except Exception:
+                pass
+        try:
+            ts = pd.to_datetime(s, dayfirst=True, errors="coerce")
+            if pd.notna(ts):
+                return ts.date()
+        except Exception:
+            pass
+        return None
+
+    def _time_label(dt):
+        return dt.strftime("%H:%M") if dt else ""
+
+    def _duration_label(minutes):
+        minutes = int(minutes or 0)
+        if minutes <= 0:
+            return "0 Minuten"
+        h, m = divmod(minutes, 60)
+        if h and m:
+            return f"{h} Std. {m:02d} Min."
+        if h:
+            return f"{h} Std."
+        return f"{m} Min."
+
+    def _month_label(value: str) -> str:
+        names = ["", "Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
+        try:
+            y, m = value.split("-", 1)
+            return f"{names[int(m)]} {y}"
+        except Exception:
+            return value
+
+    def _weekday(d):
+        names = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+        try:
+            return names[d.weekday()]
+        except Exception:
+            return ""
+
+    try:
+        reader = _csv.DictReader(_SIO(text), delimiter=";", quotechar='"')
+    except Exception as e:
+        st.warning(f"Spesen-CSV konnte nicht gelesen werden: {e}")
+        return empty
+
+    by_driver = {}
+    total_rows = 0
+    months_seen = set()
+
+    for row in reader:
+        total_rows += 1
+        norm = {(k or "").strip().lstrip("\ufeff").upper(): v for k, v in row.items()}
+        name = _clean(norm.get("DRIVER"))
+        if not name:
+            continue
+
+        start_dt = _dt(norm.get("START"))
+        end_dt = _dt(norm.get("END"))
+        date_obj = _date_from_value(norm.get("DATE"))
+        if date_obj is None and start_dt is not None:
+            date_obj = start_dt.date()
+        if date_obj is None:
+            continue
+
+        date_iso = date_obj.strftime("%Y-%m-%d")
+        month = date_obj.strftime("%Y-%m")
+        months_seen.add(month)
+        duration_minutes = _duration(norm.get("DURATION"))
+        meal = _money(norm.get("COSTS_MEAL"))
+        night = _money(norm.get("COSTS_NIGHT"))
+        total = round(meal + night, 2)
+
+        entry = {
+            "date_iso": date_iso,
+            "date_sort": date_iso + " " + (_time_label(start_dt) or "00:00"),
+            "date_label": date_obj.strftime("%d.%m.%Y"),
+            "weekday": _weekday(date_obj),
+            "month": month,
+            "start": _clean(norm.get("START")),
+            "end": _clean(norm.get("END")),
+            "start_time": _time_label(start_dt),
+            "end_time": _time_label(end_dt),
+            "duration_minutes": duration_minutes,
+            "duration_label": _duration_label(duration_minutes),
+            "vehicles": _clean(norm.get("VEHICLES")),
+            "region": _clean(norm.get("REGION")),
+            "meal": meal,
+            "night": night,
+            "total": total,
+            "pos_start": _clean(norm.get("POS_START")),
+            "pos_end": _clean(norm.get("POS_END")),
+            "absence": _clean(norm.get("ABSENCE")),
+            "employee_nr": _clean(norm.get("EMPLOYEE_NR")),
+        }
+
+        if name not in by_driver:
+            by_driver[name] = {
+                "name": name,
+                "employee_nr": _clean(norm.get("EMPLOYEE_NR")),
+                "rows": [],
+                "meal": 0.0,
+                "night": 0.0,
+                "gesamt": 0.0,
+                "duration_minutes": 0,
+                "fahrtage": 0,
+            }
+        d = by_driver[name]
+        if not d.get("employee_nr") and entry.get("employee_nr"):
+            d["employee_nr"] = entry["employee_nr"]
+        d["rows"].append(entry)
+        d["meal"] = round(d["meal"] + meal, 2)
+        d["night"] = round(d["night"] + night, 2)
+        d["gesamt"] = round(d["gesamt"] + total, 2)
+        d["duration_minutes"] += duration_minutes
+        if duration_minutes > 0 or entry.get("start_time") or entry.get("end_time") or entry.get("vehicles"):
+            d["fahrtage"] += 1
+
+    drivers = []
+    for d in by_driver.values():
+        d["rows"].sort(key=lambda r: r.get("date_sort", ""))
+        drivers.append(d)
+    drivers.sort(key=lambda d: (-float(d.get("gesamt", 0)), d.get("name", "")))
+
+    months = [{"value": m, "label": _month_label(m)} for m in sorted(months_seen, reverse=True)]
+    total_meal = round(sum(float(d.get("meal", 0)) for d in drivers), 2)
+    total_night = round(sum(float(d.get("night", 0)) for d in drivers), 2)
+    total_cost = round(total_meal + total_night, 2)
+
+    return json.dumps({
+        "drivers": drivers,
+        "months": months,
+        "total_cost": total_cost,
+        "total_meal": total_meal,
+        "total_night": total_night,
+        "total_rows": total_rows,
+    }, ensure_ascii=False)
+
+
 def parse_zeiterfassung_csv(uploaded_file) -> str:
     """Parst die Zeiterfassungs-CSV und erzeugt einen Lookup je Fahrer + Datum."""
     import csv as _csv
@@ -6022,6 +6454,32 @@ elif st.session_state.get("fahrzeugwaesche_json"):
     st.caption("✅ Fahrzeugwäsche-Dateien bereits geladen")
 
 
+spesen_up = st.file_uploader(
+    "💶 Spesen/Reisekosten-CSV hochladen (optional)",
+    type=["csv"],
+    key="spesen_upload_v1"
+)
+if spesen_up:
+    spesen_sig = upload_signature(spesen_up)
+    if st.session_state.get("spesen_sig") != spesen_sig:
+        with st.spinner("Verarbeite Spesen-CSV …"):
+            st.session_state.spesen_json = parse_spesen_csv(spesen_up)
+            st.session_state.spesen_sig = spesen_sig
+    try:
+        _sp = json.loads(st.session_state.get("spesen_json", "{}"))
+        _sp_drivers = _sp.get("drivers", [])
+        _sp_total = float(_sp.get("total_cost", 0) or 0)
+        _sp_rows = int(_sp.get("total_rows", 0) or 0)
+        st.caption(
+            f"✅ Spesen geladen – {_sp_rows} Zeilen · {len(_sp_drivers)} Fahrer · "
+            f"Gesamt {_sp_total:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+        )
+    except Exception:
+        st.caption("✅ Spesen-CSV geladen")
+elif st.session_state.get("spesen_json"):
+    st.caption("✅ Spesen/Reisekosten bereits geladen")
+
+
 verstoss_up = st.file_uploader(
     "⚠️ Verstoßauswertung (Digitacho-CSV)",
     type=["csv"],
@@ -6104,6 +6562,7 @@ if ready:
             fahrzeugwaesche_json=st.session_state.get("fahrzeugwaesche_json", "[]"),
             verstoss_json=st.session_state.get("verstoss_json", '{"drivers":[],"total_violations":0}'),
             zeiterfassung_json=st.session_state.get("zeiterfassung_json", '{"by_key":{},"total_rows":0}'),
+            spesen_json=st.session_state.get("spesen_json", '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}'),
             last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
         )
     st.download_button(
