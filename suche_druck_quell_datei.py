@@ -5107,7 +5107,7 @@ function gkRenderStructured(customer, detail) {{
 
     // ── Kontakte ──────────────────────────────────────────────────────────────
     if (emailIdx.length || telIdx.length) {{
-      var contactRows = []; // [{label:str|null, emails:[], tels:[]}]
+      var contactRows = []; // [{{label:str|null, emails:[], tels:[]}}]
       var currentLabel = null;
 
       (entry.rows||[]).forEach(function(row) {{
