@@ -2356,6 +2356,12 @@ function spMoney(v) {
   var n = Number(v || 0);
   return n.toLocaleString("de-DE", {minimumFractionDigits:2, maximumFractionDigits:2}) + " €";
 }
+function spTaxFree(r) {
+  return Number((r && r.tax_free != null ? r.tax_free : r.meal) || 0);
+}
+function spTaxable(r) {
+  return Number((r && r.taxable != null ? r.taxable : r.night) || 0);
+}
 function spDuration(mins) {
   mins = Math.round(Number(mins || 0));
   if(!mins) return "0 Minuten";
@@ -2382,16 +2388,21 @@ function spStatsForDriver(d) {
   var bucket = spesenStatsCache[spesenMonthFilter];
   if(bucket && bucket[d.name]) return bucket[d.name];
   var rows = spRowsForDriver(d);
-  var out = {rows:rows, meal:0, night:0, total:0, duration:0, rideDays:0};
+  var out = {rows:rows, tax_free:0, taxable:0, meal:0, night:0, total:0, duration:0, rideDays:0};
   for(var i=0; i<rows.length; i++){
     var r = rows[i];
-    out.meal += Number(r.meal || 0);
-    out.night += Number(r.night || 0);
-    out.total += Number(r.total || 0);
+    var taxFree = spTaxFree(r);
+    var taxable = spTaxable(r);
+    out.tax_free += taxFree;
+    out.taxable += taxable;
+    out.total += taxFree + taxable;
     var dur = Number(r.duration_minutes || 0);
     out.duration += dur;
     if(dur > 0 || r.start || r.end || r.vehicles) out.rideDays += 1;
   }
+  // Legacy-Aliase: meal = steuerfrei, night = steuerpflichtig
+  out.meal = out.tax_free;
+  out.night = out.taxable;
   if(!bucket){ bucket = {}; spesenStatsCache[spesenMonthFilter] = bucket; }
   bucket[d.name] = out;
   return out;
@@ -2534,8 +2545,8 @@ function spesenShowDetail(name) {
   var subtitle = spesenMonthFilter === "all" ? "Alle Monate" : spMonthLabel(spesenMonthFilter);
   var cards = [
     ["Gesamt", spMoney(s.total), "#1b66b3"],
-    ["Verpflegung", spMoney(s.meal), "#15803d"],
-    ["Übernachtung", spMoney(s.night), "#92400e"],
+    ["Steuerfrei", spMoney(s.meal), "#15803d"],
+    ["Steuerpflichtig", spMoney(s.night), "#92400e"],
     ["Dauer", spDuration(s.duration), "#334155"],
     ["Fahrtage", String(s.rideDays), "#334155"]
   ];
@@ -2561,8 +2572,8 @@ function spesenShowDetail(name) {
           "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;position:sticky;top:0;background:#e8f1fb;z-index:1;'>Dauer</th>" +
           "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;position:sticky;top:0;background:#e8f1fb;z-index:1;'>Fahrzeug</th>" +
           "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;position:sticky;top:0;background:#e8f1fb;z-index:1;'>Strecke</th>" +
-          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;position:sticky;top:0;background:#e8f1fb;z-index:1;'>Verpflegung</th>" +
-          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;position:sticky;top:0;background:#e8f1fb;z-index:1;'>Übernachtung</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;position:sticky;top:0;background:#e8f1fb;z-index:1;'>Steuerfrei</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;position:sticky;top:0;background:#e8f1fb;z-index:1;'>Steuerpflichtig</th>" +
           "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;position:sticky;top:0;background:#e8f1fb;z-index:1;'>Gesamt</th>" +
           "</tr></thead><tbody>";
   if(!s.rows.length) {
@@ -2584,9 +2595,9 @@ function spesenShowDetail(name) {
       html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;'>" + spEsc(r.duration_label || "0 Minuten") + "</td>";
       html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;'>" + spEsc(r.vehicles || "—") + "</td>";
       html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#475569;'>" + spEsc(route || "—") + "</td>";
-      html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:800;color:#15803d;'>" + spMoney(r.meal) + "</td>";
-      html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:800;color:#92400e;'>" + spMoney(r.night) + "</td>";
-      html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:900;color:#1b66b3;'>" + spMoney(r.total) + "</td>";
+      html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:800;color:#15803d;'>" + spMoney(spTaxFree(r)) + "</td>";
+      html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:800;color:#92400e;'>" + spMoney(spTaxable(r)) + "</td>";
+      html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:900;color:#1b66b3;'>" + spMoney(spTaxFree(r) + spTaxable(r)) + "</td>";
       html += "</tr>";
     });
   }
@@ -2636,8 +2647,8 @@ function spesenPdfOne(name) {
 
   body += "<div class='kpi'>"
     + "<div><div class='num' style='color:#1b66b3;'>" + spMoney(s.total) + "</div><div class='lbl'>Gesamt</div></div>"
-    + "<div><div class='num' style='color:#15803d;'>" + spMoney(s.meal) + "</div><div class='lbl'>Verpflegung</div></div>"
-    + "<div><div class='num' style='color:#92400e;'>" + spMoney(s.night) + "</div><div class='lbl'>Übernachtung</div></div>"
+    + "<div><div class='num' style='color:#15803d;'>" + spMoney(s.meal) + "</div><div class='lbl'>Steuerfrei</div></div>"
+    + "<div><div class='num' style='color:#92400e;'>" + spMoney(s.night) + "</div><div class='lbl'>Steuerpflichtig</div></div>"
     + "<div><div class='num' style='color:#0f172a;'>" + s.rideDays + "</div><div class='lbl'>Fahrtage</div></div>"
     + "<div><div class='num' style='color:#0f172a;'>" + spDuration(s.duration) + "</div><div class='lbl'>Dauer gesamt</div></div>"
     + "</div>";
@@ -2647,8 +2658,8 @@ function spesenPdfOne(name) {
     + "<th style='width:24mm'>Zeit</th>"
     + "<th style='width:20mm'>Dauer</th>"
     + "<th>Strecke</th>"
-    + "<th style='text-align:right;width:20mm'>Verpflegung</th>"
-    + "<th style='text-align:right;width:22mm'>Übernachtung</th>"
+    + "<th style='text-align:right;width:20mm'>Steuerfrei</th>"
+    + "<th style='text-align:right;width:22mm'>Steuerpflichtig</th>"
     + "<th style='text-align:right;width:20mm'>Gesamt</th>"
     + "</tr></thead><tbody>";
 
@@ -2675,11 +2686,11 @@ function spesenPdfOne(name) {
       + "<td style='white-space:nowrap;'>" + spEsc(r.duration_label || "&mdash;") + "</td>"
       + "<td>" + spEsc(route || "&mdash;") + "</td>"
       + "<td style='text-align:right;font-weight:700;color:#15803d;font-variant-numeric:tabular-nums;white-space:nowrap;'>"
-      + (Number(r.meal||0) > 0 ? spMoney(r.meal) : "&mdash;") + "</td>"
+      + (spTaxFree(r) > 0 ? spMoney(spTaxFree(r)) : "&mdash;") + "</td>"
       + "<td style='text-align:right;font-weight:700;color:#92400e;font-variant-numeric:tabular-nums;white-space:nowrap;'>"
-      + (Number(r.night||0) > 0 ? spMoney(r.night) : "&mdash;") + "</td>"
+      + (spTaxable(r) > 0 ? spMoney(spTaxable(r)) : "&mdash;") + "</td>"
       + "<td style='text-align:right;font-weight:800;color:#1b66b3;font-variant-numeric:tabular-nums;white-space:nowrap;'>"
-      + spMoney(r.total) + "</td>"
+      + spMoney(spTaxFree(r) + spTaxable(r)) + "</td>"
       + "</tr>";
     zebra += 1;
   });
@@ -2722,7 +2733,7 @@ function spIsLateStart(r) {
   return minutes >= fromM && minutes <= toM;
 }
 
-// Liefert {monthValue: {label, entries:[{driver,row}], meal, night, total, drivers}}
+// Liefert {monthValue: {label, entries:[{driver,row}], meal=steuerfrei, night=steuerpflichtig, total, drivers}}
 // Respektiert den aktuellen Monatsfilter.
 function spLastName(name) {
   var parts = String(name||"").trim().split(/\s+/);
@@ -2737,9 +2748,9 @@ function spLateStartsByMonth() {
       var mo = r.month || "";
       if(!map[mo]) map[mo] = { label: spMonthLabel(mo), entries: [], meal:0, night:0, total:0, drivers:{} };
       map[mo].entries.push({ driver: d, row: r });
-      map[mo].meal += Number(r.meal||0);
-      map[mo].night += Number(r.night||0);
-      map[mo].total += Number(r.total||0);
+      map[mo].meal += spTaxFree(r);
+      map[mo].night += spTaxable(r);
+      map[mo].total += spTaxFree(r) + spTaxable(r);
       map[mo].drivers[d.name] = 1;
     });
   });
@@ -2807,8 +2818,8 @@ function spesenShowLateStarts() {
   var cards = [
     ["20 Uhr Einträge", String(allEntries), "#6d28d9"],
     ["Betroffene Fahrer", String(driverCount), "#6d28d9"],
-    ["Σ Verpflegung", spMoney(allMeal), "#15803d"],
-    ["Σ Übernachtung", spMoney(allNight), "#92400e"],
+    ["Σ Steuerfrei", spMoney(allMeal), "#15803d"],
+    ["Σ Steuerpflichtig", spMoney(allNight), "#92400e"],
     ["Σ Gesamt", spMoney(allTotal), "#1b66b3"]
   ];
   html += "<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:14px;'>";
@@ -2838,8 +2849,8 @@ function spesenShowLateStarts() {
          + "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;'>Start</th>"
          + "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;'>Ende</th>"
          + "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;'>Strecke</th>"
-         + "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;'>Verpflegung</th>"
-         + "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;'>Übernachtung</th>"
+         + "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;'>Steuerfrei</th>"
+         + "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;'>Steuerpflichtig</th>"
          + "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;'>Gesamt</th>"
          + "</tr></thead><tbody>";
 
@@ -2858,10 +2869,10 @@ function spesenShowLateStarts() {
            + "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#64748b;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + spEsc(r.end_time || "—") + "</td>"
            + "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#475569;'>" + spEsc(route || "—") + "</td>"
            + "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:700;color:#15803d;font-variant-numeric:tabular-nums;white-space:nowrap;'>"
-           + (Number(r.meal||0) > 0 ? spMoney(r.meal) : "—") + "</td>"
+           + (spTaxFree(r) > 0 ? spMoney(spTaxFree(r)) : "—") + "</td>"
            + "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:700;color:#92400e;font-variant-numeric:tabular-nums;white-space:nowrap;'>"
-           + (Number(r.night||0) > 0 ? spMoney(r.night) : "—") + "</td>"
-           + "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:900;color:#1b66b3;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + spMoney(r.total) + "</td>"
+           + (spTaxable(r) > 0 ? spMoney(spTaxable(r)) : "—") + "</td>"
+           + "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:900;color:#1b66b3;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + spMoney(spTaxFree(r) + spTaxable(r)) + "</td>"
            + "</tr>";
     });
 
@@ -4465,7 +4476,7 @@ iframe.active{{display:block}}
         style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;font-size:12px;font-weight:700;color:#1b66b3;cursor:pointer;font-family:inherit;outline:none;background:#fff;">
       </select>
       <div style="display:flex;gap:4px;">
-        <button onclick="spesenSort('gesamt')" id="spesen-sort-gesamt" style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#1b66b3;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Kosten</button>
+        <button onclick="spesenSort('gesamt')" id="spesen-sort-gesamt" style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#1b66b3;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Betrag</button>
         <button onclick="spesenSort('tage')" id="spesen-sort-tage" style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Einträge</button>
         <button onclick="spesenSort('name')" id="spesen-sort-name" style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">A&ndash;Z</button>
       </div>
@@ -5873,11 +5884,11 @@ def parse_telefon_excel(up) -> str:
 
 
 def parse_spesen_csv(uploaded_file) -> str:
-    """Parst die Reisekosten-/Spesen-CSV und aggregiert sie pro Fahrer."""
+    """Parst die Reisekosten-/Spesen-CSV und aggregiert nur Steuerfreiheit + steuerpflichtigen Betrag pro Fahrer."""
     import csv as _csv
     from io import StringIO as _SIO
 
-    empty = json.dumps({"drivers": [], "months": [], "total_cost": 0, "total_meal": 0, "total_night": 0, "total_rows": 0}, ensure_ascii=False)
+    empty = json.dumps({"drivers": [], "months": [], "total_cost": 0, "total_tax_free": 0, "total_taxable": 0, "total_rows": 0}, ensure_ascii=False)
     payload = read_upload_bytes(uploaded_file)
     if not payload:
         return empty
@@ -6009,9 +6020,12 @@ def parse_spesen_csv(uploaded_file) -> str:
         month = date_obj.strftime("%Y-%m")
         months_seen.add(month)
         duration_minutes = _duration(norm.get("DURATION"))
-        meal = _money(norm.get("COSTS_MEAL"))
-        night = _money(norm.get("COSTS_NIGHT"))
-        total = round(meal + night, 2)
+        # Nur diese beiden Spalten werden fuer die Spesenberechnung verwendet:
+        # Steuerfreiheit -> TAX_FREE_AMOUNT
+        # Steuerpflichtiger Betrag -> TAXABLE_AMOUNT
+        tax_free = _money(norm.get("TAX_FREE_AMOUNT"))
+        taxable = _money(norm.get("TAXABLE_AMOUNT"))
+        total = round(tax_free + taxable, 2)
 
         entry = {
             "date_iso": date_iso,
@@ -6027,8 +6041,12 @@ def parse_spesen_csv(uploaded_file) -> str:
             "duration_label": _duration_label(duration_minutes),
             "vehicles": _clean(norm.get("VEHICLES")),
             "region": _clean(norm.get("REGION")),
-            "meal": meal,
-            "night": night,
+            "tax_free": tax_free,
+            "taxable": taxable,
+            # Legacy-Aliase fuer vorhandene Frontend-Funktionen:
+            # meal = steuerfrei, night = steuerpflichtig
+            "meal": tax_free,
+            "night": taxable,
             "total": total,
             "pos_start": _clean(norm.get("POS_START")),
             "pos_end": _clean(norm.get("POS_END")),
@@ -6041,6 +6059,9 @@ def parse_spesen_csv(uploaded_file) -> str:
                 "name": name,
                 "employee_nr": _clean(norm.get("EMPLOYEE_NR")),
                 "rows": [],
+                "tax_free": 0.0,
+                "taxable": 0.0,
+                # Legacy-Aliase fuer vorhandene Frontend-Funktionen:
                 "meal": 0.0,
                 "night": 0.0,
                 "gesamt": 0.0,
@@ -6051,8 +6072,10 @@ def parse_spesen_csv(uploaded_file) -> str:
         if not d.get("employee_nr") and entry.get("employee_nr"):
             d["employee_nr"] = entry["employee_nr"]
         d["rows"].append(entry)
-        d["meal"] = round(d["meal"] + meal, 2)
-        d["night"] = round(d["night"] + night, 2)
+        d["tax_free"] = round(d["tax_free"] + tax_free, 2)
+        d["taxable"] = round(d["taxable"] + taxable, 2)
+        d["meal"] = d["tax_free"]      # Legacy-Alias: steuerfrei
+        d["night"] = d["taxable"]      # Legacy-Alias: steuerpflichtig
         d["gesamt"] = round(d["gesamt"] + total, 2)
         d["duration_minutes"] += duration_minutes
         if duration_minutes > 0 or entry.get("start_time") or entry.get("end_time") or entry.get("vehicles"):
@@ -6065,16 +6088,19 @@ def parse_spesen_csv(uploaded_file) -> str:
     drivers.sort(key=lambda d: (-float(d.get("gesamt", 0)), d.get("name", "")))
 
     months = [{"value": m, "label": _month_label(m)} for m in sorted(months_seen, reverse=True)]
-    total_meal = round(sum(float(d.get("meal", 0)) for d in drivers), 2)
-    total_night = round(sum(float(d.get("night", 0)) for d in drivers), 2)
-    total_cost = round(total_meal + total_night, 2)
+    total_tax_free = round(sum(float(d.get("tax_free", 0)) for d in drivers), 2)
+    total_taxable = round(sum(float(d.get("taxable", 0)) for d in drivers), 2)
+    total_cost = round(total_tax_free + total_taxable, 2)
 
     return json.dumps({
         "drivers": drivers,
         "months": months,
         "total_cost": total_cost,
-        "total_meal": total_meal,
-        "total_night": total_night,
+        "total_tax_free": total_tax_free,
+        "total_taxable": total_taxable,
+        # Legacy-Aliase fuer vorhandene Frontend-Funktionen:
+        "total_meal": total_tax_free,
+        "total_night": total_taxable,
         "total_rows": total_rows,
     }, ensure_ascii=False)
 
