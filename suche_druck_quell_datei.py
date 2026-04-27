@@ -2534,6 +2534,10 @@ function spesenShowDetail(name) {
   html += "<div style='display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;'>";
   html += "<div><div style='font-size:20px;font-weight:900;color:#0f172a;'>" + spEsc(d.name) + "</div>";
   html += "<div style='font-size:12px;color:#64748b;margin-top:2px;'>" + spEsc(subtitle) + (d.employee_nr ? " · Personalnummer " + spEsc(d.employee_nr) : "") + "</div></div>";
+  html += "<button onclick='spesenPdfOne(" + JSON.stringify(d.name) + ")' "
+        + "style='padding:7px 14px;background:linear-gradient(180deg,#3b82f6 0%,#1b66b3 100%);color:#fff;border:none;border-radius:6px;"
+        + "font-weight:800;font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 1px 3px rgba(27,102,179,.32);'>"
+        + "&#128196; PDF drucken</button>";
   html += "</div><div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:14px;'>";
   cards.forEach(function(c){ html += "<div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;'><div style='font-size:10px;font-weight:900;color:#64748b;text-transform:uppercase;letter-spacing:.35px;'>"+c[0]+"</div><div style='font-size:17px;font-weight:900;color:"+c[2]+";margin-top:3px;'>"+c[1]+"</div></div>"; });
   html += "</div></div>";
@@ -2579,6 +2583,119 @@ function spesenShowDetail(name) {
   html += "</tbody></table></div>";
   panel.innerHTML = html;
   panel.scrollTop = 0;
+}
+
+function spesenPdfOne(name) {
+  var d = spGetDrivers().find(function(x){ return x.name === name; });
+  if(!d){ alert("Fahrer nicht gefunden."); return; }
+  var s = spStatsForDriver(d);
+  if(!s.rows.length){ alert("Keine Einträge für den gewählten Zeitraum."); return; }
+
+  var today = new Date().toLocaleDateString("de-DE", {day:"2-digit", month:"long", year:"numeric"});
+  var subtitle = spesenMonthFilter === "all" ? "Alle Monate" : spMonthLabel(spesenMonthFilter);
+
+  var css = "@page{size:A4 portrait;margin:11mm}"
+    + "*{box-sizing:border-box;margin:0;padding:0}"
+    + "body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;font-size:9pt}"
+    + ".head{border-bottom:3px solid #1b66b3;padding-bottom:4mm;margin-bottom:5mm}"
+    + ".head h1{font-size:18pt;color:#1b66b3;font-weight:900;margin-bottom:1mm}"
+    + ".head .name{font-size:13pt;font-weight:800;color:#0f172a;margin-top:2mm}"
+    + ".head .sub{font-size:9pt;color:#64748b;margin-top:1mm}"
+    + ".kpi{display:flex;gap:3mm;margin:4mm 0 5mm;flex-wrap:wrap}"
+    + ".kpi>div{flex:1;min-width:30mm;border:1px solid #e2e8f0;border-radius:2mm;padding:2.5mm 3mm;background:#f8fafc}"
+    + ".kpi .num{font-size:12pt;font-weight:900}"
+    + ".kpi .lbl{font-size:7pt;color:#64748b;text-transform:uppercase;letter-spacing:.3px;margin-top:0.5mm}"
+    + "table{width:100%;border-collapse:collapse;font-size:8pt}"
+    + "thead tr{background:#1e3a5f;color:#fff}"
+    + "thead th{padding:1.8mm 2.5mm;font-weight:800;text-align:left;font-size:7pt;text-transform:uppercase;letter-spacing:.3px}"
+    + "tbody td{padding:1.6mm 2.5mm;border-bottom:1px solid #eef2f7;vertical-align:top}"
+    + "tbody tr.sep td{background:#e8f1fb;color:#1b66b3;font-weight:900;font-size:7.5pt;text-transform:uppercase;letter-spacing:.4px;padding:1.4mm 2.5mm;border-bottom:1px solid #cbd5e1}"
+    + "tbody tr.zebra{background:#f8fafc}"
+    + "tfoot td{padding:2mm 2.5mm;font-weight:900;background:#0f172a;color:#fff;font-size:8.5pt}"
+    + ".wd{font-size:6.5pt;color:#94a3b8;font-weight:700}"
+    + ".sig{margin-top:10mm;display:flex;gap:12mm}"
+    + ".sig .line{border-top:1px solid #94a3b8;width:75mm;padding-top:1.5mm;font-size:7pt;color:#64748b}"
+    + ".ft{margin-top:6mm;padding-top:3mm;border-top:1px solid #e2e8f0;font-size:7pt;color:#94a3b8;display:flex;justify-content:space-between}";
+
+  var body = "<div class='head'>"
+    + "<h1>&#128181; Reisekostenabrechnung</h1>"
+    + "<div class='name'>" + spEsc(d.name) + "</div>"
+    + "<div class='sub'>" + spEsc(subtitle) + (d.employee_nr ? " &middot; Personalnummer " + spEsc(d.employee_nr) : "")
+    + " &middot; Stand: " + today + "</div>"
+    + "</div>";
+
+  body += "<div class='kpi'>"
+    + "<div><div class='num' style='color:#1b66b3;'>" + spMoney(s.total) + "</div><div class='lbl'>Gesamt</div></div>"
+    + "<div><div class='num' style='color:#15803d;'>" + spMoney(s.meal) + "</div><div class='lbl'>Verpflegung</div></div>"
+    + "<div><div class='num' style='color:#92400e;'>" + spMoney(s.night) + "</div><div class='lbl'>Übernachtung</div></div>"
+    + "<div><div class='num' style='color:#0f172a;'>" + s.rideDays + "</div><div class='lbl'>Fahrtage</div></div>"
+    + "<div><div class='num' style='color:#0f172a;'>" + spDuration(s.duration) + "</div><div class='lbl'>Dauer gesamt</div></div>"
+    + "</div>";
+
+  body += "<table><thead><tr>"
+    + "<th style='width:20mm'>Datum</th>"
+    + "<th style='width:24mm'>Zeit</th>"
+    + "<th style='width:20mm'>Dauer</th>"
+    + "<th>Strecke</th>"
+    + "<th style='text-align:right;width:20mm'>Verpflegung</th>"
+    + "<th style='text-align:right;width:22mm'>Übernachtung</th>"
+    + "<th style='text-align:right;width:20mm'>Gesamt</th>"
+    + "</tr></thead><tbody>";
+
+  var lastMonth = null;
+  var showSep = (spesenMonthFilter === "all");
+  var zebra = 0;
+  s.rows.forEach(function(r){
+    if(showSep && r.month && r.month !== lastMonth){
+      body += "<tr class='sep'><td colspan='7'>" + spEsc(spMonthLabel(r.month)) + "</td></tr>";
+      lastMonth = r.month;
+      zebra = 0;
+    }
+    var time = "";
+    if(r.start_time && r.end_time) time = spEsc(r.start_time) + " – " + spEsc(r.end_time);
+    else if(r.start_time) time = spEsc(r.start_time);
+    else if(r.end_time) time = spEsc(r.end_time);
+    else time = "&mdash;";
+    var route = (r.pos_start || r.pos_end) ? ((r.pos_start||"") + (r.pos_end ? " → " + r.pos_end : "")) : "";
+    if(!route) route = r.region || "";
+    var rowCls = (zebra % 2) ? " class='zebra'" : "";
+    body += "<tr" + rowCls + ">"
+      + "<td style='font-weight:700;white-space:nowrap;'>" + spEsc(r.date_label || r.date_iso || "") + "<div class='wd'>" + spEsc(r.weekday || "") + "</div></td>"
+      + "<td style='white-space:nowrap;font-variant-numeric:tabular-nums;'>" + time + "</td>"
+      + "<td style='white-space:nowrap;'>" + spEsc(r.duration_label || "&mdash;") + "</td>"
+      + "<td>" + spEsc(route || "&mdash;") + "</td>"
+      + "<td style='text-align:right;font-weight:700;color:#15803d;font-variant-numeric:tabular-nums;white-space:nowrap;'>"
+      + (Number(r.meal||0) > 0 ? spMoney(r.meal) : "&mdash;") + "</td>"
+      + "<td style='text-align:right;font-weight:700;color:#92400e;font-variant-numeric:tabular-nums;white-space:nowrap;'>"
+      + (Number(r.night||0) > 0 ? spMoney(r.night) : "&mdash;") + "</td>"
+      + "<td style='text-align:right;font-weight:800;color:#1b66b3;font-variant-numeric:tabular-nums;white-space:nowrap;'>"
+      + spMoney(r.total) + "</td>"
+      + "</tr>";
+    zebra += 1;
+  });
+
+  body += "</tbody><tfoot><tr>"
+    + "<td colspan='4' style='text-align:right;'>Summe " + spEsc(subtitle) + "</td>"
+    + "<td style='text-align:right;'>" + spMoney(s.meal) + "</td>"
+    + "<td style='text-align:right;'>" + spMoney(s.night) + "</td>"
+    + "<td style='text-align:right;'>" + spMoney(s.total) + "</td>"
+    + "</tr></tfoot></table>";
+
+  body += "<div class='sig'>"
+    + "<div><div class='line'>Datum, Unterschrift Fahrer</div></div>"
+    + "<div><div class='line'>Datum, Unterschrift Disposition</div></div>"
+    + "</div>";
+
+  body += "<div class='ft'>"
+    + "<span>NordFrischeCenter &middot; Reisekostenabrechnung</span>"
+    + "<span>" + spEsc(d.name) + "</span>"
+    + "</div>";
+
+  var w = window.open("", "_blank", "width=900,height=800");
+  w.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Spesen - " + spEsc(d.name) + "</title><style>" + css + "</style></head><body>" + body + "</body></html>");
+  w.document.close();
+  w.focus();
+  setTimeout(function(){ w.print(); }, 500);
 }
 """
 
