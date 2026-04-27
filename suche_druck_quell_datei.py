@@ -5123,8 +5123,21 @@ function gkRenderStructured(customer, detail) {{
           if (v && isLabel(v) && !isPhone(v)) labelVal = labelVal || v;
         }});
       }}
+      // Tel dieser Zeile immer zuerst bestimmen
+      var rowTels = [];
+      telIdx.forEach(function(ci) {{
+        var v = (row[ci]||"").trim();
+        if (v && isPhone(v)) rowTels.push(v);
+      }});
+
       if (labelVal) {{
-        allContactRows.push({{isLabel:true, text:labelVal}});
+        if (rowTels.length) {{
+          // Text + Tel auf gleicher Zeile → Kontaktzeile mit Beschriftung
+          allContactRows.push({{isLabel:false, labelText:labelVal, emails:[], tels:rowTels}});
+        }} else {{
+          // Reiner Text ohne Tel → Section-Chip
+          allContactRows.push({{isLabel:true, text:labelVal}});
+        }}
         return;
       }}
       var rowEmails = [];
@@ -5132,18 +5145,13 @@ function gkRenderStructured(customer, detail) {{
         var v = (row[ci]||"").trim();
         if (v && !isLabel(v)) rowEmails.push(v);
       }});
-      var rowTels = [];
-      telIdx.forEach(function(ci) {{
-        var v = (row[ci]||"").trim();
-        if (v && isPhone(v)) rowTels.push(v);
-      }});
       if (rowEmails.length || rowTels.length) {{
-        // Tel-only-Zeile? → zur letzten Kontaktzeile ohne Tel mergen
+        // Tel-only-Zeile ohne Email → zur letzten Kontaktzeile ohne Tel mergen
         if (!rowEmails.length && rowTels.length) {{
           var last = allContactRows.length ? allContactRows[allContactRows.length-1] : null;
           if (last && !last.isLabel && !last.isOther && (!last.tels || !last.tels.length)) {{
             last.tels = rowTels;
-            return; // Merge done, no new row
+            return;
           }}
         }}
         allContactRows.push({{isLabel:false, emails:rowEmails, tels:rowTels}});
@@ -5190,26 +5198,29 @@ function gkRenderStructured(customer, detail) {{
               + "<span style='font-size:12px;color:#334155;'>" + cr.vals.map(gkEsc).join("<br>") + "</span>"
               + "</div>";
       }} else {{
-        // Kontaktzeile: Email + Tel als zusammengehöriges Paar
-        var hasEmail = cr.emails && cr.emails.length;
-        var hasTel   = cr.tels   && cr.tels.length;
+        // Kontaktzeile: (Email oder LabelText) + Tel als Paar
+        var hasEmail     = cr.emails && cr.emails.length;
+        var hasLabelText = cr.labelText && cr.labelText.length;
+        var hasTel       = cr.tels && cr.tels.length;
         var rowBg = ri % 2 === 0 ? "transparent" : "#fafbfc";
         html += "<div style='display:flex;align-items:center;gap:0;padding:5px 8px;border-radius:4px;margin:1px 0;background:" + rowBg + ";'>";
-        // Email-Teil
+        // Linke Seite: Email-Link ODER Beschriftungstext ODER Strich
         html += "<span style='flex:1;min-width:0;'>";
         if (hasEmail) {{
           html += cr.emails.map(function(em) {{
-            var m = em.match(/^(\S+@\S+)\s*\((.+)\)\s*$/);
-            return m
-              ? "<a href='mailto:" + gkEsc(m[1]) + "' style='color:#1b66b3;font-size:12px;font-weight:600;text-decoration:none;'>" + gkEsc(m[1]) + "</a>"
-              + " <span style='color:#94a3b8;font-size:11px;'>(" + gkEsc(m[2]) + ")</span>"
-              : "<a href='mailto:" + gkEsc(em) + "' style='color:#1b66b3;font-size:12px;font-weight:600;text-decoration:none;'>" + gkEsc(em) + "</a>";
+            var m = em.match(/^[^\s@]+@[^\s@]+/);
+            var isMailAddr = m !== null;
+            return isMailAddr
+              ? "<a href='mailto:" + gkEsc(em) + "' style='color:#1b66b3;font-size:12px;font-weight:600;text-decoration:none;'>" + gkEsc(em) + "</a>"
+              : "<span style='font-size:12px;color:#334155;'>" + gkEsc(em) + "</span>";
           }}).join(" ");
+        }} else if (hasLabelText) {{
+          html += "<span style='font-size:12px;font-weight:600;color:#334155;'>" + gkEsc(cr.labelText) + "</span>";
         }} else {{
           html += "<span style='color:#cbd5e1;font-size:12px;'>&ndash;</span>";
         }}
         html += "</span>";
-        // Tel-Teil — rechts, klar sichtbar als zusammengehörig
+        // Rechte Seite: Telefon
         if (hasTel) {{
           html += "<span style='display:flex;align-items:center;gap:5px;flex-shrink:0;padding-left:12px;border-left:1px solid #e8edf2;margin-left:8px;'>"
                 + "<span style='font-size:10px;color:#94a3b8;'>&#128222;</span>"
@@ -5227,7 +5238,7 @@ function gkRenderStructured(customer, detail) {{
 
   // ── RECHTE SPALTE: Hinweise ────────────────────────────────────────────────
   if (allHints.length) {{
-    html += "<div style='flex:0 0 36%;min-width:260px;max-width:420px;'>";
+    html += "<div style='flex:0 0 42%;min-width:280px;max-width:520px;'>";
     html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:6px;overflow:hidden;'>";
     html += "<div style='padding:9px 14px 9px 12px;background:#fffbeb;border-bottom:1px solid #fde68a;border-left:3px solid #d97706;'>"
           + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#92400e;'>Hinweise</span>"
