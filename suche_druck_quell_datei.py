@@ -2721,6 +2721,10 @@ function spIsLateStart(r) {
 
 // Liefert {monthValue: {label, entries:[{driver,row}], meal, night, total, drivers}}
 // Respektiert den aktuellen Monatsfilter.
+function spLastName(name) {
+  var parts = String(name||"").trim().split(/\s+/);
+  return parts.length ? parts[parts.length - 1] : "";
+}
 function spLateStartsByMonth() {
   var map = {};
   spGetDrivers().forEach(function(d) {
@@ -2736,13 +2740,18 @@ function spLateStartsByMonth() {
       map[mo].drivers[d.name] = 1;
     });
   });
+  // Innerhalb des Monats: nach Nachname sortieren, sekundär nach Datum
   Object.keys(map).forEach(function(k){
     map[k].entries.sort(function(a,b){
+      var c = spLastName(a.driver.name).localeCompare(spLastName(b.driver.name), "de");
+      if(c) return c;
+      // gleicher Nachname: voller Name als Tiebreaker
+      var c2 = String(a.driver.name||"").localeCompare(String(b.driver.name||""), "de");
+      if(c2) return c2;
+      // gleicher Fahrer: nach Datum aufsteigend
       var da = String(a.row.date_sort || a.row.date_iso || "");
       var db = String(b.row.date_sort || b.row.date_iso || "");
-      var c = da.localeCompare(db);
-      if(c) return c;
-      return String(a.driver.name||"").localeCompare(String(b.driver.name||""), "de");
+      return da.localeCompare(db);
     });
   });
   return map;
@@ -2764,7 +2773,7 @@ function spesenShowLateStarts() {
   html += "<div style='background:#fff;border:1px solid #d7dee7;border-radius:10px;padding:16px 18px;margin-bottom:14px;box-shadow:0 2px 8px rgba(15,23,42,.05);'>";
   html += "<div style='display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;'>";
   html += "<div>";
-  html += "<div style='font-size:20px;font-weight:900;color:#0f172a;'>&#127769; Spätstarts-Kontrolle</div>";
+  html += "<div style='font-size:20px;font-weight:900;color:#0f172a;'>&#127769; 20 Uhr Kontrolle</div>";
   html += "<div style='font-size:12px;color:#64748b;margin-top:2px;'>" + spEsc(subtitle) + " · Startzeitfenster <b style='color:#6d28d9;'>" + SPESEN_LATE_FROM + " – " + SPESEN_LATE_TO + " Uhr</b></div>";
   html += "</div>";
   html += "<div style='font-size:11px;color:#94a3b8;'>Klick auf Fahrer in Liste &rarr; zurück zur Detailansicht</div>";
@@ -2793,7 +2802,7 @@ function spesenShowLateStarts() {
 
   // KPI-Boxen (im Header-Karten-Container)
   var cards = [
-    ["Spätstart-Einträge", String(allEntries), "#6d28d9"],
+    ["20 Uhr Einträge", String(allEntries), "#6d28d9"],
     ["Betroffene Fahrer", String(driverCount), "#6d28d9"],
     ["Σ Verpflegung", spMoney(allMeal), "#15803d"],
     ["Σ Übernachtung", spMoney(allNight), "#92400e"],
@@ -4458,7 +4467,7 @@ iframe.active{{display:block}}
         <button onclick="spesenSort('name')" id="spesen-sort-name" style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">A&ndash;Z</button>
       </div>
       <button onclick="spesenShowLateStarts()" title="Übersicht: Fahrer mit Start zwischen 18:00 und 21:00 Uhr, gruppiert nach Monat"
-        style="padding:5px 12px;border:2px solid #6d28d9;border-radius:5px;background:linear-gradient(180deg,#7c3aed 0%,#6d28d9 100%);color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 1px 3px rgba(109,40,217,.32);">&#127769; Spätstarts-Kontrolle</button>
+        style="padding:5px 12px;border:2px solid #6d28d9;border-radius:5px;background:linear-gradient(180deg,#7c3aed 0%,#6d28d9 100%);color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 1px 3px rgba(109,40,217,.32);">&#127769; 20 Uhr Kontrolle</button>
       <div id="spesen-stats" style="font-size:11px;color:#64748b;margin-left:auto;font-weight:700;"></div>
     </div>
     <div style="display:flex;flex:1;overflow:hidden;">
