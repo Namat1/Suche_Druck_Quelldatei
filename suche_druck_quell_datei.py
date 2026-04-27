@@ -2325,6 +2325,20 @@ var spesenSearchQuery = "";
 var spesenMonthFilter = "all";
 var spesenSelectedName = null;
 var spesenSortMode = "gesamt";
+// Caches — invalidiert bei jedem Filter-/Sort-/Such-Wechsel
+var spesenStatsCache = {};       // {monthFilter: {driverName: stats}}
+var spesenFilteredCache = null;  // gefilterte + sortierte Liste
+var spesenCacheKey = "";         // letzter Cache-Schluessel (search|month|sort)
+
+function spInvalidateCaches() {
+  var key = spesenSearchQuery + "|" + spesenMonthFilter + "|" + spesenSortMode;
+  if(key !== spesenCacheKey){
+    spesenFilteredCache = null;
+    spesenCacheKey = key;
+  }
+  // Stats-Cache nur bei Monatswechsel invalidieren (Suche/Sort aendern Stats nicht)
+  if(!spesenStatsCache[spesenMonthFilter]) spesenStatsCache[spesenMonthFilter] = {};
+}
 
 function spEsc(v) {
   return String(v == null ? "" : v)
@@ -2352,21 +2366,27 @@ function spGetDrivers() {
   return (SPESEN_DATA && Array.isArray(SPESEN_DATA.drivers)) ? SPESEN_DATA.drivers : [];
 }
 function spRowsForDriver(d) {
-  var rows = Array.isArray(d.rows) ? d.rows.slice() : [];
-  if(spesenMonthFilter !== "all") rows = rows.filter(function(r){ return r.month === spesenMonthFilter; });
-  rows.sort(function(a,b){ return String(a.date_sort||"").localeCompare(String(b.date_sort||"")); });
-  return rows;
+  // Backend hat bereits nach date_sort sortiert — kein Re-Sort im Frontend
+  var rows = Array.isArray(d.rows) ? d.rows : [];
+  if(spesenMonthFilter === "all") return rows;
+  return rows.filter(function(r){ return r.month === spesenMonthFilter; });
 }
 function spStatsForDriver(d) {
+  var bucket = spesenStatsCache[spesenMonthFilter];
+  if(bucket && bucket[d.name]) return bucket[d.name];
   var rows = spRowsForDriver(d);
   var out = {rows:rows, meal:0, night:0, total:0, duration:0, rideDays:0};
-  rows.forEach(function(r){
+  for(var i=0; i<rows.length; i++){
+    var r = rows[i];
     out.meal += Number(r.meal || 0);
     out.night += Number(r.night || 0);
     out.total += Number(r.total || 0);
-    out.duration += Number(r.duration_minutes || 0);
-    if(Number(r.duration_minutes || 0) > 0 || r.start || r.end || r.vehicles) out.rideDays += 1;
-  });
+    var dur = Number(r.duration_minutes || 0);
+    out.duration += dur;
+    if(dur > 0 || r.start || r.end || r.vehicles) out.rideDays += 1;
+  }
+  if(!bucket){ bucket = {}; spesenStatsCache[spesenMonthFilter] = bucket; }
+  bucket[d.name] = out;
   return out;
 }
 function spesenPopulateMonths() {
@@ -2387,60 +2407,116 @@ function spesenSort(mode) {
     var btn = document.getElementById("spesen-sort-" + m);
     if(btn){ btn.style.background = mode === m ? "#1b66b3" : "#fff"; btn.style.color = mode === m ? "#fff" : "#1b66b3"; }
   });
-  spesenBuildSidebar(spesenSelectedName);
+  spesenFilteredCache = null;
+  spesenRefresh();
 }
-function spesenFilter(q) { spesenSearchQuery = q || ""; spesenBuildSidebar(spesenSelectedName); }
-function spesenMonthChange(value) { spesenMonthFilter = value || "all"; spesenBuildSidebar(spesenSelectedName); if(spesenSelectedName) spesenShowDetail(spesenSelectedName); }
+function spesenFilter(q) { spesenSearchQuery = q || ""; spesenFilteredCache = null; spesenRefresh(); }
+function spesenMonthChange(value) {
+  spesenMonthFilter = value || "all";
+  spesenFilteredCache = null;
+  spesenRefresh();
+  if(spesenSelectedName) spesenShowDetail(spesenSelectedName);
+}
 function spesenInit() {
   spesenPopulateMonths();
-  spesenBuildSidebar(null);
-}
-function spesenFilteredDrivers() {
-  var q = (spesenSearchQuery || "").trim().toLowerCase();
-  var list = spGetDrivers().filter(function(d){
-    if(q && String(d.name||"").toLowerCase().indexOf(q) === -1 && String(d.employee_nr||"").toLowerCase().indexOf(q) === -1) return false;
-    return spStatsForDriver(d).rows.length > 0;
-  });
-  list.sort(function(a,b){
-    var sa = spStatsForDriver(a), sb = spStatsForDriver(b);
-    if(spesenSortMode === "name") return String(a.name||"").localeCompare(String(b.name||""), "de");
-    if(spesenSortMode === "tage") return (sb.rows.length - sa.rows.length) || String(a.name||"").localeCompare(String(b.name||""), "de");
-    return (sb.total - sa.total) || String(a.name||"").localeCompare(String(b.name||""), "de");
-  });
-  return list;
-}
-function spesenBuildSidebar(activeName) {
-  var sidebar = document.getElementById("spesen-sidebar-list");
-  var statsEl = document.getElementById("spesen-stats");
-  if(!sidebar) return;
+  spInvalidateCaches();
+  spesenBuildSidebar();
   var list = spesenFilteredDrivers();
-  var sumTotal = 0, sumRows = 0;
-  list.forEach(function(d){ var s = spStatsForDriver(d); sumTotal += s.total; sumRows += s.rows.length; });
-  if(statsEl) statsEl.innerHTML = "<b>" + list.length + "</b> Fahrer &nbsp;&middot;&nbsp; " + spMoney(sumTotal) + " gesamt &nbsp;&middot;&nbsp; " + sumRows + " Einträge";
-
-  var html = "";
-  list.forEach(function(d){
-    var s = spStatsForDriver(d), active = d.name === activeName;
-    var bg = active ? "#1b66b3" : "#fff";
-    var fg = active ? "#fff" : "#0b1220";
-    var sub = s.rows.length + " Einträge · " + spMoney(s.total);
-    html += "<div onclick='spesenShowDetail(" + JSON.stringify(d.name) + ")' style='padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;background:"+bg+";'>";
-    html += "<div style='font-weight:800;font-size:13px;color:"+fg+";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + spEsc(d.name) + "</div>";
-    html += "<div style='margin-top:3px;font-size:10px;font-weight:700;color:" + (active ? "rgba(255,255,255,.85)" : "#64748b") + ";'>" + spEsc(sub) + "</div>";
-    html += "</div>";
-  });
-  sidebar.innerHTML = html || "<div style='padding:24px;color:#94a3b8;font-size:12px;text-align:center;'>Keine Spesendaten gefunden</div>";
-  if(!activeName && list.length) { spesenSelectedName = list[0].name; spesenShowDetail(list[0].name); }
-  else if(activeName && !list.some(function(d){ return d.name === activeName; }) && list.length) { spesenSelectedName = list[0].name; spesenShowDetail(list[0].name); }
-  else if(activeName) spesenSelectedName = activeName;
+  if(list.length){ spesenShowDetail(list[0].name); }
   else {
     var panel = document.getElementById("spesen-detail-panel");
     if(panel) panel.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Daten.</div>";
   }
 }
+// Wird nach Filter/Sort/Suche aufgerufen — rebuilds Sidebar, ggf. Auto-Switch auf ersten Fahrer
+function spesenRefresh() {
+  spInvalidateCaches();
+  spesenBuildSidebar();
+  var list = spesenFilteredDrivers();
+  var stillThere = spesenSelectedName && list.some(function(d){ return d.name === spesenSelectedName; });
+  if(!stillThere){
+    if(list.length) spesenShowDetail(list[0].name);
+    else {
+      spesenSelectedName = null;
+      var panel = document.getElementById("spesen-detail-panel");
+      if(panel) panel.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Daten.</div>";
+    }
+  }
+}
+function spesenFilteredDrivers() {
+  if(spesenFilteredCache) return spesenFilteredCache;
+  var q = (spesenSearchQuery || "").trim().toLowerCase();
+  var raw = spGetDrivers();
+  var list = [];
+  for(var i=0; i<raw.length; i++){
+    var d = raw[i];
+    if(q){
+      var nl = String(d.name||"").toLowerCase();
+      var el = String(d.employee_nr||"").toLowerCase();
+      if(nl.indexOf(q) === -1 && el.indexOf(q) === -1) continue;
+    }
+    var s = spStatsForDriver(d);  // gecached
+    if(!s.rows.length) continue;
+    list.push(d);
+  }
+  list.sort(function(a,b){
+    var sa = spStatsForDriver(a), sb = spStatsForDriver(b);  // gecached
+    if(spesenSortMode === "name") return String(a.name||"").localeCompare(String(b.name||""), "de");
+    if(spesenSortMode === "tage") return (sb.rows.length - sa.rows.length) || String(a.name||"").localeCompare(String(b.name||""), "de");
+    return (sb.total - sa.total) || String(a.name||"").localeCompare(String(b.name||""), "de");
+  });
+  spesenFilteredCache = list;
+  return list;
+}
+// Baut nur die Sidebar — KEIN auto-showDetail (vermeidet Loop)
+function spesenBuildSidebar() {
+  var sidebar = document.getElementById("spesen-sidebar-list");
+  var statsEl = document.getElementById("spesen-stats");
+  if(!sidebar) return;
+  var list = spesenFilteredDrivers();
+  var sumTotal = 0, sumRows = 0;
+  for(var i=0; i<list.length; i++){ var s = spStatsForDriver(list[i]); sumTotal += s.total; sumRows += s.rows.length; }
+  if(statsEl) statsEl.innerHTML = "<b>" + list.length + "</b> Fahrer &nbsp;&middot;&nbsp; " + spMoney(sumTotal) + " gesamt &nbsp;&middot;&nbsp; " + sumRows + " Einträge";
+
+  var parts = [];
+  for(var j=0; j<list.length; j++){
+    var d2 = list[j], s2 = spStatsForDriver(d2);
+    var active = d2.name === spesenSelectedName;
+    var bg = active ? "#1b66b3" : "#fff";
+    var fg = active ? "#fff" : "#0b1220";
+    var subFg = active ? "rgba(255,255,255,.85)" : "#64748b";
+    var sub = s2.rows.length + " Einträge · " + spMoney(s2.total);
+    parts.push(
+      "<div data-sp-name=\"" + spEsc(d2.name) + "\" onclick='spesenShowDetail(" + JSON.stringify(d2.name) + ")' " +
+      "style='padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;background:" + bg + ";'>" +
+      "<div class='sp-row-name' style='font-weight:800;font-size:13px;color:" + fg + ";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + spEsc(d2.name) + "</div>" +
+      "<div class='sp-row-sub' style='margin-top:3px;font-size:10px;font-weight:700;color:" + subFg + ";'>" + spEsc(sub) + "</div>" +
+      "</div>"
+    );
+  }
+  sidebar.innerHTML = parts.join("") || "<div style='padding:24px;color:#94a3b8;font-size:12px;text-align:center;'>Keine Spesendaten gefunden</div>";
+}
+// Updated nur den active-State der Sidebar — kein Rebuild
+function spesenUpdateSidebarHighlight() {
+  var sidebar = document.getElementById("spesen-sidebar-list");
+  if(!sidebar) return;
+  var items = sidebar.children;
+  for(var i=0; i<items.length; i++){
+    var el = items[i];
+    if(!el.getAttribute) continue;
+    var nm = el.getAttribute("data-sp-name");
+    if(nm == null) continue;
+    var act = nm === spesenSelectedName;
+    el.style.background = act ? "#1b66b3" : "#fff";
+    var nameEl = el.querySelector(".sp-row-name");
+    var subEl = el.querySelector(".sp-row-sub");
+    if(nameEl) nameEl.style.color = act ? "#fff" : "#0b1220";
+    if(subEl) subEl.style.color = act ? "rgba(255,255,255,.85)" : "#64748b";
+  }
+}
 function spesenShowDetail(name) {
   spesenSelectedName = name;
-  spesenBuildSidebar(name);
+  spesenUpdateSidebarHighlight();
   var d = spGetDrivers().find(function(x){ return x.name === name; });
   var panel = document.getElementById("spesen-detail-panel");
   if(!panel || !d) return;
@@ -2458,27 +2534,34 @@ function spesenShowDetail(name) {
   html += "<div style='display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;'>";
   html += "<div><div style='font-size:20px;font-weight:900;color:#0f172a;'>" + spEsc(d.name) + "</div>";
   html += "<div style='font-size:12px;color:#64748b;margin-top:2px;'>" + spEsc(subtitle) + (d.employee_nr ? " · Personalnummer " + spEsc(d.employee_nr) : "") + "</div></div>";
-  html += "</div><div style='display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;margin-top:14px;'>";
+  html += "</div><div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:14px;'>";
   cards.forEach(function(c){ html += "<div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;'><div style='font-size:10px;font-weight:900;color:#64748b;text-transform:uppercase;letter-spacing:.35px;'>"+c[0]+"</div><div style='font-size:17px;font-weight:900;color:"+c[2]+";margin-top:3px;'>"+c[1]+"</div></div>"; });
   html += "</div></div>";
 
   html += "<div style='background:#fff;border:1px solid #d7dee7;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.05);'>";
   html += "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
   html += "<thead><tr style='background:#e8f1fb;color:#1b66b3;text-align:left;'>" +
-          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;'>Datum</th>" +
-          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;'>Start</th>" +
-          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;'>Ende</th>" +
-          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;'>Dauer</th>" +
-          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;'>Fahrzeug</th>" +
-          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;'>Strecke</th>" +
-          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;'>Verpflegung</th>" +
-          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;'>Übernachtung</th>" +
-          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;'>Gesamt</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;position:sticky;top:0;background:#e8f1fb;z-index:1;'>Datum</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;position:sticky;top:0;background:#e8f1fb;z-index:1;'>Start</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;position:sticky;top:0;background:#e8f1fb;z-index:1;'>Ende</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;position:sticky;top:0;background:#e8f1fb;z-index:1;'>Dauer</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;position:sticky;top:0;background:#e8f1fb;z-index:1;'>Fahrzeug</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;position:sticky;top:0;background:#e8f1fb;z-index:1;'>Strecke</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;position:sticky;top:0;background:#e8f1fb;z-index:1;'>Verpflegung</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;position:sticky;top:0;background:#e8f1fb;z-index:1;'>Übernachtung</th>" +
+          "<th style='padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;position:sticky;top:0;background:#e8f1fb;z-index:1;'>Gesamt</th>" +
           "</tr></thead><tbody>";
   if(!s.rows.length) {
     html += "<tr><td colspan='9' style='padding:28px;text-align:center;color:#94a3b8;'>Keine Einträge für diesen Zeitraum.</td></tr>";
   } else {
+    var lastMonth = null;
+    var showMonthSeparator = (spesenMonthFilter === "all");
     s.rows.forEach(function(r, idx){
+      // Monats-Trenner als Sub-Header bei "Alle Monate"
+      if(showMonthSeparator && r.month && r.month !== lastMonth){
+        html += "<tr style='background:#f1f5f9;'><td colspan='9' style='padding:6px 12px;font-size:11px;font-weight:900;color:#1b66b3;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #cbd5e1;'>" + spEsc(spMonthLabel(r.month)) + "</td></tr>";
+        lastMonth = r.month;
+      }
       var route = (r.pos_start || r.pos_end) ? ((r.pos_start||"") + (r.pos_end ? " → " + r.pos_end : "")) : "";
       html += "<tr style='background:" + (idx%2 ? "#fff" : "#f8fafc") + ";'>";
       html += "<td style='padding:8px 10px;border-bottom:1px solid #e2e8f0;font-weight:800;color:#0f172a;white-space:nowrap;'>" + spEsc(r.date_label || r.date_iso || "") + "<div style='font-size:10px;font-weight:700;color:#94a3b8;'>" + spEsc(r.weekday || "") + "</div></td>";
@@ -2495,6 +2578,7 @@ function spesenShowDetail(name) {
   }
   html += "</tbody></table></div>";
   panel.innerHTML = html;
+  panel.scrollTop = 0;
 }
 """
 
@@ -4280,7 +4364,7 @@ function showArea(s) {{
   if(s==="zulage" && zulagePanel && !zulagePanel.dataset.loaded) {{ zulagenInit(); zulagePanel.dataset.loaded="1"; }}
   if(s==="spesen") {{
     if(spesenPanel && !spesenPanel.dataset.loaded) {{ spesenInit(); spesenPanel.dataset.loaded="1"; }}
-    else {{ spesenBuildSidebar(spesenSelectedName); if(spesenSelectedName) spesenShowDetail(spesenSelectedName); }}
+    else {{ spesenUpdateSidebarHighlight(); }}
   }}
   if(s==="verstoss") {{
     if(verstossPanel && !verstossPanel.dataset.loaded) {{ verstossInit(); verstossPanel.dataset.loaded="1"; }}
@@ -5541,34 +5625,24 @@ def parse_spesen_csv(uploaded_file) -> str:
         s = _clean(v).strip('"')
         if not s:
             return None
+        s19 = s[:19]
         for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%d.%m.%Y %H:%M", "%d.%m.%Y"):
             try:
-                return datetime.datetime.strptime(s[:19], fmt)
+                return datetime.datetime.strptime(s19, fmt)
             except Exception:
                 pass
-        try:
-            ts = pd.to_datetime(s, dayfirst=True, errors="coerce")
-            if pd.notna(ts):
-                return ts.to_pydatetime()
-        except Exception:
-            pass
         return None
 
     def _date_from_value(v):
         s = _clean(v).strip('"')
         if not s:
             return None
+        s16 = s[:16]
         for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%Y-%m-%d %H:%M", "%d.%m.%Y %H:%M"):
             try:
-                return datetime.datetime.strptime(s[:16], fmt).date()
+                return datetime.datetime.strptime(s16, fmt).date()
             except Exception:
                 pass
-        try:
-            ts = pd.to_datetime(s, dayfirst=True, errors="coerce")
-            if pd.notna(ts):
-                return ts.date()
-        except Exception:
-            pass
         return None
 
     def _time_label(dt):
