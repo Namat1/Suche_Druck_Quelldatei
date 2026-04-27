@@ -6696,36 +6696,153 @@ st.set_page_config(
     page_title="Suche & Druck Generator",
     page_icon="🔎",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 st.markdown(
     """
     <style>
-      .block-container { padding-top: 1.1rem; padding-bottom: 2.5rem; max-width: 1500px; }
-      div[data-testid="stVerticalBlock"] { gap: .65rem; }
-      .main-hero { border:1px solid #d8dee9; background:linear-gradient(180deg,#fff,#f6f8fb); border-radius:16px; padding:18px 20px; margin-bottom:12px; box-shadow:0 2px 10px rgba(15,23,42,.05); }
-      .main-hero h1 { margin:0; font-size:30px; line-height:1.15; color:#0f172a; }
-      .main-hero p { margin:8px 0 0; color:#475569; font-size:15px; }
-      .section-box { border:1px solid #d8dee9; background:#fff; border-radius:14px; padding:14px 16px; margin:8px 0 14px; box-shadow:0 1px 8px rgba(15,23,42,.04); }
-      .section-title { font-size:20px; font-weight:800; color:#0f172a; margin-bottom:2px; }
-      .section-sub { color:#64748b; font-size:13px; margin-bottom:4px; }
-      .upload-card { min-height:116px; border:1px solid #d8dee9; background:#fff; border-radius:14px; padding:12px 13px; box-shadow:0 1px 6px rgba(15,23,42,.04); }
-      .upload-card.ok { border-color:#86efac; background:#f0fdf4; }
-      .upload-card.missing { border-color:#fecaca; background:#fff7f7; }
-      .upload-card.optional { border-color:#e2e8f0; background:#f8fafc; }
-      .upload-title { font-weight:800; color:#0f172a; font-size:14px; }
-      .upload-meta { color:#64748b; font-size:12px; margin-top:2px; }
-      .upload-status { font-weight:850; font-size:18px; margin-top:10px; }
-      .upload-card.ok .upload-status { color:#15803d; }
-      .upload-card.missing .upload-status { color:#dc2626; }
-      .upload-card.optional .upload-status { color:#64748b; }
-      .upload-detail { color:#475569; font-size:12px; margin-top:6px; overflow-wrap:anywhere; }
-      .ready-line, .missing-line { display:inline-flex; align-items:center; gap:7px; padding:5px 10px; border-radius:999px; font-size:13px; font-weight:750; }
-      .ready-line { border:1px solid #bbf7d0; background:#f0fdf4; color:#166534; }
-      .missing-line { border:1px solid #fecaca; background:#fff7f7; color:#991b1b; }
-      .stTabs [data-baseweb="tab-list"] { gap:8px; }
-      .stTabs [data-baseweb="tab"] { border:1px solid #d8dee9; border-radius:999px; padding:8px 14px; background:#fff; }
+      :root {
+        --bg:#0b1220;
+        --panel:#101827;
+        --panel2:#111c2f;
+        --line:#263449;
+        --line2:#334155;
+        --text:#e5e7eb;
+        --muted:#94a3b8;
+        --green:#22c55e;
+        --red:#ef4444;
+        --amber:#f59e0b;
+        --blue:#60a5fa;
+      }
+
+      .stApp { background:var(--bg); color:var(--text); }
+      .block-container { padding-top:.7rem; padding-bottom:2rem; max-width:1600px; }
+      div[data-testid="stVerticalBlock"] { gap:.45rem; }
+      section[data-testid="stSidebar"], button[kind="header"] { display:none !important; }
+      header[data-testid="stHeader"] { background:rgba(11,18,32,.88); }
+
+      .main-hero {
+        border:1px solid var(--line);
+        background:linear-gradient(180deg,#172033,#101827);
+        border-radius:12px;
+        padding:10px 14px;
+        margin-bottom:8px;
+        box-shadow:0 1px 12px rgba(0,0,0,.22);
+      }
+      .main-hero h1 { margin:0; font-size:22px; line-height:1.15; color:#f8fafc; }
+      .main-hero p { margin:4px 0 0; color:var(--muted); font-size:12px; }
+
+      .section-box {
+        border:1px solid var(--line);
+        background:var(--panel);
+        border-radius:11px;
+        padding:9px 11px;
+        margin:6px 0 8px;
+        box-shadow:0 1px 10px rgba(0,0,0,.16);
+      }
+      .section-title { font-size:16px; font-weight:850; color:#f8fafc; margin-bottom:1px; }
+      .section-sub { color:var(--muted); font-size:11px; margin-bottom:0; }
+
+      .upload-card {
+        min-height:66px;
+        border:1px solid var(--line);
+        background:var(--panel2);
+        border-radius:10px;
+        padding:8px 9px;
+        box-shadow:0 1px 6px rgba(0,0,0,.12);
+      }
+      .upload-card.ok { border-color:rgba(34,197,94,.62); background:rgba(20,83,45,.28); }
+      .upload-card.missing { border-color:rgba(239,68,68,.62); background:rgba(127,29,29,.25); }
+      .upload-card.optional { border-color:var(--line); background:var(--panel2); }
+      .upload-title { font-weight:820; color:#f8fafc; font-size:12px; }
+      .upload-meta { color:var(--muted); font-size:10px; margin-top:0; }
+      .upload-status { font-weight:850; font-size:13px; margin-top:4px; }
+      .upload-card.ok .upload-status { color:#86efac; }
+      .upload-card.missing .upload-status { color:#fca5a5; }
+      .upload-card.optional .upload-status { color:#cbd5e1; }
+      .upload-detail { color:#cbd5e1; font-size:10px; margin-top:3px; overflow-wrap:anywhere; }
+
+      .ready-line, .missing-line {
+        display:inline-flex;
+        align-items:center;
+        gap:5px;
+        padding:4px 8px;
+        border-radius:999px;
+        font-size:11px;
+        font-weight:780;
+      }
+      .ready-line { border:1px solid rgba(34,197,94,.55); background:rgba(20,83,45,.35); color:#86efac; }
+      .missing-line { border:1px solid rgba(239,68,68,.55); background:rgba(127,29,29,.35); color:#fca5a5; }
+
+      div[data-testid="stFileUploader"] label p { color:#e5e7eb !important; font-size:11px !important; font-weight:800 !important; }
+      div[data-testid="stFileUploaderDropzone"] {
+        min-height:46px !important;
+        padding:5px 7px !important;
+        border-radius:9px !important;
+        border:1px dashed #475569 !important;
+        background:#0f172a !important;
+      }
+      div[data-testid="stFileUploaderDropzone"] section { padding:0 !important; }
+      div[data-testid="stFileUploaderDropzone"] button {
+        padding:4px 9px !important;
+        min-height:28px !important;
+        border-radius:7px !important;
+        background:#1e293b !important;
+        border:1px solid #475569 !important;
+        color:#f8fafc !important;
+        font-size:11px !important;
+      }
+      div[data-testid="stFileUploaderDropzone"] small,
+      div[data-testid="stFileUploaderDropzone"] [data-testid="stMarkdownContainer"] p {
+        color:#94a3b8 !important;
+        font-size:10px !important;
+        margin:0 !important;
+      }
+
+      div[data-testid="stMetric"] {
+        background:var(--panel2);
+        border:1px solid var(--line);
+        border-radius:10px;
+        padding:7px 9px;
+      }
+      div[data-testid="stMetricLabel"] p { color:var(--muted) !important; font-size:11px !important; }
+      div[data-testid="stMetricValue"] { color:#f8fafc !important; font-size:20px !important; }
+
+      .stButton button, .stDownloadButton button {
+        min-height:34px;
+        border-radius:9px;
+        border:1px solid #475569;
+        background:#1e293b;
+        color:#f8fafc;
+        font-weight:800;
+        font-size:12px;
+      }
+      .stButton button:hover, .stDownloadButton button:hover {
+        border-color:#60a5fa;
+        color:#ffffff;
+        background:#24344d;
+      }
+      .stTextInput input {
+        min-height:34px;
+        border-radius:9px;
+        border:1px solid #475569;
+        background:#0f172a;
+        color:#f8fafc;
+        font-size:12px;
+      }
+      .stExpander {
+        border:1px solid var(--line) !important;
+        border-radius:11px !important;
+        background:var(--panel) !important;
+      }
+      .streamlit-expanderHeader { color:#f8fafc !important; font-weight:850 !important; font-size:13px !important; }
+      div[data-testid="stAlert"] {
+        border-radius:10px;
+        padding:7px 10px;
+        font-size:12px;
+      }
+      hr { border-color:var(--line); }
     </style>
     """,
     unsafe_allow_html=True,
@@ -6735,7 +6852,7 @@ st.markdown(
     """
     <div class="main-hero">
       <h1>Suche, Druck und Auswertungen</h1>
-      <p>Pflichtdateien laden, Wochen erzeugen, Zusatzmodule ergänzen und am Ende eine fertige <b>suche.html</b> herunterladen.</p>
+      <p>Alles in einem Fenster: kleine dunkle Uploadboxen, Wochen direkt darunter, Download ganz unten.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -6744,27 +6861,12 @@ st.markdown(
 if "instances" not in st.session_state:
     st.session_state.instances = [_empty_inst("Normalwochen")]
 
-with st.sidebar:
-    st.markdown("### Ablauf")
-    st.markdown("1. Pflichtdateien laden")
-    st.markdown("2. Normalwoche oder Sonderwochen hochladen")
-    st.markdown("3. Zusatzdateien nur bei Bedarf laden")
-    st.markdown("4. Fertige HTML herunterladen")
-    st.divider()
-    st.markdown("### Pflichtstatus")
-    st.markdown("✅ Logo" if _has("g_logo") else "❌ Logo")
-    st.markdown("✅ Marktschlüssel" if _has("g_key") else "❌ Marktschlüssel")
-    st.markdown("✅ Woche bereit" if any(i.get("suche_html") and i.get("druck_html") for i in st.session_state.instances) else "❌ Woche bereit")
-    st.divider()
-    if st.button("Ansicht neu laden", use_container_width=True):
-        st.rerun()
-
-haupt_tab, wochen_tab, zusatz_tab, download_tab = st.tabs([
-    "1  Start / Pflichtdateien",
-    "2  Wochen",
-    "3  Zusatzdateien",
-    "4  Download",
-])
+# Alles bleibt in einer einzigen Ansicht. Die Variablennamen bleiben,
+# damit die bestehende Logik unverändert weiterläuft.
+haupt_tab = st.container()
+wochen_tab = st.container()
+zusatz_tab = st.container()
+download_tab = st.container()
 
 with haupt_tab:
     st.markdown("<div class='section-box'><div class='section-title'>Pflichtdateien und Stammdaten</div><div class='section-sub'>Logo und Marktschlüssel sind Pflicht. Alles Weitere ergänzt die fertige Suche.</div></div>", unsafe_allow_html=True)
@@ -6804,7 +6906,7 @@ with haupt_tab:
         _status_card("Rahmentourprofil CSV", _has("g_rahmen_csv"), _file_name(st.session_state.get("g_rahmen_csv")), required=False)
 
     if _has("g_logo") and _has("g_key"):
-        st.success("Pflichtdateien sind geladen. Weiter mit dem Reiter Wochen.")
+        st.success("Pflichtdateien sind geladen. Weiter unten mit dem Bereich Wochen.")
     else:
         st.warning("Es fehlen noch Pflichtdateien: Logo und Marktschlüssel werden benötigt.")
 
@@ -7080,4 +7182,4 @@ with download_tab:
         )
         st.caption(f"Enthaltene Wochen: {', '.join(i['name'] for i in ready)}")
     else:
-        st.warning("Bitte zuerst im Reiter Wochen mindestens eine Woche vollständig erzeugen. Dafür werden Logo, Marktschlüssel und eine Wochen-Excel benötigt.")
+        st.warning("Bitte zuerst im Bereich Wochen mindestens eine Woche vollständig erzeugen. Dafür werden Logo, Marktschlüssel und eine Wochen-Excel benötigt.")
