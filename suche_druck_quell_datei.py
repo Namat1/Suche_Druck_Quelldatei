@@ -4981,8 +4981,12 @@ function gkBuildSidebar(activeIdx) {{
     var active = i === activeIdx;
     var knr = "";
     if (k.type === "structured" && k.entries && k.entries.length) {{
-      knr = k.entries[0].kundennummer || "";
-      if (k.entries.length > 1) knr += (knr ? " +" : "") + (k.entries.length - 1) + " weitere";
+      if (k.entries.length === 1) {{
+        knr = k.entries[0].kundennummer ? "KNr " + k.entries[0].kundennummer : "";
+      }} else {{
+        var knrs = k.entries.map(function(e){{return e.kundennummer;}}).filter(Boolean);
+        knr = k.entries.length + " Einträge" + (knrs.length ? " · " + knrs.join(", ") : "");
+      }}
     }}
     sh += "<div onclick='gkShow(" + i + ")' style='"
         + "padding:11px 16px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
@@ -5027,172 +5031,190 @@ function gkRenderStructured(customer, detail) {{
   var headers = customer.content_headers || [];
   var colTypes = headers.map(gkColType);
 
-  // Spaltenindizes nach Typ
   function idxOf(type) {{
-    return headers.map(function(h, i) {{ return colTypes[i] === type ? i : -1; }})
-                  .filter(function(i) {{ return i >= 0; }});
+    return headers.map(function(h,i){{ return colTypes[i]===type?i:-1; }}).filter(function(i){{return i>=0;}});
   }}
-  var addrIdx  = idxOf("addr");
+  var addrIdx = idxOf("addr");
   var emailIdx = idxOf("email");
   var telIdx   = idxOf("tel");
   var hintIdx  = idxOf("hint");
-  // Alle anderen sichtbaren Spalten
-  var otherIdx = headers.map(function(h, i) {{
-    return ["addr","email","tel","hint"].indexOf(colTypes[i]) === -1 ? i : -1;
-  }}).filter(function(i) {{ return i >= 0; }});
+  var otherIdx = headers.map(function(h,i){{
+    return ["addr","email","tel","hint"].indexOf(colTypes[i])===-1 ? i : -1;
+  }}).filter(function(i){{return i>=0;}});
 
-  var html = "<div style='max-width:820px;'>";
+  // Ist ein Wert in einer Email-Spalte ein Label/Section-Header?
+  // Alles ohne "@" gilt als Label.
+  function isLabel(v) {{
+    return v && !v.includes("@") && v.trim().length > 0;
+  }}
+  function isPhone(v) {{
+    return v && /[\d]{{4,}}/.test(v.trim());
+  }}
+
+  // Alle Hinweise über alle Entries sammeln (Sheet-weite Hinweise)
+  var allHints = [];
+  customer.entries.forEach(function(e) {{
+    (e.rows||[]).forEach(function(row) {{
+      hintIdx.forEach(function(ci) {{
+        var v = (row[ci]||"").trim();
+        if (v && allHints.indexOf(v)===-1) allHints.push(v);
+      }});
+    }});
+  }});
+
+  var html = "<div style='max-width:860px;'>";
 
   // Sheet-Titel
-  html += "<div style='margin-bottom:20px;'>"
-        + "<h1 style='font-size:22px;font-weight:900;color:#0f172a;margin:0 0 2px;'>" + gkEsc(customer.name) + "</h1>"
-        + "<div style='height:3px;width:40px;background:#1e3a5f;border-radius:2px;margin-top:6px;'></div>"
-        + "</div>";
+  html += "<div style='margin-bottom:22px;'>"
+        + "<h1 style='font-size:21px;font-weight:900;color:#0f172a;margin:0 0 8px;letter-spacing:-.3px;'>" + gkEsc(customer.name) + "</h1>"
+        + "<div style='display:flex;gap:6px;'>";
+  customer.entries.forEach(function(e) {{
+    if (e.kundennummer) {{
+      html += "<span style='font-size:11px;font-weight:700;color:#475569;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:3px;padding:1px 8px;'>"
+            + gkEsc(e.name) + "\u00a0\u00b7\u00a0KNr " + gkEsc(e.kundennummer) + "</span>";
+    }}
+  }});
+  html += "</div></div>";
 
+  // Jeder Entry als Karte
   customer.entries.forEach(function(entry) {{
-    html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:8px;margin-bottom:16px;overflow:hidden;'>";
+    html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:6px;margin-bottom:14px;overflow:hidden;'>";
 
-    // ── Karten-Header ─────────────────────────────────────────────────────────
-    html += "<div style='padding:14px 20px;border-bottom:1px solid #eef2f7;display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#fafbfc;'>"
-          + "<div style='flex:1;min-width:0;'>"
-          + "<div style='font-size:16px;font-weight:800;color:#0f172a;'>" + gkEsc(entry.name) + "</div>"
-          + "</div>";
+    // ── Card-Header ───────────────────────────────────────────────────────────
+    html += "<div style='padding:12px 18px;display:flex;align-items:center;gap:12px;background:#f8fafc;border-bottom:1px solid #e8edf2;'>"
+          + "<div style='font-size:15px;font-weight:800;color:#0f172a;flex:1;'>" + gkEsc(entry.name) + "</div>";
     if (entry.kundennummer) {{
-      html += "<span style='background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;border-radius:4px;padding:2px 10px;font-size:11px;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
-            + "KNr\u00a0" + gkEsc(entry.kundennummer) + "</span>";
+      html += "<code style='font-size:11px;font-weight:700;color:#1e40af;background:#eff6ff;border:1px solid #bfdbfe;border-radius:3px;padding:2px 8px;font-family:inherit;letter-spacing:.2px;'>KNr " + gkEsc(entry.kundennummer) + "</code>";
     }}
     html += "</div>";
 
-    // ── Adresse ────────────────────────────────────────────────────────────────
+    // ── Adresse ───────────────────────────────────────────────────────────────
     if (addrIdx.length) {{
       var addrLines = [];
-      (entry.rows || []).forEach(function(row) {{
+      (entry.rows||[]).forEach(function(row) {{
         addrIdx.forEach(function(ci) {{
-          var v = (row[ci] || "").trim();
-          if (v && !gkIsSection(v) && addrLines.indexOf(v) === -1) addrLines.push(v);
+          var v = (row[ci]||"").trim();
+          if (v && addrLines.indexOf(v)===-1) addrLines.push(v);
         }});
       }});
       if (addrLines.length) {{
-        html += "<div style='padding:10px 20px;border-bottom:1px solid #eef2f7;background:#f8fafc;'>"
-              + "<div style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;margin-bottom:4px;'>Adresse</div>"
-              + "<div style='font-size:13px;color:#334155;line-height:1.7;'>" + addrLines.map(gkEsc).join("<br>") + "</div>"
+        html += "<div style='padding:9px 18px;border-bottom:1px solid #eef2f7;display:flex;align-items:baseline;gap:10px;'>"
+              + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;white-space:nowrap;flex-shrink:0;'>Adresse</span>"
+              + "<span style='font-size:12px;color:#475569;line-height:1.6;'>" + addrLines.map(gkEsc).join(" · ") + "</span>"
               + "</div>";
       }}
     }}
 
-    // ── Kontakte (Email + Tel zeilenweise gepaart) ─────────────────────────────
-    var hasContacts = emailIdx.length || telIdx.length;
-    if (hasContacts) {{
-      html += "<div style='padding:14px 20px;border-bottom:1px solid #eef2f7;'>";
-      html += "<div style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;margin-bottom:10px;'>Kontakt</div>";
+    // ── Kontakte ──────────────────────────────────────────────────────────────
+    if (emailIdx.length || telIdx.length) {{
+      var contactRows = []; // [{label:str|null, emails:[], tels:[]}]
+      var currentLabel = null;
 
-      var currentSection = "";
-      var contactHtml = "";
-
-      (entry.rows || []).forEach(function(row) {{
-        // Prüfe ob irgendeine Email-Spalte einen Section-Header hat
-        var sectionVal = "";
+      (entry.rows||[]).forEach(function(row) {{
+        // Label-Erkennung: jede E-Mail-Spalte die kein "@" enthält
+        var labelVal = null;
         emailIdx.forEach(function(ci) {{
-          var v = (row[ci] || "").trim();
-          if (gkIsSection(v)) sectionVal = v;
+          var v = (row[ci]||"").trim();
+          if (v && isLabel(v)) labelVal = v;
         }});
-        // Auch "text"-Spalten könnten Section-Header enthalten
         otherIdx.forEach(function(ci) {{
-          var v = (row[ci] || "").trim();
-          if (gkIsSection(v)) sectionVal = sectionVal || v;
+          var v = (row[ci]||"").trim();
+          if (v && isLabel(v) && !isPhone(v)) labelVal = labelVal || v;
         }});
 
-        if (sectionVal) {{
-          currentSection = sectionVal;
-          contactHtml += "<div style='font-size:10px;font-weight:700;text-transform:uppercase;"
-                       + "letter-spacing:.5px;color:#64748b;margin:10px 0 6px;"
-                       + "padding-bottom:4px;border-bottom:1px solid #f1f5f9;'>"
-                       + gkEsc(sectionVal.replace(/:$/, "")) + "</div>";
+        if (labelVal) {{
+          currentLabel = labelVal;
+          contactRows.push({{label: labelVal, emails: [], tels: []}});
           return;
         }}
 
-        // Email-Werte dieser Zeile
-        var emails = [];
+        // Emails dieser Zeile
+        var rowEmails = [];
         emailIdx.forEach(function(ci) {{
-          var v = (row[ci] || "").trim();
-          if (v && !gkIsSection(v)) emails.push(v);
+          var v = (row[ci]||"").trim();
+          if (v && !isLabel(v)) rowEmails.push(v);
         }});
-        // Tel-Werte dieser Zeile
-        var tels = [];
+        // Tels dieser Zeile
+        var rowTels = [];
         telIdx.forEach(function(ci) {{
-          var v = (row[ci] || "").trim();
-          if (v) tels.push(v);
+          var v = (row[ci]||"").trim();
+          if (v && isPhone(v)) rowTels.push(v);
         }});
 
-        if (!emails.length && !tels.length) return;
+        if (rowEmails.length || rowTels.length) {{
+          contactRows.push({{label: null, emails: rowEmails, tels: rowTels}});
+        }}
+      }});
 
-        contactHtml += "<div style='display:flex;align-items:baseline;gap:16px;padding:4px 0;border-bottom:1px solid #f8fafc;flex-wrap:wrap;'>";
-
-        if (emails.length) {{
-          emails.forEach(function(em) {{
-            // Format: "email (Name)" erkennen
-            var match = em.match(/^(\S+@\S+)\s*\((.+)\)\s*$/);
-            if (match) {{
-              contactHtml += "<span style='flex:1;min-width:200px;'>"
-                          + "<a href='mailto:" + gkEsc(match[1]) + "' style='color:#1b66b3;font-size:12px;font-weight:600;text-decoration:none;'>" + gkEsc(match[1]) + "</a>"
-                          + " <span style='color:#94a3b8;font-size:11px;'>(" + gkEsc(match[2]) + ")</span></span>";
-            }} else {{
-              contactHtml += "<a href='mailto:" + gkEsc(em) + "' style='flex:1;min-width:200px;color:#1b66b3;font-size:12px;font-weight:600;text-decoration:none;'>" + gkEsc(em) + "</a>";
+      if (contactRows.length) {{
+        html += "<div style='padding:12px 18px;border-bottom:1px solid #eef2f7;'>";
+        contactRows.forEach(function(cr) {{
+          if (cr.label !== null) {{
+            // Section-Header
+            var lbl = cr.label.replace(/:$/, "");
+            html += "<div style='margin:10px 0 5px;font-size:10px;font-weight:700;text-transform:uppercase;"
+                  + "letter-spacing:.6px;color:#64748b;padding-bottom:4px;border-bottom:1px solid #f1f5f9;'>"
+                  + gkEsc(lbl) + "</div>";
+          }} else {{
+            // Kontaktzeile
+            html += "<div style='display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:4px 0;border-bottom:1px solid #f8fafc;flex-wrap:wrap;'>";
+            // Emails links
+            var emailPart = cr.emails.length
+              ? cr.emails.map(function(em) {{
+                  var m = em.match(/^(\S+@\S+)\s*\((.+)\)\s*$/);
+                  return m
+                    ? "<a href='mailto:" + gkEsc(m[1]) + "' style='color:#1b66b3;font-size:12px;font-weight:600;text-decoration:none;'>" + gkEsc(m[1]) + "</a>"
+                    + " <span style='color:#94a3b8;font-size:11px;'>(" + gkEsc(m[2]) + ")</span>"
+                    : "<a href='mailto:" + gkEsc(em) + "' style='color:#1b66b3;font-size:12px;font-weight:600;text-decoration:none;'>" + gkEsc(em) + "</a>";
+                }}).join("<br>")
+              : "<span style='color:#94a3b8;font-size:12px;'>&ndash;</span>";
+            html += "<span style='flex:1;min-width:160px;'>" + emailPart + "</span>";
+            // Tels rechts
+            if (cr.tels.length) {{
+              html += "<span style='text-align:right;'>"
+                    + cr.tels.map(function(t) {{
+                        return "<span style='font-size:12px;font-weight:600;color:#166534;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + gkEsc(t) + "</span>";
+                      }}).join("<br>")
+                    + "</span>";
             }}
-          }});
-        }}
-        if (tels.length) {{
-          tels.forEach(function(t) {{
-            contactHtml += "<span style='font-size:12px;font-weight:600;color:#166534;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + gkEsc(t) + "</span>";
-          }});
-        }}
-        contactHtml += "</div>";
-      }});
-
-      html += contactHtml || "<div style='color:#94a3b8;font-size:12px;'>Keine Kontaktdaten.</div>";
-      html += "</div>";
-    }}
-
-    // ── Hinweise ──────────────────────────────────────────────────────────────
-    if (hintIdx.length) {{
-      var hints = [];
-      (entry.rows || []).forEach(function(row) {{
-        hintIdx.forEach(function(ci) {{
-          var v = (row[ci] || "").trim();
-          if (v && hints.indexOf(v) === -1) hints.push(v);
+            html += "</div>";
+          }}
         }});
-      }});
-      if (hints.length) {{
-        html += "<div style='padding:14px 20px;border-bottom:1px solid #eef2f7;'>"
-              + "<div style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;margin-bottom:10px;'>Hinweise</div>"
-              + "<div style='display:flex;flex-direction:column;gap:5px;'>";
-        hints.forEach(function(h) {{
-          html += "<div style='display:flex;align-items:flex-start;gap:10px;padding:8px 12px;"
-                + "background:#fffbeb;border-left:3px solid #f59e0b;border-radius:0 4px 4px 0;"
-                + "font-size:12px;color:#78350f;line-height:1.6;'>"
-                + "<span style='flex-shrink:0;font-size:10px;font-weight:700;color:#d97706;margin-top:2px;'>&#9654;</span>"
-                + "<span>" + gkEsc(h) + "</span></div>";
-        }});
-        html += "</div></div>";
+        html += "</div>";
       }}
     }}
 
-    // ── Sonstige Spalten ──────────────────────────────────────────────────────
+    // ── Sonstige Spalten (nicht Addr/Email/Tel/Hint) ───────────────────────────
     otherIdx.forEach(function(ci) {{
       var vals = [];
-      (entry.rows || []).forEach(function(row) {{
-        var v = (row[ci] || "").trim();
-        if (v && !gkIsSection(v) && vals.indexOf(v) === -1) vals.push(v);
+      (entry.rows||[]).forEach(function(row) {{
+        var v = (row[ci]||"").trim();
+        if (v && !isLabel(v) && vals.indexOf(v)===-1) vals.push(v);
       }});
       if (!vals.length) return;
-      html += "<div style='padding:12px 20px;border-bottom:1px solid #eef2f7;'>"
-            + "<div style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;margin-bottom:6px;'>" + gkEsc(headers[ci]) + "</div>"
-            + "<div style='font-size:12px;color:#334155;line-height:1.7;'>" + vals.map(gkEsc).join("<br>") + "</div>"
+      html += "<div style='padding:9px 18px;border-bottom:1px solid #eef2f7;display:flex;gap:10px;align-items:baseline;'>"
+            + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;white-space:nowrap;flex-shrink:0;'>" + gkEsc(headers[ci]) + "</span>"
+            + "<span style='font-size:12px;color:#334155;line-height:1.7;'>" + vals.map(gkEsc).join(" · ") + "</span>"
             + "</div>";
     }});
 
-    html += "</div>"; // card end
+    html += "</div>"; // end card
   }});
+
+  // ── Allgemeine Hinweise (Sheet-weit) ─────────────────────────────────────────
+  if (allHints.length) {{
+    html += "<div style='margin-top:6px;'>"
+          + "<div style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;margin-bottom:8px;'>Allgemeine Hinweise</div>"
+          + "<div style='background:#fff;border:1px solid #dde3ea;border-radius:6px;overflow:hidden;'>";
+    allHints.forEach(function(h, i) {{
+      html += "<div style='display:flex;align-items:flex-start;gap:12px;padding:9px 16px;"
+            + "border-bottom:" + (i < allHints.length-1 ? "1px solid #f1f5f9" : "none") + ";'>"
+            + "<span style='font-size:11px;font-weight:900;color:#d97706;flex-shrink:0;margin-top:2px;'>" + (i+1) + ".</span>"
+            + "<span style='font-size:12px;color:#334155;line-height:1.6;'>" + gkEsc(h) + "</span>"
+            + "</div>";
+    }});
+    html += "</div></div>";
+  }}
 
   html += "</div>";
   detail.innerHTML = html;
