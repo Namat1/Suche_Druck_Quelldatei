@@ -5116,17 +5116,6 @@ function gkRenderStructured(customer, detail) {{
     customer.entries.forEach(function(entry, ei) {{
       var hasContacts = emailIdx.length || telIdx.length;
 
-      // Entry-Name als Trennzeile nur bei mehreren Entries
-      if (customer.entries.length > 1) {{
-        var topBorder = ei > 0 ? "border-top:2px solid #e8edf2;" : "";
-        html += "<div style='padding:8px 16px 5px;" + topBorder + "margin-top:" + (ei>0?"4px":"0") + ";'>"
-              + "<span style='font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#1e3a5f;'>"
-              + gkEsc(entry.name) + "</span>";
-        if (entry.kundennummer) {{
-          html += " <span style='font-size:10px;color:#94a3b8;font-weight:600;'>KNr " + gkEsc(entry.kundennummer) + "</span>";
-        }}
-        html += "</div>";
-      }}
 
       // Kontakte dieser Entry
       if (hasContacts) {{
