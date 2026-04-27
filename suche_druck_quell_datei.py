@@ -4984,10 +4984,14 @@ function gkBuildTiles(activeIdx) {{
     var border  = active ? "#1e3a5f" : "#dde3ea";
     var txtMain = active ? "#fff"    : "#0f172a";
     var txtSub  = active ? "rgba(255,255,255,.6)" : "#94a3b8";
+    var tileColors = ["#1b66b3","#166534","#b45309","#7c3aed","#0891b2","#dc2626","#059669","#d97706","#4f46e5","#0f766e","#c2410c","#7e22ce","#1d4ed8","#15803d","#b91c1c","#6d28d9"];
+    var accent = tileColors[i % tileColors.length];
+    var topBar = active ? "border-top:3px solid #fff;" : "border-top:3px solid " + accent + ";";
     html += "<div onclick='gkShow(" + i + ")'"
           + " style='cursor:pointer;border-radius:6px;padding:8px 13px;"
           + "border:1.5px solid " + border + ";background:" + bg + ";"
-          + "transition:all .12s;min-width:90px;user-select:none;'>"
+          + topBar
+          + "transition:all .12s;min-width:90px;user-select:none;box-shadow:" + (active ? "0 2px 8px rgba(30,58,95,.25)" : "0 1px 3px rgba(0,0,0,.06)") + ";'>"
           + "<div style='font-size:12px;font-weight:700;color:" + txtMain + ";white-space:nowrap;line-height:1.3;'>"
           + gkEsc(k.name) + "</div>";
     if (sub) {{
@@ -5065,8 +5069,8 @@ function gkRenderStructured(customer, detail) {{
   // BLOCK 1: Namen + Adressen aller Entries
   // ════════════════════════════════════════════════════════════════════════════
   html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:6px;margin-bottom:20px;overflow:hidden;'>";
-  html += "<div style='padding:9px 16px;background:#1e3a5f;'>"
-        + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.7);'>Name &amp; Adresse</span>"
+  html += "<div style='padding:10px 16px;background:linear-gradient(90deg,#1e3a5f 0%,#1b66b3 100%);display:flex;align-items:center;gap:8px;'>"
+        + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:rgba(255,255,255,.8);'>Name &amp; Adresse</span>"
         + "</div>";
 
   customer.entries.forEach(function(entry, ei) {{
@@ -5080,9 +5084,10 @@ function gkRenderStructured(customer, detail) {{
       }});
     }}
 
+    var entryColors2 = ["#1b66b3","#166534","#b45309","#7c3aed","#0891b2","#dc2626","#059669","#d97706","#4f46e5","#0f766e","#c2410c","#7e22ce","#1d4ed8","#15803d","#b91c1c","#6d28d9"];
+    var ec = entryColors2[ei % entryColors2.length];
     var borderTop = ei > 0 ? "border-top:1px solid #eef2f7;" : "";
-    html += "<div style='padding:10px 16px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;" + borderTop + "'>";
-    // Name + KNr
+    html += "<div style='padding:10px 16px 10px 14px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;" + borderTop + "border-left:3px solid " + ec + ";'>";
     html += "<div style='min-width:160px;flex:0 0 auto;'>"
           + "<div style='font-size:13px;font-weight:800;color:#0f172a;'>" + gkEsc(entry.name) + "</div>";
     if (entry.kundennummer) {{
@@ -5109,7 +5114,7 @@ function gkRenderStructured(customer, detail) {{
     html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:6px;margin-bottom:14px;overflow:hidden;'>";
 
     // Karten-Header: Sheet-Name (nicht Entry-Name)
-    html += "<div style='padding:9px 16px;background:#f8fafc;border-bottom:1px solid #e8edf2;'>"
+    html += "<div style='padding:9px 16px 9px 14px;background:#f8fafc;border-bottom:1px solid #e8edf2;border-left:3px solid #1b66b3;'>"
           + "<span style='font-size:13px;font-weight:800;color:#0f172a;'>" + gkEsc(customer.name) + "</span>"
           + "</div>";
 
@@ -5154,9 +5159,17 @@ function gkRenderStructured(customer, detail) {{
         html += "<div style='padding:0 16px 8px;'>";
         contactRows.forEach(function(cr) {{
           if (cr.isLabel) {{
-            html += "<div style='margin:8px 0 3px;padding-bottom:3px;border-bottom:1px solid #f1f5f9;"
-                  + "font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#64748b;'>"
-                  + gkEsc(cr.text.replace(/:$/, "")) + "</div>";
+            var sectionColors = {{
+              "wareneingang":"#0891b2","dispo":"#7c3aed","nfc":"#166534",
+              "spedition":"#b45309","nfc:":"#166534"
+            }};
+            var sKey = cr.text.replace(/:$/, "").toLowerCase().trim();
+            var sColor = sectionColors[sKey] || "#1b66b3";
+            html += "<div style='margin:10px 0 4px;'>"
+                  + "<span style='display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;"
+                  + "letter-spacing:.5px;color:#fff;background:" + sColor + ";"
+                  + "border-radius:3px;padding:2px 8px;'>"
+                  + gkEsc(cr.text.replace(/:$/, "")) + "</span></div>";
           }} else {{
             html += "<div style='display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:3px 0;border-bottom:1px solid #f8fafc;flex-wrap:wrap;'>";
             if (cr.emails.length) {{
@@ -5204,8 +5217,8 @@ function gkRenderStructured(customer, detail) {{
   // ════════════════════════════════════════════════════════════════════════════
   if (allHints.length) {{
     html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:6px;overflow:hidden;'>";
-    html += "<div style='padding:9px 16px;background:#f8fafc;border-bottom:1px solid #e8edf2;'>"
-          + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;'>Hinweise</span>"
+    html += "<div style='padding:9px 16px 9px 14px;background:#fffbeb;border-bottom:1px solid #fde68a;border-left:3px solid #d97706;'>"
+          + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#92400e;'>Hinweise</span>"
           + "</div>";
     allHints.forEach(function(h, i) {{
       html += "<div style='display:flex;align-items:flex-start;gap:10px;padding:8px 16px;"
