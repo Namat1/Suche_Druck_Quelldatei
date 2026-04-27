@@ -4528,19 +4528,14 @@ iframe.active{{display:block}}
 
   <!-- ── Großkunden Panel ───────────────────────────────────────────────────── -->
   <div id="panel-gk" style="display:none;flex:1;overflow:hidden;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
-    <div style="display:flex;flex:1;overflow:hidden;height:100%;">
-      <!-- Sidebar -->
-      <div id="gk-sidebar" style="width:220px;flex-shrink:0;border-right:1px solid #dde3ea;background:#fff;display:flex;flex-direction:column;overflow:hidden;">
-        <div style="padding:16px 16px 12px;border-bottom:1px solid #eef2f7;">
-          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;">Großkunden</div>
-          <div id="gk-count" style="font-size:12px;color:#64748b;margin-top:3px;font-weight:600;"></div>
-        </div>
-        <div id="gk-tab-list" style="flex:1;overflow-y:auto;"></div>
-      </div>
-      <!-- Detail -->
-      <div id="gk-detail" style="flex:1;overflow-y:auto;padding:28px 32px 40px;background:#f1f5f9;">
-        <div style="color:#94a3b8;padding:80px;text-align:center;font-size:14px;">Keine Gro&#223;kundendaten &ndash; bitte Excel in Streamlit hochladen.</div>
-      </div>
+    <!-- Kacheln oben -->
+    <div style="flex-shrink:0;background:#fff;border-bottom:1px solid #dde3ea;padding:14px 20px;">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;margin-bottom:10px;">Großkunden <span id="gk-count" style="font-weight:600;color:#64748b;"></span></div>
+      <div id="gk-tiles" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+    </div>
+    <!-- Detail unten -->
+    <div id="gk-detail" style="flex:1;overflow-y:auto;padding:24px 28px 40px;">
+      <div style="color:#94a3b8;padding:80px;text-align:center;font-size:14px;">Keine Gro&#223;kundendaten &ndash; bitte Excel in Streamlit hochladen.</div>
     </div>
   </div>
 
@@ -4971,43 +4966,44 @@ function gkIsSection(v) {{
   return t.endsWith(":") && t.length < 60 && !t.includes("@");
 }}
 
-function gkBuildSidebar(activeIdx) {{
-  var sbar = document.getElementById("gk-tab-list");
+function gkBuildTiles(activeIdx) {{
+  var tilesEl = document.getElementById("gk-tiles");
   var countEl = document.getElementById("gk-count");
-  if (!sbar) return;
-  if (countEl) countEl.textContent = GK_DATA.length + " Kunden";
-  var sh = "";
+  if (!tilesEl) return;
+  if (countEl) countEl.textContent = "(" + GK_DATA.length + ")";
+  var html = "";
   GK_DATA.forEach(function(k, i) {{
     var active = i === activeIdx;
-    var knr = "";
+    var sub = "";
     if (k.type === "structured" && k.entries && k.entries.length) {{
-      if (k.entries.length === 1) {{
-        knr = k.entries[0].kundennummer ? "KNr " + k.entries[0].kundennummer : "";
-      }} else {{
-        var knrs = k.entries.map(function(e){{return e.kundennummer;}}).filter(Boolean);
-        knr = k.entries.length + " Einträge" + (knrs.length ? " · " + knrs.join(", ") : "");
-      }}
+      sub = k.entries.length === 1
+        ? (k.entries[0].kundennummer || "")
+        : k.entries.length + " Eintr.";
     }}
-    sh += "<div onclick='gkShow(" + i + ")' style='"
-        + "padding:11px 16px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
-        + "background:" + (active ? "#1e3a5f" : "#fff") + ";"
-        + "transition:background .12s;'>"
-        + "<div style='font-size:13px;font-weight:700;color:" + (active ? "#fff" : "#0f172a") + ";line-height:1.3;'>"
-        + gkEsc(k.name) + "</div>";
-    if (knr) {{
-      sh += "<div style='font-size:11px;color:" + (active ? "rgba(255,255,255,.55)" : "#94a3b8") + ";margin-top:2px;'>"
-          + gkEsc(knr) + "</div>";
+    var bg      = active ? "#1e3a5f" : "#fff";
+    var border  = active ? "#1e3a5f" : "#dde3ea";
+    var txtMain = active ? "#fff"    : "#0f172a";
+    var txtSub  = active ? "rgba(255,255,255,.6)" : "#94a3b8";
+    html += "<div onclick='gkShow(" + i + ")'"
+          + " style='cursor:pointer;border-radius:6px;padding:8px 13px;"
+          + "border:1.5px solid " + border + ";background:" + bg + ";"
+          + "transition:all .12s;min-width:90px;user-select:none;'>"
+          + "<div style='font-size:12px;font-weight:700;color:" + txtMain + ";white-space:nowrap;line-height:1.3;'>"
+          + gkEsc(k.name) + "</div>";
+    if (sub) {{
+      html += "<div style='font-size:10px;color:" + txtSub + ";margin-top:2px;font-variant-numeric:tabular-nums;'>"
+            + gkEsc(sub) + "</div>";
     }}
-    sh += "</div>";
+    html += "</div>";
   }});
-  sbar.innerHTML = sh;
+  tilesEl.innerHTML = html;
 }}
 
 function gkRender() {{
   var detail = document.getElementById("gk-detail");
   if (!detail) return;
   if (!GK_DATA || !GK_DATA.length) {{
-    gkBuildSidebar(-1);
+    gkBuildTiles(-1);
     detail.innerHTML = "<div style='color:#94a3b8;padding:80px;text-align:center;font-size:14px;'>Keine Gro\u00dfkundendaten \u2013 bitte Excel in Streamlit hochladen.</div>";
     return;
   }}
@@ -5016,7 +5012,7 @@ function gkRender() {{
 
 function gkShow(idx) {{
   gkSelected = idx;
-  gkBuildSidebar(idx);
+  gkBuildTiles(idx);
   var detail = document.getElementById("gk-detail");
   if (!detail) return;
   var customer = GK_DATA[idx];
@@ -5112,13 +5108,15 @@ function gkRenderStructured(customer, detail) {{
 
     html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:6px;margin-bottom:14px;overflow:hidden;'>";
 
-    // Card-Header mit Entryname
-    html += "<div style='padding:9px 16px;background:#f8fafc;border-bottom:1px solid #e8edf2;display:flex;align-items:center;gap:10px;'>"
-          + "<span style='font-size:13px;font-weight:800;color:#0f172a;flex:1;'>" + gkEsc(entry.name) + "</span>";
-    if (entry.kundennummer) {{
-      html += "<code style='font-size:11px;font-weight:700;color:#1e40af;background:#eff6ff;border:1px solid #bfdbfe;border-radius:3px;padding:1px 7px;font-family:inherit;'>KNr\u00a0" + gkEsc(entry.kundennummer) + "</code>";
+    // Card-Header nur bei mehreren Entries anzeigen (sonst doppelter Name)
+    if (customer.entries.length > 1) {{
+      html += "<div style='padding:9px 16px;background:#f8fafc;border-bottom:1px solid #e8edf2;display:flex;align-items:center;gap:10px;'>"
+            + "<span style='font-size:13px;font-weight:800;color:#0f172a;flex:1;'>" + gkEsc(entry.name) + "</span>";
+      if (entry.kundennummer) {{
+        html += "<code style='font-size:11px;font-weight:700;color:#1e40af;background:#eff6ff;border:1px solid #bfdbfe;border-radius:3px;padding:1px 7px;font-family:inherit;'>KNr\u00a0" + gkEsc(entry.kundennummer) + "</code>";
+      }}
+      html += "</div>";
     }}
-    html += "</div>";
 
     // ── Kontakte ──────────────────────────────────────────────────────────────
     if (hasContacts) {{
