@@ -4954,18 +4954,18 @@ function gkEsc(v) {{
     .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }}
 
-function gkBuildSidebar(activeName) {{
+function gkBuildSidebar(activeIdx) {{
   var sbar = document.getElementById("gk-tab-list");
   var countEl = document.getElementById("gk-count");
   if(!sbar) return;
   if(countEl) countEl.textContent = GK_DATA.length + " Kunden";
   var sh = "";
-  GK_DATA.forEach(function(k) {{
-    var active = k.name === activeName;
+  GK_DATA.forEach(function(k, i) {{
+    var active = i === activeIdx;
     var subtitle = k.type === "structured"
-      ? k.entries.length + (k.entries.length === 1 ? " Eintrag" : " Einträge")
+      ? k.entries.length + (k.entries.length === 1 ? " Eintrag" : " Eintr\u00e4ge")
       : k.lines.length + " Zeilen";
-    sh += "<div onclick='gkShow(\"" + k.name.replace(/\\/g,"\\\\").replace(/"/g,"&quot;") + "\")'"
+    sh += "<div onclick='gkShow(" + i + ")'"
         + " style='padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
         + "background:" + (active ? "#1b66b3" : "#fff") + ";transition:background .1s;'>"
         + "<div style='font-weight:700;font-size:13px;color:" + (active ? "#fff" : "#0b1220") + ";'>"
@@ -4981,20 +4981,19 @@ function gkRender() {{
   var detail = document.getElementById("gk-detail");
   if(!detail) return;
   if(!GK_DATA || !GK_DATA.length) {{
-    gkBuildSidebar(null);
+    gkBuildSidebar(-1);
     detail.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Gro\u00dfkundendaten \u2013 bitte Excel in Streamlit hochladen.</div>";
     return;
   }}
-  var first = GK_DATA[0].name;
-  gkShow(first);
+  gkShow(0);
 }}
 
-function gkShow(name) {{
-  gkSelected = name;
-  gkBuildSidebar(name);
+function gkShow(idx) {{
+  gkSelected = idx;
+  gkBuildSidebar(idx);
   var detail = document.getElementById("gk-detail");
   if(!detail) return;
-  var customer = GK_DATA.find(function(k){{ return k.name === name; }});
+  var customer = GK_DATA[idx];
   if(!customer) return;
 
   if(customer.type === "structured") {{
