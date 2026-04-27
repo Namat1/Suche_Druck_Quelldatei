@@ -5068,7 +5068,7 @@ function gkRenderStructured(customer, detail) {{
   // ════════════════════════════════════════════════════════════════════════════
   // BLOCK 1: Namen + Adressen aller Entries
   // ════════════════════════════════════════════════════════════════════════════
-  html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:6px;margin-bottom:20px;overflow:hidden;'>";
+  html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:10px;margin-bottom:20px;overflow:hidden;box-shadow:0 1px 6px rgba(15,23,42,.06);'>";
   html += "<div style='padding:10px 16px;background:linear-gradient(90deg,#1e3a5f 0%,#1b66b3 100%);display:flex;align-items:center;gap:8px;'>"
         + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:rgba(255,255,255,.8);'>Name &amp; Adresse</span>"
         + "</div>";
@@ -5171,13 +5171,13 @@ function gkRenderStructured(customer, detail) {{
   }});
 
   // Zweispaltiges Layout: Kontakte links, Hinweise rechts
-  html += "<div style='display:flex;gap:14px;align-items:flex-start;'>";
+  html += "<div style='display:flex;gap:16px;align-items:stretch;'>";
 
   // ── LINKE SPALTE: Kontaktkarte ─────────────────────────────────────────────
-  html += "<div style='flex:1;min-width:0;'>";
+  html += "<div style='flex:1 1 0;min-width:0;display:flex;flex-direction:column;'>";
   if (hasAnyContact && allContactRows.length) {{
-    html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:6px;overflow:hidden;'>";
-    html += "<div style='padding:9px 16px 9px 14px;background:#f8fafc;border-bottom:1px solid #e8edf2;border-left:3px solid #1b66b3;'>"
+    html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:10px;overflow:hidden;box-shadow:0 1px 6px rgba(15,23,42,.06);flex:1;display:flex;flex-direction:column;'>";
+    html += "<div style='padding:11px 18px 11px 15px;background:#f8fafc;border-bottom:1px solid #e8edf2;border-left:4px solid #1b66b3;'>"
           + "<span style='font-size:13px;font-weight:800;color:#0f172a;'>" + gkEsc(customer.name) + "</span>"
           + "</div>";
     html += "<div style='padding:0 14px 8px;'>";
@@ -5238,10 +5238,10 @@ function gkRenderStructured(customer, detail) {{
 
   // ── RECHTE SPALTE: Hinweise ────────────────────────────────────────────────
   if (allHints.length) {{
-    html += "<div style='flex:0 0 42%;min-width:280px;max-width:520px;'>";
-    html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:6px;overflow:hidden;'>";
-    html += "<div style='padding:9px 14px 9px 12px;background:#fffbeb;border-bottom:1px solid #fde68a;border-left:3px solid #d97706;'>"
-          + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#92400e;'>Hinweise</span>"
+    html += "<div style='flex:1 1 0;min-width:0;display:flex;flex-direction:column;'>";
+    html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:10px;overflow:hidden;box-shadow:0 1px 6px rgba(15,23,42,.06);flex:1;display:flex;flex-direction:column;'>";
+    html += "<div style='padding:11px 18px 11px 15px;background:#fffbeb;border-bottom:1px solid #fde68a;border-left:4px solid #d97706;'>"
+          + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#92400e;'>Hinweise</span>"
           + "</div>";
     allHints.forEach(function(h, i) {{
       html += "<div style='display:flex;align-items:flex-start;gap:9px;padding:8px 14px;"
