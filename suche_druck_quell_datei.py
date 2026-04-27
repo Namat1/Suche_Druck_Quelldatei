@@ -2311,7 +2311,7 @@ def parse_fahrer_excel(dateien: list) -> str:
     return _json.dumps(result, ensure_ascii=False)
 
 
-def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', zeiterfassung_json: str = '{"by_key":{},"total_rows":0}', spesen_json: str = '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}', last_updated: str = "") -> str:
+def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', zeiterfassung_json: str = '{"by_key":{},"total_rows":0}', spesen_json: str = '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}', grosskunden_json: str = "[]", last_updated: str = "") -> str:
     try:
         _logo_up = st.session_state.get("g_logo")
     except Exception:
@@ -4273,6 +4273,7 @@ iframe.active{{display:block}}
   <button class="nav-btn" id="btn-fa" onclick="showArea('fa')">&#128101; Fahrerauswertung</button>
   <button class="nav-btn" id="btn-zulage" onclick="showArea('zulage')">&#128176; Zulagen</button>
   <button class="nav-btn" id="btn-spesen" onclick="showArea('spesen')">&#128181; Spesen</button>
+  <button class="nav-btn" id="btn-gk" onclick="showArea('gk')">&#127970; Gro&#223;kunden</button>
   </div>
   <span class="topnav-stamp">{last_updated}</span>
 </nav>
@@ -4525,6 +4526,24 @@ iframe.active{{display:block}}
     </div>
   </div>
 
+  <!-- ── Großkunden Panel ───────────────────────────────────────────────────── -->
+  <div id="panel-gk" style="display:none;flex:1;overflow:hidden;background:#eef2f7;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
+    <div style="display:flex;flex:1;overflow:hidden;height:100%;">
+      <!-- Sidebar -->
+      <div id="gk-sidebar" style="width:190px;flex-shrink:0;border-right:1px solid #d7dee7;background:#fff;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="padding:14px 14px 10px;border-bottom:1px solid #eef2f7;">
+          <div style="font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:#64748b;">Großkunden</div>
+          <div id="gk-count" style="font-size:11px;color:#94a3b8;margin-top:2px;"></div>
+        </div>
+        <div id="gk-tab-list" style="flex:1;overflow-y:auto;"></div>
+      </div>
+      <!-- Detail -->
+      <div id="gk-detail" style="flex:1;overflow-y:auto;padding:22px 28px 32px;background:#eef2f7;">
+        <div style="color:#94a3b8;padding:60px;text-align:center;font-size:14px;">Keine Gro&#223;kundendaten &ndash; bitte Excel in Streamlit hochladen.</div>
+      </div>
+    </div>
+  </div>
+
 </div>
 </div>
 
@@ -4690,6 +4709,11 @@ function showArea(s) {{
     else {{ verstossRenderGraph(); }}
   }}
   if(s==="fa") {{ if(faPanel) faPanel.scrollTop = 0; if(faPanel && !faPanel.dataset.loaded) {{ faRender(""); faPanel.dataset.loaded="1"; }} }}
+  var gkPanel = document.getElementById("panel-gk");
+  if(gkPanel) gkPanel.style.display = (s==="gk") ? "flex" : "none";
+  var gkBtn = document.getElementById("btn-gk");
+  if(gkBtn) gkBtn.className = "nav-btn" + (s==="gk" ? " active" : "");
+  if(s==="gk" && gkPanel && !gkPanel.dataset.loaded) {{ gkRender(); gkPanel.dataset.loaded="1"; }}
 }}
 
 // showKundenListeTop removed — Kunden Liste is now a standalone panel
@@ -4918,8 +4942,174 @@ var ZULAGE_XLSX_DRITTKUNDEN = "{zulage_xlsx_drittkunden}";
 var VERSTOSS_DATA           = {verstoss_json};
 var ZEITERFASSUNG_DATA      = {zeiterfassung_json};
 var SPESEN_DATA            = {spesen_json};
+var GK_DATA                = {grosskunden_json};
 
 {spesen_js_code}
+
+// ── Großkunden ────────────────────────────────────────────────────────────────
+var gkSelected = null;
+
+function gkEsc(v) {{
+  return String(v == null ? "" : v)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}}
+
+function gkBuildSidebar(activeName) {{
+  var sbar = document.getElementById("gk-tab-list");
+  var countEl = document.getElementById("gk-count");
+  if(!sbar) return;
+  if(countEl) countEl.textContent = GK_DATA.length + " Kunden";
+  var sh = "";
+  GK_DATA.forEach(function(k) {{
+    var active = k.name === activeName;
+    var subtitle = k.type === "structured"
+      ? k.entries.length + (k.entries.length === 1 ? " Eintrag" : " Einträge")
+      : k.lines.length + " Zeilen";
+    sh += "<div onclick='gkShow(\"" + k.name.replace(/\\/g,"\\\\").replace(/"/g,"&quot;") + "\")'"
+        + " style='padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
+        + "background:" + (active ? "#1b66b3" : "#fff") + ";transition:background .1s;'>"
+        + "<div style='font-weight:700;font-size:13px;color:" + (active ? "#fff" : "#0b1220") + ";'>"
+        + gkEsc(k.name) + "</div>"
+        + "<div style='font-size:10px;color:" + (active ? "rgba(255,255,255,.65)" : "#94a3b8") + ";margin-top:1px;'>"
+        + subtitle + "</div>"
+        + "</div>";
+  }});
+  sbar.innerHTML = sh;
+}}
+
+function gkRender() {{
+  var detail = document.getElementById("gk-detail");
+  if(!detail) return;
+  if(!GK_DATA || !GK_DATA.length) {{
+    gkBuildSidebar(null);
+    detail.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Gro\u00dfkundendaten \u2013 bitte Excel in Streamlit hochladen.</div>";
+    return;
+  }}
+  var first = GK_DATA[0].name;
+  gkShow(first);
+}}
+
+function gkShow(name) {{
+  gkSelected = name;
+  gkBuildSidebar(name);
+  var detail = document.getElementById("gk-detail");
+  if(!detail) return;
+  var customer = GK_DATA.find(function(k){{ return k.name === name; }});
+  if(!customer) return;
+
+  if(customer.type === "structured") {{
+    gkRenderStructured(customer, detail);
+  }} else {{
+    gkRenderFreeform(customer, detail);
+  }}
+  detail.scrollTop = 0;
+}}
+
+function gkRenderStructured(customer, detail) {{
+  var html = "<div style='max-width:760px;'>";
+
+  customer.entries.forEach(function(e) {{
+    html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:18px 22px;margin-bottom:14px;box-shadow:0 1px 4px rgba(15,23,42,.05);'>";
+
+    // Header-Zeile: Name + Kundennummer
+    html += "<div style='display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #eef2f7;'>"
+          + "<div style='font-size:18px;font-weight:900;color:#0b1220;flex:1;'>" + gkEsc(e.name) + "</div>";
+    if(e.kundennummer) {{
+      html += "<span style='background:#dbeafe;color:#1b66b3;border-radius:6px;padding:3px 12px;font-size:12px;font-weight:800;white-space:nowrap;'>KNr " + gkEsc(e.kundennummer) + "</span>";
+    }}
+    html += "</div>";
+
+    var hasMails = e.mails && e.mails.length;
+    var hasTel   = e.telefon && e.telefon.filter(function(t){{return t;}}).length;
+    var hasHint  = e.hinweise && e.hinweise.length;
+
+    // Kontakt-Block
+    if(hasMails || hasTel) {{
+      html += "<div style='display:flex;flex-wrap:wrap;gap:20px;margin-bottom:14px;'>";
+
+      if(hasMails) {{
+        html += "<div style='flex:1;min-width:200px;'>"
+              + "<div style='font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:#1b66b3;margin-bottom:6px;'>E-Mail</div>";
+        e.mails.filter(function(m){{return m;}}).forEach(function(m) {{
+          // Ggf. Mail + Name (z.B. "albers@... (Ralf Albers)")
+          var match = m.match(/^([^\s(]+)\s*\((.+)\)\s*$/);
+          if(match) {{
+            html += "<div style='display:flex;align-items:baseline;gap:6px;margin-bottom:4px;'>"
+                  + "<a href='mailto:" + gkEsc(match[1]) + "' style='color:#1b66b3;font-size:12px;font-weight:600;text-decoration:none;'>"
+                  + gkEsc(match[1]) + "</a>"
+                  + "<span style='font-size:11px;color:#64748b;'>(" + gkEsc(match[2]) + ")</span></div>";
+          }} else {{
+            html += "<div style='margin-bottom:4px;'><a href='mailto:" + gkEsc(m) + "' style='color:#1b66b3;font-size:12px;font-weight:600;text-decoration:none;'>" + gkEsc(m) + "</a></div>";
+          }}
+        }});
+        html += "</div>";
+      }}
+
+      if(hasTel) {{
+        html += "<div style='flex:0 0 auto;min-width:160px;'>"
+              + "<div style='font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:#166534;margin-bottom:6px;'>Telefon</div>";
+        e.telefon.filter(function(t){{return t;}}).forEach(function(t) {{
+          html += "<div style='font-size:12px;font-weight:700;color:#166534;margin-bottom:4px;'>&#128222; " + gkEsc(t) + "</div>";
+        }});
+        html += "</div>";
+      }}
+
+      html += "</div>";
+    }}
+
+    // Hinweise
+    if(hasHint) {{
+      html += "<div>"
+            + "<div style='font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:#92400e;margin-bottom:8px;'>Hinweise</div>"
+            + "<div style='display:flex;flex-direction:column;gap:5px;'>";
+      e.hinweise.filter(function(h){{return h;}}).forEach(function(h) {{
+        html += "<div style='display:flex;align-items:flex-start;gap:8px;padding:7px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:12px;color:#92400e;line-height:1.5;'>"
+              + "<span style='flex-shrink:0;font-size:13px;margin-top:1px;'>&#9998;</span>"
+              + "<span>" + gkEsc(h) + "</span></div>";
+      }});
+      html += "</div></div>";
+    }}
+
+    html += "</div>"; // card
+  }});
+
+  html += "</div>";
+  detail.innerHTML = html;
+}}
+
+function gkRenderFreeform(customer, detail) {{
+  var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  var lines = customer.lines;
+  var html = "<div style='max-width:700px;'>";
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:18px 22px;margin-bottom:14px;box-shadow:0 1px 4px rgba(15,23,42,.05);'>"
+        + "<div style='font-size:18px;font-weight:900;color:#0b1220;'>" + gkEsc(customer.name) + "</div></div>";
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px 20px;box-shadow:0 1px 4px rgba(15,23,42,.05);'>";
+
+  lines.forEach(function(line) {{
+    var t = line.trim();
+    if(!t) return;
+    var isEmail = emailRe.test(t);
+    var isSection = !isEmail && t.length < 50 && (t.endsWith(":") || /^(Kollegen|Wareneingang|Dispo|NFC|Hinweis)/i.test(t));
+    var hasTel = !isEmail && /\d{{5,}}/.test(t) && t.length < 60;
+    var isLong = t.length > 80;
+
+    if(isSection) {{
+      html += "<div style='font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:#1b66b3;margin:14px 0 6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;'>" + gkEsc(t) + "</div>";
+    }} else if(isEmail) {{
+      html += "<div style='padding:4px 0;'><a href='mailto:" + gkEsc(t) + "' style='color:#1b66b3;font-size:12px;font-weight:600;text-decoration:none;'>&#9993; " + gkEsc(t) + "</a></div>";
+    }} else if(hasTel) {{
+      // Kann kombiniert sein: "email@... 0201/123456"
+      html += "<div style='font-size:12px;font-weight:700;color:#166534;padding:4px 0;border-bottom:1px solid #f8fafc;'>&#128222; " + gkEsc(t) + "</div>";
+    }} else if(isLong) {{
+      html += "<div style='padding:8px 12px;background:#f8fafc;border-radius:6px;border-left:3px solid #cbd5e1;margin:6px 0;font-size:12px;color:#334155;line-height:1.6;'>" + gkEsc(t) + "</div>";
+    }} else {{
+      html += "<div style='padding:4px 0;border-bottom:1px solid #f8fafc;font-size:12px;color:#334155;'>" + gkEsc(t) + "</div>";
+    }}
+  }});
+
+  html += "</div></div>";
+  detail.innerHTML = html;
+}}
 
 function telPDF() {{
   var w = window.open("","_blank","width=900,height=700");
@@ -6677,6 +6867,113 @@ def parse_fahrzeugwaesche_excel(uploaded_files) -> str:
     return json.dumps(rows, ensure_ascii=False)
 
 
+def parse_grosskunden_excel(uploaded_file) -> str:
+    """Liest alle Blätter der Großkunden-Excel aus und liefert JSON.
+
+    Strukturierte Blätter (Header: Name, Kundennummer, Mail, Telefon, Hinweise):
+      type="structured", entries=[{name, kundennummer, mails, telefon, hinweise}]
+
+    Freitext-Blätter (kein Header erkannt):
+      type="freeform", lines=[str, ...]
+
+    Leere Blätter werden übersprungen.
+    """
+    import openpyxl as _opxl
+
+    def _clean(v):
+        if v is None:
+            return ""
+        return str(v).replace("\xa0", " ").strip()
+
+    HEADER_KEYWORDS = {"name", "kundennummer", "mail", "telefon", "hinweise"}
+
+    def _is_structured(ws):
+        """Prüft ob Zeile 1 ein bekannter Header ist."""
+        first = [_clean(c).lower() for c in next(ws.iter_rows(min_row=1, max_row=1, values_only=True), [])]
+        return bool(HEADER_KEYWORDS & set(first))
+
+    def _col_idx(headers, *candidates):
+        for c in candidates:
+            for i, h in enumerate(headers):
+                if c in h.lower():
+                    return i
+        return -1
+
+    empty = "[]"
+    payload = read_upload_bytes(uploaded_file)
+    if not payload:
+        return empty
+    try:
+        wb = _opxl.load_workbook(io.BytesIO(payload), data_only=True)
+    except Exception:
+        return empty
+
+    result = []
+    for sname in wb.sheetnames:
+        ws = wb[sname]
+        all_rows = list(ws.iter_rows(values_only=True))
+        if not any(any(c is not None for c in r) for r in all_rows):
+            continue  # leeres Blatt
+
+        if _is_structured(ws):
+            headers = [_clean(c).lower() for c in all_rows[0]]
+            ci_name  = _col_idx(headers, "name")
+            ci_knr   = _col_idx(headers, "kundennummer", "kunden")
+            ci_mail  = _col_idx(headers, "mail", "email")
+            ci_tel   = _col_idx(headers, "telefon", "tel")
+            ci_hint  = _col_idx(headers, "hinweise", "hinweis", "info")
+
+            def _get(row, idx):
+                if idx < 0 or idx >= len(row):
+                    return ""
+                return _clean(row[idx])
+
+            entries = []
+            current = None
+            for row in all_rows[1:]:
+                if not any(c is not None for c in row):
+                    continue
+                name  = _get(row, ci_name)
+                knr   = _get(row, ci_knr)
+                mail  = _get(row, ci_mail)
+                tel   = _get(row, ci_tel)
+                hint  = _get(row, ci_hint)
+
+                if name:
+                    # Neue Entität
+                    current = {
+                        "name": name,
+                        "kundennummer": knr,
+                        "mails":   [mail] if mail else [],
+                        "telefon": [tel]  if tel  else [],
+                        "hinweise":[hint] if hint else [],
+                    }
+                    entries.append(current)
+                elif current:
+                    # Zusatzzeilen zur aktuellen Entität
+                    if mail and mail not in current["mails"]:
+                        current["mails"].append(mail)
+                    if tel and tel not in current["telefon"]:
+                        current["telefon"].append(tel)
+                    if hint and hint not in current["hinweise"]:
+                        current["hinweise"].append(hint)
+
+            if entries:
+                result.append({"name": sname, "type": "structured", "entries": entries})
+        else:
+            # Freitext-Fallback (z.B. Rasting)
+            lines = []
+            for row in all_rows:
+                for cell in row:
+                    val = _clean(cell)
+                    if val and val not in ("None",):
+                        lines.append(val)
+            if lines:
+                result.append({"name": sname, "type": "freeform", "lines": lines})
+
+    return json.dumps(result, ensure_ascii=False)
+
+
 # =============================================================================
 # STREAMLIT UI
 # =============================================================================
@@ -6905,6 +7202,21 @@ if zeiterfassung_up:
 elif st.session_state.get("zeiterfassung_json"):
     st.caption("Zeiterfassung geladen")
 
+grosskunden_up = st.file_uploader("Großkunden (Excel)", type=["xlsx"], key="grosskunden_upload_v1")
+if grosskunden_up:
+    gk_sig = upload_signature(grosskunden_up)
+    if st.session_state.get("grosskunden_sig") != gk_sig:
+        with st.spinner("Verarbeite Großkunden-Excel ..."):
+            st.session_state.grosskunden_json = parse_grosskunden_excel(grosskunden_up)
+            st.session_state.grosskunden_sig = gk_sig
+    try:
+        _gk = json.loads(st.session_state.grosskunden_json)
+        st.caption(f"{len(_gk)} Kunden geladen")
+    except Exception:
+        st.caption("Großkunden geladen")
+elif st.session_state.get("grosskunden_json"):
+    st.caption("Großkunden geladen")
+
 st.divider()
 
 # -- Download -----------------------------------------------------------------
@@ -6940,6 +7252,7 @@ if ready:
             verstoss_json=st.session_state.get("verstoss_json", '{"drivers":[],"total_violations":0}'),
             zeiterfassung_json=st.session_state.get("zeiterfassung_json", '{"by_key":{},"total_rows":0}'),
             spesen_json=st.session_state.get("spesen_json", '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}'),
+            grosskunden_json=st.session_state.get("grosskunden_json", "[]"),
             last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
         )
     st.download_button(
