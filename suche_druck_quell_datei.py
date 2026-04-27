@@ -2325,6 +2325,9 @@ var spesenSearchQuery = "";
 var spesenMonthFilter = "all";
 var spesenSelectedName = null;
 var spesenSortMode = "gesamt";
+// Spätstart-Kontrolle: Start zwischen 18:00 und 21:00 (inkl.)
+var SPESEN_LATE_FROM = "18:00";
+var SPESEN_LATE_TO = "21:00";
 // Caches — invalidiert bei jedem Filter-/Sort-/Such-Wechsel
 var spesenStatsCache = {};       // {monthFilter: {driverName: stats}}
 var spesenFilteredCache = null;  // gefilterte + sortierte Liste
@@ -2693,6 +2696,182 @@ function spesenPdfOne(name) {
 
   var w = window.open("", "_blank", "width=900,height=800");
   w.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Spesen - " + spEsc(d.name) + "</title><style>" + css + "</style></head><body>" + body + "</body></html>");
+  w.document.close();
+  w.focus();
+  setTimeout(function(){ w.print(); }, 500);
+}
+
+// ── Spätstart-Kontrolle ────────────────────────────────────────────────────
+// Start zwischen 18:00 und 21:00 (inkl.) — wer in dieses Fenster startet,
+// wird in einer separaten Kontroll-Liste pro Monat ausgegeben.
+function spIsLateStart(r) {
+  var t = r && r.start_time ? String(r.start_time) : "";
+  var m = t.match(/^(\d{1,2}):(\d{2})/);
+  if(!m) return false;
+  var minutes = parseInt(m[1],10) * 60 + parseInt(m[2],10);
+  var fromM = parseInt(SPESEN_LATE_FROM.split(":")[0],10) * 60 + parseInt(SPESEN_LATE_FROM.split(":")[1],10);
+  var toM = parseInt(SPESEN_LATE_TO.split(":")[0],10) * 60 + parseInt(SPESEN_LATE_TO.split(":")[1],10);
+  return minutes >= fromM && minutes <= toM;
+}
+
+// Liefert {monthValue: {label, entries:[{driver,row}], meal, night, total}}
+// Respektiert den aktuellen Monatsfilter.
+function spLateStartsByMonth() {
+  var map = {};
+  spGetDrivers().forEach(function(d) {
+    (d.rows || []).forEach(function(r) {
+      if(spesenMonthFilter !== "all" && r.month !== spesenMonthFilter) return;
+      if(!spIsLateStart(r)) return;
+      var mo = r.month || "";
+      if(!map[mo]) map[mo] = { label: spMonthLabel(mo), entries: [], meal:0, night:0, total:0, drivers:{} };
+      map[mo].entries.push({ driver: d, row: r });
+      map[mo].meal += Number(r.meal||0);
+      map[mo].night += Number(r.night||0);
+      map[mo].total += Number(r.total||0);
+      map[mo].drivers[d.name] = 1;
+    });
+  });
+  // Innerhalb des Monats sortieren: Datum aufsteigend, dann Fahrer
+  Object.keys(map).forEach(function(k){
+    map[k].entries.sort(function(a,b){
+      var da = String(a.row.date_sort || a.row.date_iso || "");
+      var db = String(b.row.date_sort || b.row.date_iso || "");
+      var c = da.localeCompare(db);
+      if(c) return c;
+      return String(a.driver.name||"").localeCompare(String(b.driver.name||""), "de");
+    });
+  });
+  return map;
+}
+
+function spesenPdfLateStarts() {
+  var byMonth = spLateStartsByMonth();
+  var monthKeys = Object.keys(byMonth).sort();  // chronologisch aufsteigend
+  if(!monthKeys.length){ alert("Keine Spätstarts im gewählten Zeitraum."); return; }
+
+  var today = new Date().toLocaleDateString("de-DE", {day:"2-digit", month:"long", year:"numeric"});
+  var subtitle = spesenMonthFilter === "all" ? "Alle Monate" : spMonthLabel(spesenMonthFilter);
+
+  // Gesamtsummen
+  var allEntries = 0, allMeal = 0, allNight = 0, allTotal = 0;
+  var allDrivers = {};
+  monthKeys.forEach(function(k){
+    var mo = byMonth[k];
+    allEntries += mo.entries.length;
+    allMeal += mo.meal;
+    allNight += mo.night;
+    allTotal += mo.total;
+    Object.keys(mo.drivers).forEach(function(n){ allDrivers[n] = 1; });
+  });
+  var driverCount = Object.keys(allDrivers).length;
+
+  var css = "@page{size:A4 portrait;margin:11mm}"
+    + "*{box-sizing:border-box;margin:0;padding:0}"
+    + "body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;font-size:9pt}"
+    + ".head{border-bottom:3px solid #6d28d9;padding-bottom:4mm;margin-bottom:5mm}"
+    + ".head h1{font-size:18pt;color:#6d28d9;font-weight:900;margin-bottom:1mm}"
+    + ".head .sub{font-size:9pt;color:#64748b;margin-top:1mm}"
+    + ".window{display:inline-block;background:#ede9fe;color:#5b21b6;padding:1.5mm 3mm;border-radius:2mm;font-weight:800;font-size:8.5pt;margin-top:1.5mm}"
+    + ".kpi{display:flex;gap:2.5mm;margin:4mm 0 5mm;flex-wrap:wrap}"
+    + ".kpi>div{flex:1;min-width:30mm;border:1px solid #e2e8f0;border-radius:2mm;padding:2.5mm 3mm;background:#f8fafc}"
+    + ".kpi .num{font-size:12pt;font-weight:900}"
+    + ".kpi .lbl{font-size:7pt;color:#64748b;text-transform:uppercase;letter-spacing:.3px;margin-top:0.5mm}"
+    + ".month{margin-top:6mm;page-break-inside:avoid}"
+    + ".month h2{font-size:11pt;color:#6d28d9;font-weight:900;border-left:3px solid #6d28d9;padding:0 0 0 3mm;margin-bottom:2mm;text-transform:uppercase;letter-spacing:.4px}"
+    + ".month .meta{font-size:8pt;color:#64748b;margin-bottom:2mm;margin-left:5mm}"
+    + "table{width:100%;border-collapse:collapse;font-size:8pt}"
+    + "thead tr{background:#1e3a5f;color:#fff}"
+    + "thead th{padding:1.8mm 2.5mm;font-weight:800;text-align:left;font-size:7pt;text-transform:uppercase;letter-spacing:.3px}"
+    + "tbody td{padding:1.6mm 2.5mm;border-bottom:1px solid #eef2f7;vertical-align:top}"
+    + "tbody tr.zebra{background:#f8fafc}"
+    + ".start-cell{font-weight:800;color:#6d28d9;font-variant-numeric:tabular-nums}"
+    + "tfoot td{padding:1.8mm 2.5mm;font-weight:900;background:#ede9fe;color:#5b21b6;font-size:8pt;border-top:1px solid #c4b5fd}"
+    + ".grand{margin-top:5mm;padding:3mm 4mm;background:#0f172a;color:#fff;border-radius:2mm;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:3mm}"
+    + ".grand .lbl{font-size:8pt;text-transform:uppercase;letter-spacing:.4px;color:#cbd5e1}"
+    + ".grand .num{font-size:12pt;font-weight:900}"
+    + ".wd{font-size:6.5pt;color:#94a3b8;font-weight:700}"
+    + ".sig{margin-top:8mm;display:flex;gap:12mm}"
+    + ".sig .line{border-top:1px solid #94a3b8;width:75mm;padding-top:1.5mm;font-size:7pt;color:#64748b}"
+    + ".ft{margin-top:5mm;padding-top:3mm;border-top:1px solid #e2e8f0;font-size:7pt;color:#94a3b8;display:flex;justify-content:space-between}";
+
+  var body = "<div class='head'>"
+    + "<h1>&#127769; Kontrolle: Spesen-Spätstarts</h1>"
+    + "<div class='sub'>" + spEsc(subtitle) + " &middot; Stand: " + today + "</div>"
+    + "<div class='window'>Startzeitfenster: " + SPESEN_LATE_FROM + " &ndash; " + SPESEN_LATE_TO + " Uhr</div>"
+    + "</div>";
+
+  body += "<div class='kpi'>"
+    + "<div><div class='num' style='color:#6d28d9;'>" + allEntries + "</div><div class='lbl'>Spätstart-Einträge</div></div>"
+    + "<div><div class='num' style='color:#6d28d9;'>" + driverCount + "</div><div class='lbl'>Betroffene Fahrer</div></div>"
+    + "<div><div class='num' style='color:#15803d;'>" + spMoney(allMeal) + "</div><div class='lbl'>Σ Verpflegung</div></div>"
+    + "<div><div class='num' style='color:#92400e;'>" + spMoney(allNight) + "</div><div class='lbl'>Σ Übernachtung</div></div>"
+    + "<div><div class='num' style='color:#1b66b3;'>" + spMoney(allTotal) + "</div><div class='lbl'>Σ Gesamt</div></div>"
+    + "</div>";
+
+  monthKeys.forEach(function(k){
+    var mo = byMonth[k];
+    var monthDriverCount = Object.keys(mo.drivers).length;
+    body += "<div class='month'>";
+    body += "<h2>" + spEsc(mo.label || k) + "</h2>";
+    body += "<div class='meta'>" + mo.entries.length + " Einträge · " + monthDriverCount + " Fahrer</div>";
+    body += "<table><thead><tr>"
+      + "<th>Fahrer</th>"
+      + "<th style='width:20mm'>Datum</th>"
+      + "<th style='width:14mm'>Start</th>"
+      + "<th style='width:14mm'>Ende</th>"
+      + "<th>Strecke</th>"
+      + "<th style='text-align:right;width:18mm'>Verpflegung</th>"
+      + "<th style='text-align:right;width:20mm'>Übernachtung</th>"
+      + "<th style='text-align:right;width:18mm'>Gesamt</th>"
+      + "</tr></thead><tbody>";
+    var zebra = 0;
+    mo.entries.forEach(function(e){
+      var r = e.row;
+      var route = (r.pos_start || r.pos_end) ? ((r.pos_start||"") + (r.pos_end ? " → " + r.pos_end : "")) : (r.region || "");
+      var rowCls = (zebra % 2) ? " class='zebra'" : "";
+      body += "<tr" + rowCls + ">"
+        + "<td style='font-weight:700;'>" + spEsc(e.driver.name) + (e.driver.employee_nr ? "<div class='wd'>Pers.-Nr. " + spEsc(e.driver.employee_nr) + "</div>" : "") + "</td>"
+        + "<td style='white-space:nowrap;font-weight:600;'>" + spEsc(r.date_label || r.date_iso || "") + "<div class='wd'>" + spEsc(r.weekday || "") + "</div></td>"
+        + "<td class='start-cell' style='white-space:nowrap;'>" + spEsc(r.start_time || "—") + "</td>"
+        + "<td style='white-space:nowrap;color:#64748b;font-variant-numeric:tabular-nums;'>" + spEsc(r.end_time || "—") + "</td>"
+        + "<td>" + spEsc(route || "—") + "</td>"
+        + "<td style='text-align:right;font-weight:700;color:#15803d;font-variant-numeric:tabular-nums;white-space:nowrap;'>"
+        + (Number(r.meal||0) > 0 ? spMoney(r.meal) : "—") + "</td>"
+        + "<td style='text-align:right;font-weight:700;color:#92400e;font-variant-numeric:tabular-nums;white-space:nowrap;'>"
+        + (Number(r.night||0) > 0 ? spMoney(r.night) : "—") + "</td>"
+        + "<td style='text-align:right;font-weight:800;color:#1b66b3;font-variant-numeric:tabular-nums;white-space:nowrap;'>"
+        + spMoney(r.total) + "</td>"
+        + "</tr>";
+      zebra += 1;
+    });
+    body += "</tbody><tfoot><tr>"
+      + "<td colspan='5' style='text-align:right;'>Summe " + spEsc(mo.label || k) + "</td>"
+      + "<td style='text-align:right;'>" + spMoney(mo.meal) + "</td>"
+      + "<td style='text-align:right;'>" + spMoney(mo.night) + "</td>"
+      + "<td style='text-align:right;'>" + spMoney(mo.total) + "</td>"
+      + "</tr></tfoot></table>";
+    body += "</div>";
+  });
+
+  // Gesamt-Summe
+  body += "<div class='grand'>"
+    + "<div><div class='lbl'>Gesamt aller Monate</div><div style='font-size:9pt;color:#cbd5e1;margin-top:0.5mm;'>" + allEntries + " Einträge · " + driverCount + " Fahrer</div></div>"
+    + "<div style='text-align:right;'><div class='num'>" + spMoney(allTotal) + "</div>"
+    + "<div style='font-size:8pt;color:#cbd5e1;margin-top:0.5mm;'>Verpflegung " + spMoney(allMeal) + " · Übernachtung " + spMoney(allNight) + "</div></div>"
+    + "</div>";
+
+  body += "<div class='sig'>"
+    + "<div><div class='line'>Datum, Unterschrift Disposition</div></div>"
+    + "<div><div class='line'>Datum, Unterschrift Geschäftsführung</div></div>"
+    + "</div>";
+
+  body += "<div class='ft'>"
+    + "<span>NordFrischeCenter &middot; Spesen-Kontrolle Spätstarts</span>"
+    + "<span>Stand: " + today + "</span>"
+    + "</div>";
+
+  var w = window.open("", "_blank", "width=900,height=800");
+  w.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Spesen-Spätstarts " + spEsc(subtitle) + "</title><style>" + css + "</style></head><body>" + body + "</body></html>");
   w.document.close();
   w.focus();
   setTimeout(function(){ w.print(); }, 500);
@@ -4286,8 +4465,10 @@ iframe.active{{display:block}}
       <div style="display:flex;gap:4px;">
         <button onclick="spesenSort('gesamt')" id="spesen-sort-gesamt" style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#1b66b3;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Kosten</button>
         <button onclick="spesenSort('tage')" id="spesen-sort-tage" style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Einträge</button>
-        <button onclick="spesenSort('name')" id="spesen-sort-name" style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">A–Z</button>
+        <button onclick="spesenSort('name')" id="spesen-sort-name" style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">A&ndash;Z</button>
       </div>
+      <button onclick="spesenPdfLateStarts()" title="Kontroll-PDF: Fahrer mit Start zwischen 18:00 und 21:00 Uhr, gruppiert nach Monat"
+        style="padding:5px 12px;border:2px solid #6d28d9;border-radius:5px;background:linear-gradient(180deg,#7c3aed 0%,#6d28d9 100%);color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 1px 3px rgba(109,40,217,.32);">&#127769; Spätstarts-Kontrolle</button>
       <div id="spesen-stats" style="font-size:11px;color:#64748b;margin-left:auto;font-weight:700;"></div>
     </div>
     <div style="display:flex;flex:1;overflow:hidden;">
