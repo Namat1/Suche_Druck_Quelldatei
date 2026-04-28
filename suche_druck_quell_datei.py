@@ -4357,7 +4357,7 @@ iframe.active{{display:block}}
           style="flex:1;max-width:320px;padding:7px 11px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:12px;font-family:inherit;outline:none;background:#fff;color:#0f172a;">
         <span id="gk-stats" style="margin-left:auto;font-size:11px;font-weight:700;color:#64748b;"></span>
       </div>
-      <div id="gk-tiles" style="display:flex;flex-wrap:wrap;gap:6px;max-height:94px;overflow-y:auto;padding-right:4px;"></div>
+      <div id="gk-tiles" style="display:flex;flex-wrap:wrap;gap:6px;max-height:120px;overflow-y:auto;padding-right:4px;"></div>
     </div>
     <!-- Detail unten -->
     <div id="gk-detail" style="flex:1;overflow-y:auto;padding:16px 18px 28px;">
@@ -4931,11 +4931,12 @@ function gkBuildTiles(activeIdx) {{
   visible.forEach(function(realIdx) {{
     var k = GK_DATA[realIdx];
     var active = realIdx === activeIdx;
-    var sub = "";
+    // KNr-Anzeige: Single -> grosses Badge, Multi -> Eintragszahl
+    var singleKnr = "";
+    var multiCount = 0;
     if (k.type === "structured" && k.entries && k.entries.length) {{
-      sub = k.entries.length === 1
-        ? (k.entries[0].kundennummer || "")
-        : k.entries.length + " Eintr.";
+      if (k.entries.length === 1) singleKnr = k.entries[0].kundennummer || "";
+      else multiCount = k.entries.length;
     }}
     var bg      = active ? "#1e3a5f" : "#fff";
     var border  = active ? "#1e3a5f" : "#d8e0ea";
@@ -4944,16 +4945,26 @@ function gkBuildTiles(activeIdx) {{
     var tileColors = ["#1b66b3","#166534","#b45309","#7c3aed","#0891b2","#dc2626","#059669","#d97706","#4f46e5","#0f766e","#c2410c","#7e22ce","#1d4ed8","#15803d","#b91c1c","#6d28d9"];
     var accent = tileColors[realIdx % tileColors.length];
     var topBar = active ? "border-left:4px solid #fbbf24;" : "border-left:4px solid " + accent + ";";
+    // KNr-Badge: stark sichtbar (gelb auf aktiv, dunkelblau auf inaktiv)
+    var knrBg     = active ? "#fbbf24" : "#1e3a5f";
+    var knrTxt    = active ? "#1e293b" : "#fff";
+    var knrLabel  = active ? "rgba(30,41,59,.65)" : "rgba(255,255,255,.65)";
     html += "<button type='button' onclick='gkShow(" + realIdx + ")'"
-          + " style='cursor:pointer;border-radius:6px;padding:6px 10px;text-align:left;font-family:inherit;"
+          + " style='cursor:pointer;border-radius:6px;padding:7px 10px;text-align:left;font-family:inherit;"
           + "border:1px solid " + border + ";background:" + bg + ";"
           + topBar
-          + "transition:all .12s;min-width:96px;max-width:220px;user-select:none;box-shadow:" + (active ? "0 2px 8px rgba(30,58,95,.20)" : "none") + ";'>"
+          + "transition:all .12s;min-width:110px;max-width:230px;user-select:none;box-shadow:" + (active ? "0 2px 8px rgba(30,58,95,.20)" : "none") + ";'>"
           + "<div style='font-size:11.5px;font-weight:800;color:" + txtMain + ";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25;'>"
           + gkEsc(k.name) + "</div>";
-    if (sub) {{
-      html += "<div style='font-size:10px;color:" + txtSub + ";margin-top:1px;font-variant-numeric:tabular-nums;'>"
-            + gkEsc(sub) + "</div>";
+    if (singleKnr) {{
+      html += "<div style='margin-top:4px;display:inline-flex;align-items:baseline;gap:5px;"
+            + "background:" + knrBg + ";border-radius:4px;padding:2px 8px 2px 7px;'>"
+            + "<span style='font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:" + knrLabel + ";'>KNr</span>"
+            + "<span style='font-size:13px;font-weight:900;color:" + knrTxt + ";font-variant-numeric:tabular-nums;letter-spacing:.3px;line-height:1;'>"
+            + gkEsc(singleKnr) + "</span></div>";
+    }} else if (multiCount) {{
+      html += "<div style='font-size:10px;color:" + txtSub + ";margin-top:2px;font-weight:700;'>"
+            + multiCount + " Eintr.</div>";
     }}
     html += "</button>";
   }});
@@ -5049,13 +5060,16 @@ function gkRenderStructured(customer, detail) {{
     var ec = entryColors2[ei % entryColors2.length];
     var borderTop = ei > 0 ? "border-top:1px solid #eef2f7;" : "";
     html += "<div style='padding:8px 12px 8px 11px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;" + borderTop + "border-left:3px solid " + ec + ";'>";
-    html += "<div style='min-width:160px;flex:0 0 auto;'>"
-          + "<div style='font-size:12.5px;font-weight:800;color:#0f172a;'>" + gkEsc(entry.name) + "</div>";
+    html += "<div style='min-width:200px;flex:0 0 auto;'>"
+          + "<div style='font-size:13px;font-weight:800;color:#0f172a;line-height:1.3;'>" + gkEsc(entry.name) + "</div>";
     if (entry.kundennummer) {{
-      html += "<div style='margin-top:5px;'><span style='display:inline-block;background:#1e3a5f;color:#fff;"
-            + "font-size:12px;font-weight:800;border-radius:4px;padding:2px 10px;"
-            + "letter-spacing:.3px;font-variant-numeric:tabular-nums;'>"
-            + "KNr\u00a0" + gkEsc(entry.kundennummer) + "</span></div>";
+      html += "<div style='margin-top:7px;'><span style='display:inline-flex;align-items:baseline;gap:7px;background:#1e3a5f;color:#fff;"
+            + "border-radius:6px;padding:5px 13px 6px 12px;box-shadow:0 1px 3px rgba(15,23,42,.18);"
+            + "border:1px solid #15294a;'>"
+            + "<span style='font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:rgba(255,255,255,.70);'>KNr</span>"
+            + "<span style='font-size:18px;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:.5px;line-height:1;'>"
+            + gkEsc(entry.kundennummer) + "</span>"
+            + "</span></div>";
     }}
     html += "</div>";
     // Adresse
@@ -5152,9 +5166,12 @@ function gkRenderStructured(customer, detail) {{
           + "<span style='font-size:12.5px;font-weight:800;color:#0f172a;flex:1;'>" + gkEsc(customer.name) + "</span>"
           + gkEdekaLagerNmsLink(customer);
     headerKnrs.forEach(function(k) {{
-      html += "<span style='display:inline-block;background:#1e3a5f;color:#fff;"
-            + "font-size:12px;font-weight:800;border-radius:4px;padding:2px 10px;"
-            + "letter-spacing:.3px;font-variant-numeric:tabular-nums;'>KNr\u00a0" + gkEsc(k) + "</span>";
+      html += "<span style='display:inline-flex;align-items:baseline;gap:7px;background:#1e3a5f;color:#fff;"
+            + "border-radius:6px;padding:5px 13px 6px 12px;box-shadow:0 1px 3px rgba(15,23,42,.18);"
+            + "border:1px solid #15294a;'>"
+            + "<span style='font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:rgba(255,255,255,.70);'>KNr</span>"
+            + "<span style='font-size:17px;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:.5px;line-height:1;'>"
+            + gkEsc(k) + "</span></span>";
     }});
     html += "</div>";
     html += "<div style='padding:0 14px 8px;'>";
