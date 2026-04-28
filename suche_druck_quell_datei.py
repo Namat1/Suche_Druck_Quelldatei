@@ -4845,6 +4845,28 @@ function gkDistributorLinkHtml(emails, label, subject) {{
        + "&#9993; " + gkEsc(label) + " <span style='font-weight:700;opacity:.8;'>(" + emails.length + ")</span></a>";
 }}
 
+var GK_EDEKA_LAGER_NMS_EMAILS = [
+  "Daniel.Kriegel@edeka.de",
+  "Eugen.Kifer@edeka.de",
+  "Jerome.Gitzel@EDEKA.de",
+  "Maike.Linde@edeka.de",
+  "thomas.manzke@edeka.de",
+  "marco.doerfert@edeka.de",
+  "stephan.bruhn@edeka.de",
+  "alexa.offertaler@edeka.de",
+  "alona.tymoshevska@edeka.de"
+];
+
+function gkIsEdekaLager(customer) {{
+  var n = String(customer && customer.name ? customer.name : "").toLowerCase();
+  return n.indexOf("edeka") >= 0 && n.indexOf("lager") >= 0;
+}}
+
+function gkEdekaLagerNmsLink(customer) {{
+  if (!gkIsEdekaLager(customer)) return "";
+  return gkDistributorLinkHtml(GK_EDEKA_LAGER_NMS_EMAILS, "NMS", "Edeka Lager / NMS");
+}}
+
 // Spaltentyp aus Header-Name ermitteln
 function gkColType(header) {{
   var h = (header || "").toLowerCase();
@@ -5127,8 +5149,8 @@ function gkRenderStructured(customer, detail) {{
       .filter(Boolean);
     html += "<div style='padding:9px 12px;background:#f8fafc;border-bottom:1px solid #e8edf2;"
           + "border-left:4px solid #1b66b3;display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
-          + "<span style='font-size:12.5px;font-weight:800;color:#0f172a;flex:1;'>" + gkEsc(customer.name) + "</span>";
-    html += gkDistributorLinkHtml(rastingNfcEmails, "Mail an den Verteiler", "Rasting / NFC");
+          + "<span style='font-size:12.5px;font-weight:800;color:#0f172a;flex:1;'>" + gkEsc(customer.name) + "</span>"
+          + gkEdekaLagerNmsLink(customer);
     headerKnrs.forEach(function(k) {{
       html += "<span style='display:inline-block;background:#1e3a5f;color:#fff;"
             + "font-size:12px;font-weight:800;border-radius:4px;padding:2px 10px;"
@@ -5143,10 +5165,14 @@ function gkRenderStructured(customer, detail) {{
         }};
         var sKey = cr.text.replace(/:$/, "").toLowerCase().trim();
         var sColor = sectionColors[sKey] || "#1b66b3";
-        html += "<div style='margin:10px 0 4px;'>"
+        html += "<div style='margin:10px 0 4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>"
               + "<span style='display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;"
               + "letter-spacing:.5px;color:#fff;background:" + sColor + ";border-radius:3px;padding:2px 8px;'>"
-              + gkEsc(cr.text.replace(/:$/, "")) + "</span></div>";
+              + gkEsc(cr.text.replace(/:$/, "")) + "</span>";
+        if (sKey === "nfc" && rastingNfcEmails.length) {{
+          html += gkDistributorLinkHtml(rastingNfcEmails, "Mail an den Verteiler", "Rasting / NFC");
+        }}
+        html += "</div>";
       }} else if (cr.isOther) {{
         html += "<div style='padding:6px 0;border-bottom:1px solid #f8fafc;display:flex;gap:10px;align-items:baseline;'>"
               + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;white-space:nowrap;flex-shrink:0;'>" + gkEsc(cr.header) + "</span>"
@@ -5229,15 +5255,13 @@ function gkRenderFreeform(customer, detail) {{
   var html = "<div style='max-width:700px;'>";
 
   html += "<div style='margin-bottom:12px;'>"
+        + "<div style='display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
         + "<h1 style='font-size:22px;font-weight:900;color:#0f172a;margin:0;'>" + gkEsc(customer.name) + "</h1>"
+        + gkEdekaLagerNmsLink(customer)
+        + "</div>"
         + "<div style='height:3px;width:40px;background:#1e3a5f;border-radius:2px;margin-top:6px;'></div>"
         + "</div>";
 
-  if (rastingNfcEmails.length) {{
-    html += "<div style='margin:-4px 0 12px;'>"
-          + gkDistributorLinkHtml(rastingNfcEmails, "Mail an den Verteiler", "Rasting / NFC")
-          + "</div>";
-  }}
 
   html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:8px;overflow:hidden;'>";
 
@@ -5250,9 +5274,16 @@ function gkRenderFreeform(customer, detail) {{
     var isLong = t.length > 90;
 
     if (isSection) {{
+      var sectionName = t.replace(/:$/, "");
+      var sectionKey = sectionName.toLowerCase().trim();
       html += "<div style='padding:8px 16px;background:#f8fafc;border-bottom:1px solid #eef2f7;"
-            + "font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#64748b;'>"
-            + gkEsc(t.replace(/:$/, "")) + "</div>";
+            + "font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#64748b;"
+            + "display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>"
+            + "<span>" + gkEsc(sectionName) + "</span>";
+      if (sectionKey === "nfc" && rastingNfcEmails.length) {{
+        html += gkDistributorLinkHtml(rastingNfcEmails, "Mail an den Verteiler", "Rasting / NFC");
+      }}
+      html += "</div>";
     }} else if (isEmail) {{
       html += "<div style='padding:7px 16px;border-bottom:1px solid #f8fafc;'>"
             + "<a href='mailto:" + gkEsc(t) + "' style='color:#1b66b3;font-size:12px;font-weight:600;text-decoration:none;'>" + gkEsc(t) + "</a>"
