@@ -4775,6 +4775,76 @@ function gkEsc(v) {{
     .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }}
 
+function gkAttr(v) {{
+  return gkEsc(v).replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}}
+
+function gkExtractEmails(v) {{
+  var s = String(v == null ? "" : v);
+  return s.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{{2,}}/ig) || [];
+}}
+
+function gkUniqEmails(list) {{
+  var out = [];
+  (list || []).forEach(function(e) {{
+    var mail = String(e || "").trim();
+    if (mail && out.indexOf(mail) === -1) out.push(mail);
+  }});
+  return out;
+}}
+
+function gkMailto(emails, subject) {{
+  var list = gkUniqEmails(emails);
+  var href = "mailto:" + list.join(";");
+  if (subject) href += "?subject=" + encodeURIComponent(subject);
+  return href;
+}}
+
+function gkRastingNfcEmailsFromRows(customer, rows) {{
+  if (!customer || !/rasting/i.test(customer.name || "")) return [];
+  var mails = [];
+  var section = "";
+  (rows || []).forEach(function(cr) {{
+    if (cr && cr.isLabel) {{
+      section = String(cr.text || "").replace(/:$/, "").toLowerCase().trim();
+      return;
+    }}
+    var belongsToNfc = section.indexOf("nfc") >= 0;
+    if (!belongsToNfc && cr && cr.labelText && /(^|\b)nfc(\b|$)/i.test(cr.labelText)) belongsToNfc = true;
+    if (!belongsToNfc) return;
+    (cr.emails || []).forEach(function(em) {{
+      gkExtractEmails(em).forEach(function(addr) {{ mails.push(addr); }});
+    }});
+  }});
+  return gkUniqEmails(mails);
+}}
+
+function gkRastingNfcEmailsFromLines(customer) {{
+  if (!customer || !/rasting/i.test(customer.name || "")) return [];
+  var mails = [];
+  var section = "";
+  (customer.lines || []).forEach(function(line) {{
+    var t = String(line || "").trim();
+    if (!t) return;
+    if (gkIsSection(t)) section = t.replace(/:$/, "").toLowerCase().trim();
+    var belongsToNfc = section.indexOf("nfc") >= 0 || /(^|\b)nfc(\b|$)/i.test(t);
+    if (belongsToNfc) {{
+      gkExtractEmails(t).forEach(function(addr) {{ mails.push(addr); }});
+    }}
+  }});
+  return gkUniqEmails(mails);
+}}
+
+function gkDistributorLinkHtml(emails, label, subject) {{
+  emails = gkUniqEmails(emails);
+  if (!emails.length) return "";
+  return "<a href='" + gkAttr(gkMailto(emails, subject || label)) + "'"
+       + " style='display:inline-flex;align-items:center;gap:7px;background:#166534;color:#fff;"
+       + "border:1px solid #14532d;border-radius:5px;padding:5px 11px;font-size:11.5px;"
+       + "font-weight:800;text-decoration:none;white-space:nowrap;box-shadow:0 1px 3px rgba(22,101,52,.25);'>"
+       + "&#9993; " + gkEsc(label) + " <span style='font-weight:700;opacity:.8;'>(" + emails.length + ")</span></a>";
+}}
+
 // Spaltentyp aus Header-Name ermitteln
 function gkColType(header) {{
   var h = (header || "").toLowerCase();
@@ -5042,6 +5112,8 @@ function gkRenderStructured(customer, detail) {{
     }});
   }});
 
+  var rastingNfcEmails = gkRastingNfcEmailsFromRows(customer, allContactRows);
+
   // Zweispaltiges Layout: Kontakte links, Hinweise rechts
   html += "<div style='display:grid;grid-template-columns:minmax(360px,1.1fr) minmax(280px,.9fr);gap:12px;align-items:stretch;'>";
 
@@ -5056,6 +5128,7 @@ function gkRenderStructured(customer, detail) {{
     html += "<div style='padding:9px 12px;background:#f8fafc;border-bottom:1px solid #e8edf2;"
           + "border-left:4px solid #1b66b3;display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
           + "<span style='font-size:12.5px;font-weight:800;color:#0f172a;flex:1;'>" + gkEsc(customer.name) + "</span>";
+    html += gkDistributorLinkHtml(rastingNfcEmails, "Mail an den Verteiler", "Rasting / NFC");
     headerKnrs.forEach(function(k) {{
       html += "<span style='display:inline-block;background:#1e3a5f;color:#fff;"
             + "font-size:12px;font-weight:800;border-radius:4px;padding:2px 10px;"
@@ -5152,12 +5225,19 @@ function gkRenderStructured(customer, detail) {{
 // ── Freeform Renderer ─────────────────────────────────────────────────────────
 function gkRenderFreeform(customer, detail) {{
   var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  var rastingNfcEmails = gkRastingNfcEmailsFromLines(customer);
   var html = "<div style='max-width:700px;'>";
 
   html += "<div style='margin-bottom:12px;'>"
         + "<h1 style='font-size:22px;font-weight:900;color:#0f172a;margin:0;'>" + gkEsc(customer.name) + "</h1>"
         + "<div style='height:3px;width:40px;background:#1e3a5f;border-radius:2px;margin-top:6px;'></div>"
         + "</div>";
+
+  if (rastingNfcEmails.length) {{
+    html += "<div style='margin:-4px 0 12px;'>"
+          + gkDistributorLinkHtml(rastingNfcEmails, "Mail an den Verteiler", "Rasting / NFC")
+          + "</div>";
+  }}
 
   html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:8px;overflow:hidden;'>";
 
