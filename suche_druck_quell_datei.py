@@ -6380,11 +6380,23 @@ def parse_spesen_csv(uploaded_file) -> str:
 
 
 def parse_verstoss_csv(uploaded_file) -> str:
-    """Parst die Digitacho-Verstoßauswertungs-CSV (Semikolon-getrennt) und aggregiert pro Fahrer."""
+    """Parst die Digitacho-Verstoßauswertungs-CSV und aggregiert Verstöße und Bußgelder pro Fahrer.
+
+    Die Bußgeld-Spalten werden robust gelesen. Akzeptiert werden zum Beispiel
+    160, 160 €, 160,00, 1.520 € oder 1.520,50 €.
+    """
     import csv as _csv
     from io import StringIO as _SIO
 
-    empty = json.dumps({"drivers": [], "total_violations": 0, "first_violation_month": "", "last_violation_month": ""}, ensure_ascii=False)
+    empty = json.dumps({
+        "drivers": [],
+        "total_violations": 0,
+        "total_driver_penalty": 0,
+        "total_company_penalty": 0,
+        "first_violation_month": "",
+        "last_violation_month": "",
+    }, ensure_ascii=False)
+
     payload = read_upload_bytes(uploaded_file)
     if not payload:
         return empty
@@ -6399,7 +6411,6 @@ def parse_verstoss_csv(uploaded_file) -> str:
     if text is None:
         return empty
 
-    # Strip potential leading BOM
     if text.startswith("\ufeff"):
         text = text[1:]
 
@@ -6409,50 +6420,92 @@ def parse_verstoss_csv(uploaded_file) -> str:
         st.warning(f"Verstoß-CSV konnte nicht gelesen werden: {e}")
         return empty
 
-    def _to_int(v):
-        try:
-            s = (v or "").strip()
-            return int(s) if s else 0
-        except Exception:
-            try:
-                return int(float(s))
-            except Exception:
-                return 0
-
     def _clean(v):
-        return (v or "").strip()
+        return str(v or "").replace("\xa0", " ").strip()
+
+    def _norm_key(v: str) -> str:
+        s = _clean(v).lower().replace("ß", "ss")
+        s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+        return re.sub(r"[^a-z0-9]+", "", s)
+
+    def _row_get(row_norm: dict, *aliases: str) -> str:
+        for alias in aliases:
+            key = _norm_key(alias)
+            if key in row_norm:
+                return row_norm.get(key)
+        return ""
+
+    def _to_int(v):
+        """Robust fuer Minuten/Werte: '48', '48 Min.', '1 Std. 15 Min.' -> Minuten."""
+        s = _clean(v)
+        if not s or s in ("—", "-", "–"):
+            return 0
+        h = re.search(r"(\d+)\s*(?:std|stunde|stunden|h)\b", s, flags=re.I)
+        m = re.search(r"(\d+)\s*(?:min|minute|minuten|m)\b", s, flags=re.I)
+        if h or m:
+            return (int(h.group(1)) * 60 if h else 0) + (int(m.group(1)) if m else 0)
+        m = re.search(r"-?\d+", s.replace(".", ""))
+        return int(m.group(0)) if m else 0
+
+    def _to_money(v):
+        """Robust fuer Euro-Werte: '160', '160 €', '160,00', '1.520 €'."""
+        s = _clean(v)
+        if not s or s in ("—", "-", "–"):
+            return 0
+        s = re.sub(r"[^0-9,\.\-]", "", s)
+        if not s or s in ("-", ",", "."):
+            return 0
+        if "," in s:
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            if s.count(".") > 1:
+                s = s.replace(".", "")
+            elif re.match(r"^-?\d{1,3}\.\d{3}$", s):
+                s = s.replace(".", "")
+        try:
+            value = float(s)
+        except Exception:
+            return 0
+        return int(value) if value.is_integer() else round(value, 2)
 
     by_driver = {}
-    date_re = re.compile(r"(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{2}):(\d{2}))?")
+    date_re = re.compile(r"(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{2}))?")
 
     for row in reader:
-        # Normalize keys (CSV may have BOM on first header)
-        norm_row = {(k or "").strip().lstrip("\ufeff").upper(): v for k, v in row.items()}
+        row_norm = {_norm_key(k): v for k, v in (row or {}).items()}
 
-        name = _clean(norm_row.get("DRIVER"))
+        name = _clean(_row_get(row_norm, "DRIVER", "Fahrer", "Name", "Driver Name"))
         if not name:
             continue
 
-        start  = _clean(norm_row.get("START_DATE"))
-        end    = _clean(norm_row.get("END_DATE"))
-        target = _to_int(norm_row.get("TARGET"))
-        ist    = _to_int(norm_row.get("IS"))
-        diff   = _to_int(norm_row.get("DIFF"))
-        viol   = _clean(norm_row.get("VIOLATION"))
-        law    = _clean(norm_row.get("LAW"))
-        dp     = _to_int(norm_row.get("DRIVER_PENALTY"))
-        cp     = _to_int(norm_row.get("COMPANY_PENALTY"))
-        idate  = _clean(norm_row.get("INSTRUCTION_DATE"))
-        iby    = _clean(norm_row.get("INSTRUCTION_BY"))
-        remark = _clean(norm_row.get("REMARK_TEXT"))
+        start = _clean(_row_get(row_norm, "START_DATE", "Start Date", "Beginn", "Start", "Von"))
+        end = _clean(_row_get(row_norm, "END_DATE", "End Date", "Ende", "Bis"))
+        target = _to_int(_row_get(row_norm, "TARGET", "Soll", "Grenzwert", "Limit"))
+        ist = _to_int(_row_get(row_norm, "IS", "Ist", "Tatsaechlich", "Tatsächlich"))
+        diff = _to_int(_row_get(row_norm, "DIFF", "Differenz", "Ueberschreitung", "Überschreitung"))
+        viol = _clean(_row_get(row_norm, "VIOLATION", "Verstoß", "Verstoss", "Verstoßart", "Verstossart"))
+        law = _clean(_row_get(row_norm, "LAW", "Gesetz", "Rechtsgrundlage", "Paragraph"))
+        dp = _to_money(_row_get(
+            row_norm,
+            "DRIVER_PENALTY", "Driver Penalty", "Bußgeld Fahrer", "Bussgeld Fahrer",
+            "Fahrer Bußgeld", "Fahrer Bussgeld", "Bußgeld Fahrer EUR", "Bussgeld Fahrer EUR"
+        ))
+        cp = _to_money(_row_get(
+            row_norm,
+            "COMPANY_PENALTY", "Company Penalty", "Bußgeld Firma", "Bussgeld Firma",
+            "Firma Bußgeld", "Firma Bussgeld", "Unternehmen Bußgeld", "Unternehmen Bussgeld",
+            "Pauschalbetrag", "Bußgeld", "Bussgeld", "Company Fine"
+        ))
+        idate = _clean(_row_get(row_norm, "INSTRUCTION_DATE", "Instruction Date", "Unterweisungsdatum", "Belehrungsdatum"))
+        iby = _clean(_row_get(row_norm, "INSTRUCTION_BY", "Instruction By", "Unterwiesen durch", "Belehrt durch"))
+        remark = _clean(_row_get(row_norm, "REMARK_TEXT", "Remark Text", "Bemerkung", "Kommentar", "Notiz"))
 
-        # Sortier-Key (ISO-Format für chronologische Sortierung)
         date_sort = ""
         m = date_re.match(start)
         if m:
-            dd, mm, yyyy = m.group(1), m.group(2), m.group(3)
-            hh = m.group(4) or "00"
-            mi = m.group(5) or "00"
+            dd, mm, yyyy = f"{int(m.group(1)):02d}", f"{int(m.group(2)):02d}", m.group(3)
+            hh = f"{int(m.group(4) or 0):02d}"
+            mi = f"{int(m.group(5) or 0):02d}"
             date_sort = f"{yyyy}-{mm}-{dd} {hh}:{mi}"
 
         instructed = bool(idate)
@@ -6490,8 +6543,8 @@ def parse_verstoss_csv(uploaded_file) -> str:
         d = by_driver[name]
         d["verstoesse"].append(entry)
         d["count"] += 1
-        d["sum_driver_penalty"] += dp
-        d["sum_company_penalty"] += cp
+        d["sum_driver_penalty"] = round(d["sum_driver_penalty"] + dp, 2)
+        d["sum_company_penalty"] = round(d["sum_company_penalty"] + cp, 2)
         d["sum_diff"] += diff
         if instructed:
             d["count_instructed"] += 1
@@ -6502,21 +6555,18 @@ def parse_verstoss_csv(uploaded_file) -> str:
 
     drivers = []
     for d in by_driver.values():
-        # Jeden Fahrers Verstöße absteigend nach Datum
         d["verstoesse"].sort(key=lambda x: x.get("date_sort", ""), reverse=True)
-        # Typen → sortierte Liste [(name, count), ...]
         d["types"] = sorted(d["types"].items(), key=lambda kv: (-kv[1], kv[0]))
         drivers.append(d)
 
-    # Fahrer sortieren: neuester Verstoß zuerst (Default der UI-Sortierung)
     def _last_sort(d):
         return d["verstoesse"][0].get("date_sort", "") if d["verstoesse"] else ""
     drivers.sort(key=lambda x: (_last_sort(x), x["name"]), reverse=True)
 
     total = sum(d["count"] for d in drivers)
+    total_driver_penalty = round(sum(float(d.get("sum_driver_penalty", 0) or 0) for d in drivers), 2)
+    total_company_penalty = round(sum(float(d.get("sum_company_penalty", 0) or 0) for d in drivers), 2)
 
-    # Zeitraum direkt aus der Verstoß-CSV ableiten.
-    # Anzeige im Kopf: "Verstöße erfasst seit MM/JJJJ".
     _all_dates = [
         e.get("date_sort", "")[:10]
         for d in drivers
@@ -6537,10 +6587,11 @@ def parse_verstoss_csv(uploaded_file) -> str:
     return json.dumps({
         "drivers": drivers,
         "total_violations": total,
+        "total_driver_penalty": total_driver_penalty,
+        "total_company_penalty": total_company_penalty,
         "first_violation_month": first_violation_month,
         "last_violation_month": last_violation_month,
     }, ensure_ascii=False)
-
 
 def parse_fahrzeugwaesche_excel(uploaded_files) -> str:
     """Verarbeitet mehrere Fahrzeugwäsche-Excel-Dateien zu JSON für die Übersicht."""
