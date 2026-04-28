@@ -5157,22 +5157,10 @@ function gkRenderStructured(customer, detail) {{
   html += "<div style='flex:1 1 0;min-width:0;display:flex;flex-direction:column;'>";
   if (hasAnyContact && allContactRows.length) {{
     html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:8px;overflow:hidden;box-shadow:0 1px 6px rgba(15,23,42,.06);flex:1;display:flex;flex-direction:column;'>";
-    // KNr aller Entries für den Header sammeln
-    var headerKnrs = customer.entries
-      .map(function(e){{ return e.kundennummer; }})
-      .filter(Boolean);
     html += "<div style='padding:9px 12px;background:#f8fafc;border-bottom:1px solid #e8edf2;"
           + "border-left:4px solid #1b66b3;display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
           + "<span style='font-size:12.5px;font-weight:800;color:#0f172a;flex:1;'>" + gkEsc(customer.name) + "</span>"
           + gkEdekaLagerNmsLink(customer);
-    headerKnrs.forEach(function(k) {{
-      html += "<span style='display:inline-flex;align-items:baseline;gap:7px;background:#1e3a5f;color:#fff;"
-            + "border-radius:6px;padding:5px 13px 6px 12px;box-shadow:0 1px 3px rgba(15,23,42,.18);"
-            + "border:1px solid #15294a;'>"
-            + "<span style='font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:rgba(255,255,255,.70);'>KNr</span>"
-            + "<span style='font-size:17px;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:.5px;line-height:1;'>"
-            + gkEsc(k) + "</span></span>";
-    }});
     html += "</div>";
     html += "<div style='padding:0 14px 8px;'>";
     allContactRows.forEach(function(cr, ri) {{
