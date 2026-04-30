@@ -1597,15 +1597,59 @@ def find_customer_sheet_names(available_names) -> list:
             seen.add(real)
     return found
 
-SPALTEN_MAPPING = {
-    "csb_nummer":   "Nr",
-    "sap_nummer":   "SAP-Nr.",
-    "name":         "Name",
-    "strasse":      "Strasse",
-    "postleitzahl": "Plz",
-    "ort":          "Ort",
-    "fachberater":  "Fachberater",
+# Spaltennamen in der Quelldatei koennen je nach Version unterschiedlich heissen.
+# Aktuelles Format laut Datei: CSB | SAP | Name | Strasse | Plz | Ort | Mo | Die | Mitt | Don | Fr | Sam
+# Altes Format war unter anderem: Nr | SAP-Nr. | ...
+SPALTEN_ALIASE = {
+    "csb_nummer":   ["CSB", "Nr", "CSB-Nr", "CSB-Nr.", "CSB Nummer", "CSB-Nummer", "Kunden Nr", "Kunden-Nr", "Kundennummer"],
+    "sap_nummer":   ["SAP", "SAP-Nr.", "SAP-Nr", "SAP Nr", "SAP Nummer", "SAP-Nummer"],
+    "name":         ["Name", "Marktname", "Kundenname", "Marktname / Kundenname"],
+    "strasse":      ["Strasse", "Straße", "Str.", "Strasse / Nr", "Straße / Nr"],
+    "postleitzahl": ["Plz", "PLZ", "Postleitzahl"],
+    "ort":          ["Ort"],
+    "fachberater":  ["Fachberater", "Berater"],
 }
+
+
+def normalize_header_py(value: str) -> str:
+    x = str(value or "")
+    x = x.replace("\u00A0", " ").replace("\ufeff", "").strip().lower()
+    x = (x.replace("ä", "ae").replace("ö", "oe")
+           .replace("ü", "ue").replace("ß", "ss"))
+    x = unicodedata.normalize("NFD", x)
+    x = "".join(ch for ch in x if unicodedata.category(ch) != "Mn")
+    x = re.sub(r"[^a-z0-9]+", "", x)
+    return x
+
+
+def find_column_index(columns, aliases) -> int | None:
+    by_norm = {normalize_header_py(col): idx for idx, col in enumerate(columns)}
+    for alias in aliases:
+        idx = by_norm.get(normalize_header_py(alias))
+        if idx is not None:
+            return idx
+    return None
+
+
+def first_existing_column(columns, aliases) -> str:
+    by_norm = {normalize_header_py(col): col for col in columns}
+    for alias in aliases:
+        col = by_norm.get(normalize_header_py(alias))
+        if col is not None:
+            return col
+    return ""
+
+
+def row_get_first(row, aliases, default=""):
+    for col in aliases:
+        if col in row.index:
+            return row.get(col, default)
+    by_norm = {normalize_header_py(col): col for col in row.index}
+    for alias in aliases:
+        real = by_norm.get(normalize_header_py(alias))
+        if real is not None:
+            return row.get(real, default)
+    return default
 LIEFERTAGE_MAPPING = {
     "Montag": "Mo", "Dienstag": "Die", "Mittwoch": "Mitt",
     "Donnerstag": "Don", "Freitag": "Fr", "Samstag": "Sam",
@@ -1850,7 +1894,7 @@ def generate_suche_html(excel_file, key_file, logo_file,
             for tag, spaltenname in LIEFERTAGE_MAPPING.items()
             if spaltenname in column_index
         ]
-        field_columns = {field: column_index.get(spalte) for field, spalte in SPALTEN_MAPPING.items()}
+        field_columns = {field: find_column_index(df.columns, aliases) for field, aliases in SPALTEN_ALIASE.items()}
         csb_idx = field_columns.get("csb_nummer")
 
         for row in df.itertuples(index=False, name=None):
@@ -2002,7 +2046,7 @@ def generate_druck_html(up, logo_up, fcsb_file=None, lieferhinweis_csv=None) -> 
         data: dict = {}
 
         for _, r in df.iterrows():
-            knr = norm_val(r.get("Nr", ""))
+            knr = norm_val(row_get_first(r, SPALTEN_ALIASE["csb_nummer"]))
             if not knr: continue
             bestell: list = []
             for d_de in DAYS_DE:
@@ -2074,12 +2118,12 @@ def generate_druck_html(up, logo_up, fcsb_file=None, lieferhinweis_csv=None) -> 
                 "plan_typ":    "",
                 "bereich":     BEREICH,
                 "kunden_nr":   knr,
-                "sap_nummer":  norm_val(r.get("SAP-Nr.", "")),
-                "name":        norm_val(r.get("Name",        "")),
-                "strasse":     norm_val(r.get("Strasse",     "")),
-                "plz":         norm_val(r.get("Plz",         "")),
-                "ort":         norm_val(r.get("Ort",         "")),
-                "fachberater": norm_val(r.get("Fachberater", "")),
+                "sap_nummer":  norm_val(row_get_first(r, SPALTEN_ALIASE["sap_nummer"])),
+                "name":        norm_val(row_get_first(r, SPALTEN_ALIASE["name"])),
+                "strasse":     norm_val(row_get_first(r, SPALTEN_ALIASE["strasse"])),
+                "plz":         norm_val(row_get_first(r, SPALTEN_ALIASE["postleitzahl"])),
+                "ort":         norm_val(row_get_first(r, SPALTEN_ALIASE["ort"])),
+                "fachberater": norm_val(row_get_first(r, SPALTEN_ALIASE["fachberater"])),
                 "tours":       {d: norm_val(r.get(TOUR_COLS[d], "")) for d in DAYS_DE},
                 "bestell":     bestell,
             }
