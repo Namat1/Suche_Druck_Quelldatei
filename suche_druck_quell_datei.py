@@ -1733,19 +1733,65 @@ def format_lf(v) -> str:
 
 
 def build_winter_map(excel_file_obj) -> dict:
+    """Liest die Ladefolge aus der Quelldatei.
+
+    Neues Format laut aktueller Datei:
+      Blatt: T-B-Druck Quelle
+      Spalten: Datum | Tour | LA.F | CSB | NAME | STRASSE | ORT | PLZ | SAP-Nr.
+
+    Fuer aeltere Dateien bleibt "Mo-Sa Winter" als Rueckfall erhalten.
+    Ergebnis: {CSB: {Tour: LF...}}
+    """
     out = {}
+
     try:
-        dfw = pd.read_excel(excel_file_obj, sheet_name="Mo-Sa Winter")
+        excel_file_obj.seek(0)
+    except Exception:
+        pass
+
+    try:
+        book = pd.ExcelFile(excel_file_obj, engine="openpyxl")
+        available = list(book.sheet_names)
+        sheet = find_existing_sheet_name(
+            available,
+            "T-B-Druck Quelle",
+            "T-B Druck Quelle",
+            "T B Druck Quelle",
+            "T_B_Druck_Quelle",
+            "TBDruckQuelle",
+            "Mo-Sa Winter",
+            "Mo Sa Winter",
+        )
+        if not sheet:
+            return out
+        dfw = pd.read_excel(book, sheet_name=sheet, header=0)
     except Exception:
         return out
-    for row in dfw.itertuples(index=False, name=None):
-        kd = normalize_digits_py(row[3] if len(row) > 3 else "")
-        tour = normalize_digits_py(row[1] if len(row) > 1 else "")
-        lf = format_lf(row[2] if len(row) > 2 else "")
+
+    cols = list(dfw.columns)
+    tour_col = first_existing_column(cols, ["Tour", "Tournr", "Tour Nr", "Tour-Nr", "Tournummer"])
+    lf_col   = first_existing_column(cols, ["LA.F", "LAF", "LA F", "Ladefolge", "Lade Folge", "LF"])
+    csb_col  = first_existing_column(cols, ["CSB", "Kunde", "Kundennummer", "Kunden Nr", "Kunden-Nr", "Nr"])
+
+    # Fallback auf feste Positionen aus dem Screenshot:
+    # A Datum, B Tour, C LA.F, D CSB
+    if not tour_col and len(cols) > 1:
+        tour_col = cols[1]
+    if not lf_col and len(cols) > 2:
+        lf_col = cols[2]
+    if not csb_col and len(cols) > 3:
+        csb_col = cols[3]
+
+    if not (tour_col and lf_col and csb_col):
+        return out
+
+    for _, row in dfw.iterrows():
+        kd = normalize_digits_py(row.get(csb_col, ""))
+        tour = normalize_digits_py(row.get(tour_col, ""))
+        lf = format_lf(row.get(lf_col, ""))
         if kd and tour and lf:
             out.setdefault(kd, {})[tour] = lf
     return out
-
 
 def to_data_url_suche(f) -> str:
     mime = f.type or ("image/png" if f.name.lower().endswith(".png") else "image/jpeg")
@@ -1879,7 +1925,7 @@ def generate_suche_html(excel_file, key_file, logo_file,
                 bcf = pd.read_excel(io.BytesIO(bcsb_bytes), sheet_name=0, header=None)
             berater_csb_map = build_berater_csb_map(bcf)
 
-    with st.spinner("Lese Ladefolgen (Mo-Sa Winter) ..."):
+    with st.spinner("Lese Ladefolgen (T-B-Druck Quelle) ..."):
         winter_map = build_winter_map(io.BytesIO(excel_bytes))
 
     tour_dict: dict = {}
@@ -2131,7 +2177,7 @@ def generate_druck_html(up, logo_up, fcsb_file=None, lieferhinweis_csv=None) -> 
         all_data[area_key] = data
         st.success(f"✓ {sheet_name}: {len(data)} Kunden verarbeitet")
 
-    # Ladefolge aus Marktschlüssel-Excel (Mo-Sa Winter) — wiederverwendetes Buffer
+    # Ladefolge aus Blatt T-B-Druck Quelle — wiederverwendetes Buffer
     ladefolge_map: dict = {}
     try:
         ladefolge_map = build_winter_map(io.BytesIO(excel_bytes))
