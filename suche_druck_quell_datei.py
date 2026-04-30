@@ -1554,7 +1554,7 @@ def logo_file_to_data_uri(f) -> str:
 # SUCHE – Hilfsfunktionen
 # =============================================================================
 
-BLATTNAMEN = ["Direkt", "MK", "HuPa_NMS", "HuPa_Malchow"]
+BLATTNAMEN = ["DIREKT", "MK", "HUPA_NMS", "HUPA_MALCHOW"]
 SPALTEN_MAPPING = {
     "csb_nummer":   "Nr",
     "sap_nummer":   "SAP-Nr.",
@@ -1901,10 +1901,10 @@ def generate_suche_html(excel_file, key_file, logo_file,
 # =============================================================================
 
 SHEETS_DRUCK = {
-    "direkt":  "Direkt",
+    "direkt":  "DIREKT",
     "mk":      "MK",
-    "nms":     "HuPa_NMS",
-    "malchow": "HuPa_Malchow",
+    "nms":     "HUPA_NMS",
+    "malchow": "HUPA_MALCHOW",
 }
 
 
