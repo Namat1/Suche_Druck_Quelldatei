@@ -21,6 +21,8 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="centered")
 
+APP_CACHE_VERSION = "blattnamen-robust-2026-04-30-v2"
+
 EXCLUDED_DRIVER_NAMES = (
     "Ch.Holtz", "Paasch", "Meyer", "Ihde", "Spedition M+S Express 4", "Spedition M+S Express 3",
     "Spedition M+S Express 2", "Spedition M+S Express 1", "Spedition Meyer 1", "Spedition Meyer 2",
@@ -1555,6 +1557,46 @@ def logo_file_to_data_uri(f) -> str:
 # =============================================================================
 
 BLATTNAMEN = ["DIREKT", "MK", "HUPA_NMS", "HUPA_MALCHOW"]
+
+# Blattnamen robust finden:
+# Excel kann bei Blattnamen Gross-/Kleinschreibung, Leerzeichen oder alte Namen enthalten.
+# Darum wird nicht mehr nur exakt verglichen, sondern normalisiert gesucht.
+BLATT_ALIASE = {
+    "DIREKT": ["DIREKT", "Direkt", "Direkt 1 - 99"],
+    "MK": ["MK", "Hupa MK 882"],
+    "HUPA_NMS": ["HUPA_NMS", "HuPa_NMS", "Hupa 2221-4444"],
+    "HUPA_MALCHOW": ["HUPA_MALCHOW", "HuPa_Malchow", "Hupa 7773-7779"],
+}
+
+
+def normalize_sheet_name_py(name: str) -> str:
+    s = str(name or "")
+    s = (s.replace("\u00A0", " ").replace("\ufeff", "").strip())
+    s = re.sub(r"\s+", " ", s)
+    return s.casefold().replace(" ", "").replace("_", "").replace("-", "")
+
+
+def find_existing_sheet_name(available_names, *candidates) -> str:
+    by_norm = {}
+    for real_name in available_names or []:
+        by_norm.setdefault(normalize_sheet_name_py(real_name), real_name)
+    for candidate in candidates:
+        real = by_norm.get(normalize_sheet_name_py(candidate))
+        if real:
+            return real
+    return ""
+
+
+def find_customer_sheet_names(available_names) -> list:
+    found = []
+    seen = set()
+    for target in BLATTNAMEN:
+        real = find_existing_sheet_name(available_names, *BLATT_ALIASE.get(target, [target]))
+        if real and real not in seen:
+            found.append(real)
+            seen.add(real)
+    return found
+
 SPALTEN_MAPPING = {
     "csb_nummer":   "Nr",
     "sap_nummer":   "SAP-Nr.",
@@ -1843,7 +1885,7 @@ def generate_suche_html(excel_file, key_file, logo_file,
             excel_book = None
             alle_blaetter = []
 
-        vorhandene = [blatt for blatt in BLATTNAMEN if blatt in alle_blaetter]
+        vorhandene = find_customer_sheet_names(alle_blaetter)
         zu_lesen = vorhandene or alle_blaetter or BLATTNAMEN
 
         if excel_book is not None:
@@ -1924,23 +1966,30 @@ def generate_druck_html(up, logo_up, fcsb_file=None, lieferhinweis_csv=None) -> 
     excel_buf = io.BytesIO(excel_bytes)
     try:
         excel_book = pd.ExcelFile(excel_buf, engine="openpyxl")
-        available_sheets = set(excel_book.sheet_names)
+        available_sheets = list(excel_book.sheet_names)
     except Exception:
         excel_book = None
-        available_sheets = set()
+        available_sheets = []
 
     for area_key, sheet_name in SHEETS_DRUCK.items():
         with st.spinner(f"Verarbeite: {sheet_name} ..."):
             df = None
             if excel_book is not None:
-                for sn in [sheet_name, _SHEETS_ALT.get(area_key, "")]:
-                    if not sn or sn not in available_sheets:
-                        continue
+                candidates = [sheet_name, _SHEETS_ALT.get(area_key, "")]
+                if area_key == "direkt":
+                    candidates += BLATT_ALIASE["DIREKT"]
+                elif area_key == "mk":
+                    candidates += BLATT_ALIASE["MK"]
+                elif area_key == "nms":
+                    candidates += BLATT_ALIASE["HUPA_NMS"]
+                elif area_key == "malchow":
+                    candidates += BLATT_ALIASE["HUPA_MALCHOW"]
+                real_sheet = find_existing_sheet_name(available_sheets, *candidates)
+                if real_sheet:
                     try:
-                        df = pd.read_excel(excel_book, sheet_name=sn)
-                        break
+                        df = pd.read_excel(excel_book, sheet_name=real_sheet)
                     except Exception:
-                        continue
+                        df = None
             if df is None:
                 continue
 
@@ -7068,6 +7117,7 @@ for i, inst in enumerate(st.session_state.instances):
 
         if excel and _logo and _key:
             current_source_sig = combine_signatures(
+                APP_CACHE_VERSION,
                 upload_signature(excel), upload_signature(_logo),
                 upload_signature(_key), upload_signature(_fach),
                 upload_signature(_fcsb), upload_signature(_lh_csv),
