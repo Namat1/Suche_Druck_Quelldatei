@@ -5953,16 +5953,22 @@ function samToggle(el) {{
   }}
 
   function faTabBar(driverName, hasShifts, hasUebersicht) {{
-    var tabs = [];
-    if (hasUebersicht) tabs.push(["uebersicht","Übersicht"]);
-    if (hasShifts)     tabs.push(["schichten","Schichten"]);
-    if (tabs.length < 2) return "";
-    var html = "<div style='display:flex;gap:2px;margin-bottom:14px;border-bottom:1px solid #e2e8f0;'>";
+    // Immer beide Reiter anzeigen, damit der Umschalter an derselben Stelle bleibt.
+    // Fehlende Daten werden nur deaktiviert dargestellt.
+    var tabs = [
+      ["uebersicht", "Übersicht", !!hasUebersicht, "Keine Übersichtsdaten für diesen Fahrer"],
+      ["schichten",  "Schichten",  !!hasShifts,     "Keine Schichten / Tachograph-Daten für diesen Fahrer"]
+    ];
+    var html = "<div class='fa-tabs' style='display:flex;gap:2px;margin-bottom:14px;border-bottom:1px solid #e2e8f0;'>";
     tabs.forEach(function(t) {{
-      var active = faActiveTab === t[0];
-      html += "<button onclick=\\\"faSwitchTab('" + t[0] + "')\\\""
-            + " style='padding:9px 18px;border:none;background:none;cursor:pointer;font-family:inherit;"
+      var active = faActiveTab === t[0] && t[2];
+      var enabled = t[2];
+      html += "<button type='button' "
+            + (enabled ? "onclick=\\\"faSwitchTab('" + t[0] + "')\\\"" : "disabled title='" + faEsc(t[3]) + "'")
+            + " style='padding:9px 18px;border:none;background:none;font-family:inherit;"
+            + "cursor:" + (enabled ? "pointer" : "not-allowed") + ";"
             + "font-size:13px;font-weight:" + (active ? "800" : "600") + ";"
+            + "opacity:" + (enabled ? "1" : ".42") + ";"
             + "color:" + (active ? "#1b66b3" : "#64748b") + ";"
             + "border-bottom:2px solid " + (active ? "#1b66b3" : "transparent") + ";"
             + "margin-bottom:-1px;'>" + t[1] + "</button>";
