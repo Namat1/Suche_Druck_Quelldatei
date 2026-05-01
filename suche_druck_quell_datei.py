@@ -5946,6 +5946,8 @@ function samToggle(el) {{
   var _faShowDetailOrig = window.faShowDetail;
   if (typeof _faShowDetailOrig !== "function") return;
 
+  var faShiftMonthFilterByDriver = {{}};
+
   function faHasShifts(name) {{
     return TIMEREC_DATA && TIMEREC_DATA[name] && TIMEREC_DATA[name].length > 0;
   }}
@@ -5969,37 +5971,169 @@ function samToggle(el) {{
     return html;
   }}
 
-  function _toMin(t) {{
-    if (!t) return 0;
-    var p = String(t).split(":");
-    if (p.length < 2) return 0;
-    var h = parseInt(p[0], 10) || 0;
-    var m = parseInt(p[1], 10) || 0;
-    return h * 60 + m;
+  function faEsc(v) {{
+    return String(v == null ? "" : v)
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
   }}
+
+  function _toMin(t) {{
+    if (t == null) return 0;
+    var s = String(t).trim();
+    if (!s || s === "-" || s === "—") return 0;
+
+    var m = s.match(/(-?\d{{1,4}})\s*:\s*(\d{{1,2}})/);
+    if (m) {{
+      var h = parseInt(m[1], 10) || 0;
+      var mi = parseInt(m[2], 10) || 0;
+      return h * 60 + mi;
+    }}
+
+    var h2 = 0, m2 = 0;
+    var hm = s.match(/(\d+(?:[\.,]\d+)?)\s*(?:std|stunde|stunden|h)\b/i);
+    var mm = s.match(/(\d+)\s*(?:min|minute|minuten|m)\b/i);
+    if (hm || mm) {{
+      if (hm) h2 = parseFloat(hm[1].replace(",", ".")) || 0;
+      if (mm) m2 = parseInt(mm[1], 10) || 0;
+      return Math.round(h2 * 60 + m2);
+    }}
+
+    var dec = parseFloat(s.replace(",", "."));
+    if (!isNaN(dec)) return Math.round(dec * 60);
+    return 0;
+  }}
+
   function _fmtMin(m) {{
-    if (!m) return "0:00";
+    m = Math.round(Number(m) || 0);
+    var neg = m < 0;
+    if (neg) m = Math.abs(m);
     var h = Math.floor(m / 60);
     var mm = m % 60;
-    return h + ":" + (mm < 10 ? "0" + mm : mm);
+    return (neg ? "-" : "") + h + ":" + (mm < 10 ? "0" + mm : mm);
+  }}
+
+  function _monthInfo(s) {{
+    var MONATE = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+    var m = (s.tag || "").match(/^(\d{{2}})\.(\d{{2}})\.(\d{{4}})$/);
+    if (!m) return {{ key: "0000-00", label: "Unbekannt" }};
+    return {{ key: m[3] + "-" + m[2], label: (MONATE[parseInt(m[2],10)-1] || m[2]) + " " + m[3] }};
+  }}
+
+  function _summarizeShifts(shifts) {{
+    var out = {{ count: shifts.length, dauer: 0, netto: 0, over10: 0, samstage: 0, sonntage: 0, lkwSet: {{}} }};
+    shifts.forEach(function(s) {{
+      var netto = _toMin(s.profil);
+      out.dauer += _toMin(s.schichtdauer);
+      out.netto += netto;
+      if (netto > 600) out.over10 += 1;
+      if (s.wochentag === "Sa") out.samstage += 1;
+      if (s.wochentag === "So") out.sonntage += 1;
+      (s.lkw || "").split(",").forEach(function(l) {{
+        l = l.trim();
+        if (l) out.lkwSet[l] = (out.lkwSet[l] || 0) + 1;
+      }});
+    }});
+    return out;
+  }}
+
+  function _printShiftStyles() {{
+    return "<style>"
+      + "@page{{size:A4 landscape;margin:9mm;}}"
+      + "*{{box-sizing:border-box;}}body{{font-family:Arial,Helvetica,sans-serif;margin:0;color:#111827;font-size:11px;}}"
+      + "h1{{font-size:20px;margin:0 0 2px 0;}}.sub{{font-size:11px;color:#475569;margin-bottom:10px;}}"
+      + ".cards{{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0;}}"
+      + ".card{{border:1px solid #cbd5e1;border-radius:4px;padding:7px 8px;break-inside:avoid;}}"
+      + ".label{{font-size:9px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:.4px;}}"
+      + ".value{{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.15;margin-top:2px;}}"
+      + "table{{width:100%;border-collapse:collapse;font-size:10.5px;}}th,td{{border:1px solid #cbd5e1;padding:4px 5px;text-align:left;vertical-align:top;}}"
+      + "th{{background:#f1f5f9;font-size:9px;text-transform:uppercase;letter-spacing:.3px;}}.num{{text-align:right;font-variant-numeric:tabular-nums;}}.over{{font-weight:800;color:#991b1b;}}"
+      + "</style>";
+  }}
+
+  function _renderShiftRows(rows) {{
+    var html = "";
+    rows.forEach(function(s, i) {{
+      var netto = _toMin(s.profil);
+      var over = netto > 600;
+      var weekend = s.wochentag === "Sa" || s.wochentag === "So";
+      var rowBg = over ? "#fff1f2" : (weekend ? "#fff7ed" : (i % 2 === 0 ? "#fff" : "#fafbfc"));
+      var tagColor = weekend ? (s.wochentag === "So" ? "#dc2626" : "#b45309") : "#0f172a";
+      var endeStr = faEsc(s.ende || "");
+      if (endeStr && s.ende_naechster_tag) endeStr += " <span style='color:#94a3b8;font-size:9.5px;font-weight:600;'>+1</span>";
+      var tagDisplay = (s.wochentag ? "<span style='display:inline-block;width:22px;color:#94a3b8;font-weight:700;font-size:10.5px;'>" + faEsc(s.wochentag) + "</span> " : "") + faEsc(s.tag);
+
+      html += "<tr style='background:" + rowBg + ";border-bottom:1px solid #f1f5f9;'>";
+      html += "<td style='padding:6px 11px;color:" + tagColor + ";font-weight:" + (weekend ? "700" : "600") + ";font-variant-numeric:tabular-nums;'>" + tagDisplay + "</td>";
+      html += "<td style='padding:6px 11px;color:#475569;font-variant-numeric:tabular-nums;'>" + faEsc(s.beginn || "") + "</td>";
+      html += "<td style='padding:6px 11px;color:#475569;font-variant-numeric:tabular-nums;'>" + endeStr + "</td>";
+      html += "<td style='padding:6px 11px;text-align:right;font-weight:800;color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + faEsc(s.schichtdauer || "") + "</td>";
+      html += "<td style='padding:6px 11px;text-align:right;font-weight:" + (over ? "900" : "700") + ";color:" + (over ? "#be123c" : "#0f172a") + ";font-variant-numeric:tabular-nums;'>" + faEsc(s.profil || "") + "</td>";
+      html += "<td style='padding:6px 11px;color:#166534;font-weight:600;font-size:11px;'>" + faEsc(s.lkw || "") + "</td>";
+      html += "</tr>";
+    }});
+    return html;
+  }}
+
+  function _renderShiftTable(rows) {{
+    var html = "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
+    html += "<thead><tr style='background:#fafbfc;color:#64748b;'>"
+          + "<th style='padding:7px 11px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Tag</th>"
+          + "<th style='padding:7px 11px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Beginn</th>"
+          + "<th style='padding:7px 11px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Ende</th>"
+          + "<th style='padding:7px 11px;text-align:right;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Schichtdauer</th>"
+          + "<th style='padding:7px 11px;text-align:right;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Netto-Arbeitszeit</th>"
+          + "<th style='padding:7px 11px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>LKW</th>"
+          + "</tr></thead><tbody>";
+    html += _renderShiftRows(rows);
+    html += "</tbody></table>";
+    return html;
   }}
 
   function faRenderShifts(name, panel) {{
     var all = (TIMEREC_DATA[name] || []).slice();
     var yr = faYearFilter;
-    var shifts = (yr === "all") ? all : all.filter(function(s) {{
+    var yearShifts = (yr === "all") ? all : all.filter(function(s) {{
       var m = (s.tag || "").match(/(\d{{4}})$/);
       return m && m[1] === yr;
     }});
 
+    var byMonth = {{}};
+    yearShifts.forEach(function(s) {{
+      var mi = _monthInfo(s);
+      if (!byMonth[mi.key]) byMonth[mi.key] = {{ label: mi.label, shifts: [] }};
+      byMonth[mi.key].shifts.push(s);
+    }});
+    var monthKeys = Object.keys(byMonth).sort();
+
+    if (monthKeys.length && (!faShiftMonthFilterByDriver[name] || (faShiftMonthFilterByDriver[name] !== "all" && !byMonth[faShiftMonthFilterByDriver[name]]))) {{
+      // Standard: aktueller/letzter vorhandener Monat, damit der Monatsdruck sofort passt
+      faShiftMonthFilterByDriver[name] = monthKeys[monthKeys.length - 1];
+    }}
+    var monthFilter = faShiftMonthFilterByDriver[name] || "all";
+    var shifts = monthFilter === "all" ? yearShifts : ((byMonth[monthFilter] && byMonth[monthFilter].shifts) ? byMonth[monthFilter].shifts : []);
+    var selectedLabel = monthFilter === "all" ? "Alle Monate" : (byMonth[monthFilter] ? byMonth[monthFilter].label : "Monat");
+    var stats = _summarizeShifts(shifts);
+
     var html = faTabBar(name, true, !!FA_DATA.find(function(d){{return d.name===name;}}));
 
-    // Driver-Header
     html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;padding:14px 18px;margin-bottom:12px;'>"
-          + "<div style='font-size:20px;font-weight:900;color:#0b1220;'>" + name + "</div>"
-          + "</div>";
+          + "<div style='display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;'>"
+          + "<div>"
+          + "<div style='font-size:20px;font-weight:900;color:#0b1220;'>" + faEsc(name) + "</div>"
+          + "<div style='font-size:11.5px;color:#64748b;font-weight:700;margin-top:3px;'>Schichten / Tachograph · Netto-Arbeitszeit aus Arbeitszeitprofil</div>"
+          + "</div>"
+          + "<div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>"
+          + "<label style='font-size:10.5px;color:#64748b;font-weight:800;text-transform:uppercase;letter-spacing:.5px;'>Monat</label>"
+          + "<select onchange=\\\"faSetShiftMonth(this.value)\\\" style='padding:7px 10px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;font-size:12px;font-weight:700;color:#0f172a;'>";
+    html += "<option value='all'" + (monthFilter === "all" ? " selected" : "") + ">Alle Monate</option>";
+    monthKeys.slice().reverse().forEach(function(mk) {{
+      html += "<option value='" + faEsc(mk) + "'" + (monthFilter === mk ? " selected" : "") + ">" + faEsc(byMonth[mk].label) + "</option>";
+    }});
+    html += "</select>"
+          + "<button onclick=\\\"faPrintShiftMonth()\\\" style='padding:8px 12px;border:1px solid #2563eb;background:#eff6ff;color:#1d4ed8;border-radius:5px;font-size:12px;font-weight:900;cursor:pointer;'>Monats-PDF drucken</button>"
+          + "</div></div></div>";
 
-    if (!shifts.length) {{
+    if (!yearShifts.length) {{
       html += "<div style='color:#94a3b8;padding:40px;text-align:center;font-size:14px;background:#fff;border:1px solid #e2e8f0;border-radius:5px;'>"
             + "Keine Schichten in diesem Zeitraum.</div>";
       panel.innerHTML = html;
@@ -6007,111 +6141,123 @@ function samToggle(el) {{
       return;
     }}
 
-    // Aggregate
-    var totalDauer = 0, totalProfil = 0, totalSat = 0, totalSun = 0;
-    var lkwSet = {{}};
-    shifts.forEach(function(s) {{
-      totalDauer  += _toMin(s.schichtdauer);
-      totalProfil += _toMin(s.profil);
-      if (s.wochentag === "Sa") totalSat++;
-      if (s.wochentag === "So") totalSun++;
-      (s.lkw || "").split(",").forEach(function(l) {{
-        l = l.trim();
-        if (l) lkwSet[l] = (lkwSet[l] || 0) + 1;
-      }});
-    }});
-
-    // Summary card
-    html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:14px 18px;margin-bottom:14px;display:flex;gap:24px;flex-wrap:wrap;'>";
+    html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:14px 18px;margin-bottom:14px;display:flex;gap:22px;flex-wrap:wrap;'>";
+    html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Auswahl</div>"
+          + "<div style='font-size:17px;font-weight:900;color:#0f172a;line-height:1.25;'>" + faEsc(selectedLabel) + "</div></div>";
     html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Schichten</div>"
-          + "<div style='font-size:20px;font-weight:800;color:#0f172a;font-variant-numeric:tabular-nums;line-height:1.2;'>" + shifts.length + "</div></div>";
+          + "<div style='font-size:20px;font-weight:800;color:#0f172a;font-variant-numeric:tabular-nums;line-height:1.2;'>" + stats.count + "</div></div>";
+    html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Σ Netto-Arbeitszeit</div>"
+          + "<div style='font-size:20px;font-weight:900;color:#1e3a5f;font-variant-numeric:tabular-nums;line-height:1.2;'>" + _fmtMin(stats.netto) + "</div></div>";
+    html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Schichten &gt; 10:00 Netto</div>"
+          + "<div style='font-size:20px;font-weight:900;color:" + (stats.over10 ? "#be123c" : "#166534") + ";font-variant-numeric:tabular-nums;line-height:1.2;'>" + stats.over10 + "</div></div>";
     html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Σ Schichtdauer</div>"
-          + "<div style='font-size:20px;font-weight:800;color:#1e3a5f;font-variant-numeric:tabular-nums;line-height:1.2;'>" + _fmtMin(totalDauer) + "</div></div>";
-    html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Σ Arbeitszeitprofil</div>"
-          + "<div style='font-size:20px;font-weight:800;color:#1e3a5f;font-variant-numeric:tabular-nums;line-height:1.2;'>" + _fmtMin(totalProfil) + "</div></div>";
-    if (totalSat) html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Samstage</div>"
-          + "<div style='font-size:20px;font-weight:800;color:#b45309;font-variant-numeric:tabular-nums;line-height:1.2;'>" + totalSat + "</div></div>";
-    if (totalSun) html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Sonntage</div>"
-          + "<div style='font-size:20px;font-weight:800;color:#dc2626;font-variant-numeric:tabular-nums;line-height:1.2;'>" + totalSun + "</div></div>";
+          + "<div style='font-size:20px;font-weight:800;color:#475569;font-variant-numeric:tabular-nums;line-height:1.2;'>" + _fmtMin(stats.dauer) + "</div></div>";
+    if (stats.samstage) html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Samstage</div>"
+          + "<div style='font-size:20px;font-weight:800;color:#b45309;font-variant-numeric:tabular-nums;line-height:1.2;'>" + stats.samstage + "</div></div>";
+    if (stats.sonntage) html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Sonntage</div>"
+          + "<div style='font-size:20px;font-weight:800;color:#dc2626;font-variant-numeric:tabular-nums;line-height:1.2;'>" + stats.sonntage + "</div></div>";
     html += "</div>";
 
-    // LKW-Liste
-    var lkwEntries = Object.keys(lkwSet).map(function(k){{return [k, lkwSet[k]];}}).sort(function(a,b){{return b[1]-a[1];}});
+    var lkwEntries = Object.keys(stats.lkwSet).map(function(k){{return [k, stats.lkwSet[k]];}}).sort(function(a,b){{return b[1]-a[1];}});
     if (lkwEntries.length) {{
       html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin-bottom:14px;'>";
-      html += "<div style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#64748b;margin-bottom:7px;'>LKW</div>";
+      html += "<div style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#64748b;margin-bottom:7px;'>LKW in Auswahl</div>";
       html += "<div style='display:flex;flex-wrap:wrap;gap:5px;'>";
       lkwEntries.forEach(function(e) {{
         html += "<span style='display:inline-flex;align-items:baseline;gap:5px;background:#f1f5f9;border-radius:4px;padding:3px 9px;font-size:11.5px;font-weight:700;color:#1e3a5f;font-variant-numeric:tabular-nums;'>"
-              + e[0] + "<span style='font-size:10px;color:#94a3b8;font-weight:600;'>" + e[1] + "x</span></span>";
+              + faEsc(e[0]) + "<span style='font-size:10px;color:#94a3b8;font-weight:600;'>" + e[1] + "x</span></span>";
       }});
       html += "</div></div>";
     }}
 
-    // Gruppieren nach Monat
-    var MONATE = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
-    var byMonth = {{}};
-    shifts.forEach(function(s) {{
-      var m = (s.tag || "").match(/^(\d{{2}})\.(\d{{2}})\.(\d{{4}})$/);
-      var key   = m ? (m[3] + "-" + m[2]) : "0000-00";
-      var label = m ? (MONATE[parseInt(m[2],10)-1] + " " + m[3]) : "Unbekannt";
-      if (!byMonth[key]) byMonth[key] = {{ label: label, shifts: [] }};
-      byMonth[key].shifts.push(s);
-    }});
-    var monthKeys = Object.keys(byMonth).sort();
-
-    monthKeys.forEach(function(mk) {{
-      var grp = byMonth[mk];
-      var grpDauer = 0, grpProfil = 0;
-      grp.shifts.forEach(function(s) {{
-        grpDauer  += _toMin(s.schichtdauer);
-        grpProfil += _toMin(s.profil);
-      }});
-
+    if (monthFilter !== "all") {{
       html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;margin-bottom:12px;'>";
       html += "<div style='padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:14px;flex-wrap:wrap;'>";
-      html += "<span style='font-size:12px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.6px;'>" + grp.label + "</span>";
-      html += "<span style='font-size:11px;color:#94a3b8;font-weight:600;'>" + grp.shifts.length + " Schichten</span>";
-      html += "<span style='margin-left:auto;font-size:11px;color:#64748b;font-weight:600;'>"
-            + "Σ Dauer <b style='color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + _fmtMin(grpDauer) + "</b>"
-            + " &nbsp;·&nbsp; Σ Profil <b style='color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + _fmtMin(grpProfil) + "</b>"
-            + "</span>";
-      html += "</div>";
-
-      html += "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
-      html += "<thead><tr style='background:#fafbfc;color:#64748b;'>"
-            + "<th style='padding:7px 11px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Tag</th>"
-            + "<th style='padding:7px 11px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Beginn</th>"
-            + "<th style='padding:7px 11px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Ende</th>"
-            + "<th style='padding:7px 11px;text-align:right;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Schichtdauer</th>"
-            + "<th style='padding:7px 11px;text-align:right;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Arbeitszeitprofil</th>"
-            + "<th style='padding:7px 11px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>LKW</th>"
-            + "</tr></thead><tbody>";
-
-      grp.shifts.forEach(function(s, i) {{
-        var weekend = s.wochentag === "Sa" || s.wochentag === "So";
-        var rowBg = weekend ? "#fff7ed" : (i % 2 === 0 ? "#fff" : "#fafbfc");
-        var tagColor = weekend ? (s.wochentag === "So" ? "#dc2626" : "#b45309") : "#0f172a";
-        var endeStr = s.ende || "";
-        if (endeStr && s.ende_naechster_tag) endeStr += " <span style='color:#94a3b8;font-size:9.5px;font-weight:600;'>+1</span>";
-        var tagDisplay = (s.wochentag ? "<span style='display:inline-block;width:22px;color:#94a3b8;font-weight:700;font-size:10.5px;'>" + s.wochentag + "</span> " : "") + s.tag;
-
-        html += "<tr style='background:" + rowBg + ";border-bottom:1px solid #f1f5f9;'>";
-        html += "<td style='padding:6px 11px;color:" + tagColor + ";font-weight:" + (weekend ? "700" : "600") + ";font-variant-numeric:tabular-nums;'>" + tagDisplay + "</td>";
-        html += "<td style='padding:6px 11px;color:#475569;font-variant-numeric:tabular-nums;'>" + (s.beginn || "") + "</td>";
-        html += "<td style='padding:6px 11px;color:#475569;font-variant-numeric:tabular-nums;'>" + endeStr + "</td>";
-        html += "<td style='padding:6px 11px;text-align:right;font-weight:800;color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + (s.schichtdauer || "") + "</td>";
-        html += "<td style='padding:6px 11px;text-align:right;font-weight:600;color:#475569;font-variant-numeric:tabular-nums;'>" + (s.profil || "") + "</td>";
-        html += "<td style='padding:6px 11px;color:#166534;font-weight:600;font-size:11px;'>" + (s.lkw || "") + "</td>";
-        html += "</tr>";
+      html += "<span style='font-size:12px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.6px;'>" + faEsc(selectedLabel) + "</span>";
+      html += "<span style='font-size:11px;color:#94a3b8;font-weight:600;'>" + stats.count + " Schichten</span>";
+      html += "<span style='margin-left:auto;font-size:11px;color:#64748b;font-weight:600;'>Σ Netto <b style='color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + _fmtMin(stats.netto) + "</b> &nbsp;·&nbsp; &gt; 10:00 Netto <b style='color:#be123c;font-variant-numeric:tabular-nums;'>" + stats.over10 + "</b></span>";
+      html += "</div>" + _renderShiftTable(shifts) + "</div>";
+    }} else {{
+      monthKeys.forEach(function(mk) {{
+        var grp = byMonth[mk];
+        var gs = _summarizeShifts(grp.shifts);
+        html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;margin-bottom:12px;'>";
+        html += "<div style='padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:14px;flex-wrap:wrap;'>";
+        html += "<span style='font-size:12px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.6px;'>" + faEsc(grp.label) + "</span>";
+        html += "<span style='font-size:11px;color:#94a3b8;font-weight:600;'>" + gs.count + " Schichten</span>";
+        html += "<span style='margin-left:auto;font-size:11px;color:#64748b;font-weight:600;'>Σ Netto <b style='color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + _fmtMin(gs.netto) + "</b> &nbsp;·&nbsp; &gt; 10:00 Netto <b style='color:#be123c;font-variant-numeric:tabular-nums;'>" + gs.over10 + "</b></span>";
+        html += "</div>" + _renderShiftTable(grp.shifts) + "</div>";
       }});
-
-      html += "</tbody></table></div>";
-    }});
+    }}
 
     panel.innerHTML = html;
     panel.scrollTop = 0;
   }}
+
+  window.faSetShiftMonth = function(value) {{
+    if (!faSelectedName) return;
+    faShiftMonthFilterByDriver[faSelectedName] = value || "all";
+    window.faShowDetail(faSelectedName);
+  }};
+
+  window.faPrintShiftMonth = function() {{
+    var name = faSelectedName;
+    if (!name) return;
+
+    var all = (TIMEREC_DATA[name] || []).slice();
+    var yr = faYearFilter;
+    var yearShifts = (yr === "all") ? all : all.filter(function(s) {{
+      var m = (s.tag || "").match(/(\d{{4}})$/);
+      return m && m[1] === yr;
+    }});
+    var byMonth = {{}};
+    yearShifts.forEach(function(s) {{
+      var mi = _monthInfo(s);
+      if (!byMonth[mi.key]) byMonth[mi.key] = {{ label: mi.label, shifts: [] }};
+      byMonth[mi.key].shifts.push(s);
+    }});
+    var monthKeys = Object.keys(byMonth).sort();
+    var monthFilter = faShiftMonthFilterByDriver[name] || (monthKeys.length ? monthKeys[monthKeys.length - 1] : "all");
+    var shifts = monthFilter === "all" ? yearShifts : ((byMonth[monthFilter] && byMonth[monthFilter].shifts) ? byMonth[monthFilter].shifts : []);
+    var label = monthFilter === "all" ? "Alle Monate" : (byMonth[monthFilter] ? byMonth[monthFilter].label : "Monat");
+    var stats = _summarizeShifts(shifts);
+    var printedAt = new Date().toLocaleString("de-DE");
+
+    var rows = "";
+    shifts.forEach(function(s) {{
+      var netto = _toMin(s.profil);
+      rows += "<tr>"
+           + "<td>" + faEsc((s.wochentag || "") + " " + (s.tag || "")) + "</td>"
+           + "<td>" + faEsc(s.beginn || "") + "</td>"
+           + "<td>" + faEsc(s.ende || "") + (s.ende_naechster_tag ? " +1" : "") + "</td>"
+           + "<td class='num'>" + faEsc(s.schichtdauer || "") + "</td>"
+           + "<td class='num " + (netto > 600 ? "over" : "") + "'>" + faEsc(s.profil || "") + "</td>"
+           + "<td>" + faEsc(s.lkw || "") + "</td>"
+           + "</tr>";
+    }});
+
+    var doc = "<!doctype html><html><head><meta charset='utf-8'><title>Schichten " + faEsc(name) + " " + faEsc(label) + "</title>" + _printShiftStyles() + "</head><body>";
+    doc += "<h1>Schichten / Tachograph</h1>";
+    doc += "<div class='sub'><b>Fahrer:</b> " + faEsc(name) + " &nbsp; · &nbsp; <b>Monat:</b> " + faEsc(label) + " &nbsp; · &nbsp; <b>Ausdruck:</b> " + faEsc(printedAt) + "</div>";
+    doc += "<div class='cards'>"
+        + "<div class='card'><div class='label'>Schichten</div><div class='value'>" + stats.count + "</div></div>"
+        + "<div class='card'><div class='label'>Σ Netto-Arbeitszeit</div><div class='value'>" + _fmtMin(stats.netto) + "</div></div>"
+        + "<div class='card'><div class='label'>Schichten &gt; 10:00 Netto</div><div class='value'>" + stats.over10 + "</div></div>"
+        + "<div class='card'><div class='label'>Σ Schichtdauer</div><div class='value'>" + _fmtMin(stats.dauer) + "</div></div>"
+        + "</div>";
+    doc += "<table><thead><tr><th>Tag</th><th>Beginn</th><th>Ende</th><th class='num'>Schichtdauer</th><th class='num'>Netto-Arbeitszeit</th><th>LKW</th></tr></thead><tbody>" + rows + "</tbody></table>";
+    doc += "<script>window.onload=function(){{setTimeout(function(){{window.print();}},150);}}<\\/script>";
+    doc += "</body></html>";
+
+    var w = window.open("", "_blank");
+    if (!w) {{
+      alert("Der PDF-Druck konnte nicht geöffnet werden. Bitte Pop-up-Blocker prüfen.");
+      return;
+    }}
+    w.document.open();
+    w.document.write(doc);
+    w.document.close();
+  }};
 
   window.faSwitchTab = function(tab) {{
     faActiveTab = tab;
