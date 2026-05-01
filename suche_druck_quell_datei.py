@@ -5571,7 +5571,7 @@ function telPDF() {{
     "body{{font-family:'Segoe UI',Arial,sans-serif;font-size:8pt;margin:10mm;color:#000}}",
     "h1{{font-size:13pt;color:#1b66b3;margin:0 0 4mm 0;border-bottom:2px solid #1b66b3;padding-bottom:2mm}}",
     ".gruppe{{font-size:8pt;font-weight:900;text-transform:uppercase;color:#1b66b3;margin:4mm 0 1.5mm 0;letter-spacing:.3px;border-bottom:1px solid #1b66b3;padding-bottom:0.5mm}}",
-    ".grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:1mm 3mm}}",
+    ".grid{{display:grid;grid-template-columns:repeat(5,1fr);gap:1mm 3mm}}",
     ".item{{padding:0.8mm 0;border-bottom:1px solid #eee;line-height:1.3}}",
     ".iname{{font-weight:800;font-size:7.5pt}}",
     ".itel{{color:#1b66b3;font-size:7.5pt}}",
@@ -6022,6 +6022,74 @@ function samToggle(el) {{
     return {{ key: m[3] + "-" + m[2], label: (MONATE[parseInt(m[2],10)-1] || m[2]) + " " + m[3] }};
   }}
 
+
+  function _monthLabelFromKey(key) {{
+    var MONATE = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+    var m = String(key || "").match(/^(\d{{4}})-(\d{{2}})$/);
+    if (!m) return "Unbekannt";
+    return (MONATE[parseInt(m[2],10)-1] || m[2]) + " " + m[1];
+  }}
+
+  function _faPlanDriver(name) {{
+    if (!Array.isArray(FA_DATA)) return null;
+    return FA_DATA.find(function(d) {{ return d && d.name === name; }}) || null;
+  }}
+
+  function _faPlanDateKey(entry) {{
+    var raw = String((entry && entry.datum) || "");
+    var m = raw.match(/(\d{{2}})\.(\d{{2}})\.(\d{{4}})/);
+    if (!m) return "";
+    return m[3] + "-" + m[2] + "-" + m[1];
+  }}
+
+  function _faPlanMonthKey(entry) {{
+    var dk = _faPlanDateKey(entry);
+    return dk ? dk.slice(0, 7) : "";
+  }}
+
+  function _faSickEntries(name, yr, monthFilter) {{
+    var driver = _faPlanDriver(name);
+    if (!driver || !driver.years) return [];
+    var years = yr === "all" ? Object.keys(driver.years || {{}}) : [yr];
+    var seen = {{}};
+    var out = [];
+    years.forEach(function(y) {{
+      var data = driver.years[y];
+      if (!data) return;
+      (data.eintraege || []).forEach(function(e) {{
+        var tour = String(e.tour || "").toLowerCase();
+        if (tour.indexOf("krank") < 0) return;
+        var dk = _faPlanDateKey(e);
+        var mk = _faPlanMonthKey(e);
+        if (!dk || !mk) return;
+        if (monthFilter && monthFilter !== "all" && mk !== monthFilter) return;
+        if (seen[dk]) return;
+        seen[dk] = true;
+        out.push({{ dateKey: dk, monthKey: mk, datum: e.datum || dk, tour: e.tour || "Krank" }});
+      }});
+    }});
+    out.sort(function(a,b) {{ return a.dateKey.localeCompare(b.dateKey); }});
+    return out;
+  }}
+
+  function _faAddSickMonths(name, yr, byMonth) {{
+    _faSickEntries(name, yr, "all").forEach(function(e) {{
+      if (!byMonth[e.monthKey]) byMonth[e.monthKey] = {{ label: _monthLabelFromKey(e.monthKey), shifts: [] }};
+    }});
+  }}
+
+  function _renderSickBox(sickRows) {{
+    if (!sickRows || !sickRows.length) return "";
+    var html = "<div style='background:#fff;border:1px solid #fecaca;border-radius:6px;padding:10px 14px;margin-bottom:14px;'>";
+    html += "<div style='font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#b91c1c;margin-bottom:7px;'>Kranktage</div>";
+    html += "<div style='display:flex;flex-wrap:wrap;gap:5px;'>";
+    sickRows.forEach(function(e) {{
+      html += "<span style='display:inline-flex;align-items:center;background:#fee2e2;border:1px solid #fecaca;border-radius:4px;padding:3px 9px;font-size:11px;font-weight:800;color:#991b1b;font-variant-numeric:tabular-nums;'>" + faEsc(e.datum || e.dateKey) + "</span>";
+    }});
+    html += "</div></div>";
+    return html;
+  }}
+
   function _summarizeShifts(shifts) {{
     var out = {{ count: shifts.length, dauer: 0, netto: 0, over10: 0, samstage: 0, sonntage: 0, lkwSet: {{}} }};
     shifts.forEach(function(s) {{
@@ -6044,7 +6112,7 @@ function samToggle(el) {{
       + "@page{{size:A4 landscape;margin:9mm;}}"
       + "*{{box-sizing:border-box;}}body{{font-family:Arial,Helvetica,sans-serif;margin:0;color:#111827;font-size:11px;}}"
       + "h1{{font-size:20px;margin:0 0 2px 0;}}.sub{{font-size:11px;color:#475569;margin-bottom:10px;}}"
-      + ".cards{{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0;}}"
+      + ".cards{{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:10px 0;}}"
       + ".card{{border:1px solid #cbd5e1;border-radius:4px;padding:7px 8px;break-inside:avoid;}}"
       + ".label{{font-size:9px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:.4px;}}"
       + ".value{{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.15;margin-top:2px;}}"
@@ -6115,6 +6183,7 @@ function samToggle(el) {{
       if (!byMonth[mi.key]) byMonth[mi.key] = {{ label: mi.label, shifts: [] }};
       byMonth[mi.key].shifts.push(s);
     }});
+    _faAddSickMonths(name, yr, byMonth);
     var monthKeys = Object.keys(byMonth).sort();
 
     if (monthKeys.length && (!faShiftMonthFilterByDriver[name] || (faShiftMonthFilterByDriver[name] !== "all" && !byMonth[faShiftMonthFilterByDriver[name]]))) {{
@@ -6125,6 +6194,8 @@ function samToggle(el) {{
     var shifts = monthFilter === "all" ? yearShifts : ((byMonth[monthFilter] && byMonth[monthFilter].shifts) ? byMonth[monthFilter].shifts : []);
     var selectedLabel = monthFilter === "all" ? "Alle Monate" : (byMonth[monthFilter] ? byMonth[monthFilter].label : "Monat");
     var stats = _summarizeShifts(shifts);
+    var sickRows = _faSickEntries(name, yr, monthFilter);
+    var sickCount = sickRows.length;
 
     var html = "";
 
@@ -6145,9 +6216,9 @@ function samToggle(el) {{
           + "<button type='button' onclick='faPrintShiftMonth()' title='Aktuelle Monatsauswahl drucken' style='padding:8px 12px;border:1px solid #dc2626;border-radius:5px;background:#dc2626;color:#fff;font-size:12px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap;'>PDF Druck</button>"
           + "</div></div></div>";
 
-    if (!yearShifts.length) {{
+    if (!yearShifts.length && !sickCount) {{
       html += "<div style='color:#94a3b8;padding:40px;text-align:center;font-size:14px;background:#fff;border:1px solid #e2e8f0;border-radius:5px;'>"
-            + "Keine Schichten in diesem Zeitraum.</div>";
+            + "Keine Schichten oder Kranktage in diesem Zeitraum.</div>";
       panel.innerHTML = html;
       panel.scrollTop = 0;
       return;
@@ -6158,6 +6229,8 @@ function samToggle(el) {{
           + "<div style='font-size:17px;font-weight:900;color:#0f172a;line-height:1.25;'>" + faEsc(selectedLabel) + "</div></div>";
     html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Schichten</div>"
           + "<div style='font-size:20px;font-weight:800;color:#0f172a;font-variant-numeric:tabular-nums;line-height:1.2;'>" + stats.count + "</div></div>";
+    html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Kranktage</div>"
+          + "<div style='font-size:20px;font-weight:900;color:" + (sickCount ? "#be123c" : "#166534") + ";font-variant-numeric:tabular-nums;line-height:1.2;'>" + sickCount + "</div></div>";
     html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Σ Netto-Arbeitszeit</div>"
           + "<div style='font-size:20px;font-weight:900;color:#1e3a5f;font-variant-numeric:tabular-nums;line-height:1.2;'>" + _fmtMin(stats.netto) + "</div></div>";
     html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Schichten &gt; 10:00 Netto</div>"
@@ -6169,6 +6242,7 @@ function samToggle(el) {{
     if (stats.sonntage) html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Sonntage</div>"
           + "<div style='font-size:20px;font-weight:800;color:#dc2626;font-variant-numeric:tabular-nums;line-height:1.2;'>" + stats.sonntage + "</div></div>";
     html += "</div>";
+    html += _renderSickBox(sickRows);
 
     var lkwEntries = Object.keys(stats.lkwSet).map(function(k){{return [k, stats.lkwSet[k]];}}).sort(function(a,b){{return b[1]-a[1];}});
     if (lkwEntries.length) {{
@@ -6186,17 +6260,18 @@ function samToggle(el) {{
       html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;margin-bottom:12px;'>";
       html += "<div style='padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:14px;flex-wrap:wrap;'>";
       html += "<span style='font-size:12px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.6px;'>" + faEsc(selectedLabel) + "</span>";
-      html += "<span style='font-size:11px;color:#94a3b8;font-weight:600;'>" + stats.count + " Schichten</span>";
+      html += "<span style='font-size:11px;color:#94a3b8;font-weight:600;'>" + stats.count + " Schichten" + (sickCount ? " · Krank " + sickCount : "") + "</span>";
       html += "<span style='margin-left:auto;font-size:11px;color:#64748b;font-weight:600;'>Σ Netto <b style='color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + _fmtMin(stats.netto) + "</b> &nbsp;·&nbsp; &gt; 10:00 Netto <b style='color:#be123c;font-variant-numeric:tabular-nums;'>" + stats.over10 + "</b></span>";
       html += "</div>" + _renderShiftTable(shifts) + "</div>";
     }} else {{
       monthKeys.forEach(function(mk) {{
         var grp = byMonth[mk];
         var gs = _summarizeShifts(grp.shifts);
+        var gsSick = _faSickEntries(name, yr, mk).length;
         html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;margin-bottom:12px;'>";
         html += "<div style='padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:14px;flex-wrap:wrap;'>";
         html += "<span style='font-size:12px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.6px;'>" + faEsc(grp.label) + "</span>";
-        html += "<span style='font-size:11px;color:#94a3b8;font-weight:600;'>" + gs.count + " Schichten</span>";
+        html += "<span style='font-size:11px;color:#94a3b8;font-weight:600;'>" + gs.count + " Schichten" + (gsSick ? " · Krank " + gsSick : "") + "</span>";
         html += "<span style='margin-left:auto;font-size:11px;color:#64748b;font-weight:600;'>Σ Netto <b style='color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + _fmtMin(gs.netto) + "</b> &nbsp;·&nbsp; &gt; 10:00 Netto <b style='color:#be123c;font-variant-numeric:tabular-nums;'>" + gs.over10 + "</b></span>";
         html += "</div>" + _renderShiftTable(grp.shifts) + "</div>";
       }});
@@ -6228,11 +6303,13 @@ function samToggle(el) {{
       if (!byMonth[mi.key]) byMonth[mi.key] = {{ label: mi.label, shifts: [] }};
       byMonth[mi.key].shifts.push(s);
     }});
+    _faAddSickMonths(name, yr, byMonth);
     var monthKeys = Object.keys(byMonth).sort();
     var monthFilter = faShiftMonthFilterByDriver[name] || (monthKeys.length ? monthKeys[monthKeys.length - 1] : "all");
     var shifts = monthFilter === "all" ? yearShifts : ((byMonth[monthFilter] && byMonth[monthFilter].shifts) ? byMonth[monthFilter].shifts : []);
     var label = monthFilter === "all" ? "Alle Monate" : (byMonth[monthFilter] ? byMonth[monthFilter].label : "Monat");
     var stats = _summarizeShifts(shifts);
+    var sickRows = _faSickEntries(name, yr, monthFilter);
     var printedAt = new Date().toLocaleString("de-DE");
 
     var rows = "";
@@ -6253,10 +6330,15 @@ function samToggle(el) {{
     doc += "<div class='sub'><b>Fahrer:</b> " + faEsc(name) + " &nbsp; · &nbsp; <b>Monat:</b> " + faEsc(label) + " &nbsp; · &nbsp; <b>Ausdruck:</b> " + faEsc(printedAt) + "</div>";
     doc += "<div class='cards'>"
         + "<div class='card'><div class='label'>Schichten</div><div class='value'>" + stats.count + "</div></div>"
+        + "<div class='card'><div class='label'>Kranktage</div><div class='value'>" + sickRows.length + "</div></div>"
         + "<div class='card'><div class='label'>Σ Netto-Arbeitszeit</div><div class='value'>" + _fmtMin(stats.netto) + "</div></div>"
         + "<div class='card'><div class='label'>Schichten &gt; 10:00 Netto</div><div class='value'>" + stats.over10 + "</div></div>"
         + "<div class='card'><div class='label'>Σ Schichtdauer</div><div class='value'>" + _fmtMin(stats.dauer) + "</div></div>"
         + "</div>";
+    if (sickRows.length) {{
+      doc += "<div style='border:1px solid #fecaca;border-radius:4px;padding:6px 8px;margin:8px 0 10px 0;font-size:10.5px;'><b>Kranktage:</b> "
+          + sickRows.map(function(e) {{ return faEsc(e.datum || e.dateKey); }}).join(", ") + "</div>";
+    }}
     doc += "<table><thead><tr><th>Tag</th><th>Beginn</th><th>Ende</th><th class='num'>Schichtdauer</th><th class='num'>Netto-Arbeitszeit</th><th>LKW</th></tr></thead><tbody>" + rows + "</tbody></table>";
     doc += "<script>window.onload=function(){{setTimeout(function(){{window.print();}},150);}}<\\/script>";
     doc += "</body></html>";
@@ -6456,21 +6538,24 @@ function samToggle(el) {{
 
     var statsEl = document.getElementById("fa-stats");
     if (statsEl) {{
-      var totalShifts = 0, totalNetto = 0, totalOver10 = 0;
+      var totalShifts = 0, totalNetto = 0, totalOver10 = 0, totalSick = 0;
       filtered.forEach(function(d) {{
         var s = _faShiftStatsForName(d.name);
+        var sick = _faSickEntries(d.name, faYearFilter, "all").length;
         totalShifts += s.count || 0;
         totalNetto += s.netto || 0;
         totalOver10 += s.over10 || 0;
+        totalSick += sick || 0;
       }});
       statsEl.innerHTML = "<b>" + filtered.length + "</b> Fahrer &nbsp;&middot;&nbsp; "
-        + "<b>" + totalShifts + "</b> Schichten &nbsp;&middot;&nbsp; Σ Netto <b>" + _fmtMin(totalNetto) + "</b>"
+        + "<b>" + totalShifts + "</b> Schichten &nbsp;&middot;&nbsp; Krank <b style='color:#be123c;'>" + totalSick + "</b> &nbsp;&middot;&nbsp; Σ Netto <b>" + _fmtMin(totalNetto) + "</b>"
         + " &nbsp;&middot;&nbsp; &gt;10:00 Netto <b style='color:#be123c;'>" + totalOver10 + "</b>";
     }}
 
     var html = "";
     filtered.forEach(function(d) {{
       var s = _faShiftStatsForName(d.name);
+      var sick = _faSickEntries(d.name, faYearFilter, "all").length;
       var active = d.name === activeName;
       var bg = active ? "#1b66b3" : "#fff";
       var fg = active ? "#fff" : "#0b1220";
@@ -6482,9 +6567,10 @@ function samToggle(el) {{
       html += "<div data-fa-driver='" + faEsc(d.name) + "'"
         + " style='padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;background:" + bg + ";'>"
         + "<div style='font-weight:800;font-size:13px;color:" + fg + ";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + faEsc(d.name) + "</div>"
-        + "<div style='font-size:10px;color:" + sub + ";font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums;'>" + s.count + " Schichten · Netto " + _fmtMin(s.netto) + "</div>"
+        + "<div style='font-size:10px;color:" + sub + ";font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums;'>" + s.count + " Schichten" + (sick ? " · Krank " + sick : "") + " · Netto " + _fmtMin(s.netto) + "</div>"
         + "<div style='display:flex;gap:3px;flex-wrap:wrap;margin-top:4px;'>"
         + "<span style='font-size:8px;font-weight:800;padding:1px 4px;border-radius:2px;background:" + badgeBg + ";color:" + badgeFg + ";'>" + s.count + " S</span>"
+        + (sick ? "<span style='font-size:8px;font-weight:800;padding:1px 4px;border-radius:2px;background:" + (active ? "rgba(255,255,255,.16)" : "#fee2e2") + ";color:" + (active ? "#fff" : "#be123c") + ";'>K " + sick + "</span>" : "")
         + (s.over10 ? "<span style='font-size:8px;font-weight:800;padding:1px 4px;border-radius:2px;background:" + overBg + ";color:" + overFg + ";'>&gt;10h " + s.over10 + "</span>" : "")
         + "</div></div>";
     }});
