@@ -3811,9 +3811,9 @@ function verstossRenderGraph() {
   html += verstossGraphKpi("Stärkster Monat", maxMonthName + (maxMonth ? " · " + maxMonth : ""), "#1e3a5f", "&#128197;");
   html += "</div>";
 
-  html += "<div style='display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px;'>";
-  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:330px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Verstöße nach Monat</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anzahl und Anteil an allen Verstößen</div><div style='height:270px;'><canvas id='verstoss-chart-month'></canvas></div></div>";
-  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:330px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Verstoßarten</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anteil je Verstoßart</div><div style='height:270px;'><canvas id='verstoss-chart-type'></canvas></div></div>";
+  html += "<div style='display:grid;grid-template-columns:minmax(0,1.15fr) minmax(420px,.95fr);gap:14px;margin-bottom:14px;align-items:stretch;'>";
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:360px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Verstöße nach Monat</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anzahl und Anteil an allen Verstößen</div><div style='height:300px;'><canvas id='verstoss-chart-month'></canvas></div></div>";
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:470px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Verstoßarten</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anteil je Verstoßart</div><div style='height:410px;'><canvas id='verstoss-chart-type'></canvas></div></div>";
   html += "</div>";
 
   html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Top Fahrer nach Anzahl</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anzahl und Anteil an allen Verstößen</div><div style='height:360px;'><canvas id='verstoss-chart-driver'></canvas></div></div>";
@@ -3867,7 +3867,7 @@ function verstossRenderGraph() {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } },
+        legend: { position: "bottom", labels: { boxWidth: 10, padding: 12, font: { size: 10 } } },
         tooltip: verstossTooltipPct(total, "y")
       }
     }
