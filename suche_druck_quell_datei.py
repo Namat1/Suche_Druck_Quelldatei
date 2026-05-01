@@ -5178,12 +5178,8 @@ function gkRenderStructured(customer, detail) {{
   // ════════════════════════════════════════════════════════════════════════════
   // BLOCK 1: Standorte
   // ════════════════════════════════════════════════════════════════════════════
-  html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;overflow:hidden;'>";
-  html += "<div style='padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;'>"
-        + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#64748b;'>Standorte</span>"
-        + "</div>";
-
-  customer.entries.forEach(function(entry, ei) {{
+  // Daten vorab sammeln, dann Layout entscheiden
+  var standorte = customer.entries.map(function(entry) {{
     var addrLines = [];
     if (addrIdx.length) {{
       (entry.rows||[]).forEach(function(row) {{
@@ -5193,26 +5189,52 @@ function gkRenderStructured(customer, detail) {{
         }});
       }});
     }}
-
-    var borderTop = ei > 0 ? "border-top:1px solid #f1f5f9;" : "";
-    html += "<div style='padding:12px 14px;display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap;" + borderTop + "'>";
-    html += "<div style='min-width:230px;flex:0 0 auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
-          + "<div style='font-size:13.5px;font-weight:700;color:#0f172a;line-height:1.3;'>" + gkEsc(entry.name) + "</div>";
-    if (entry.kundennummer) {{
-      html += "<span style='display:inline-flex;align-items:baseline;gap:5px;background:#1e3a5f;color:#fff;"
-            + "border-radius:4px;padding:3px 9px;'>"
-            + "<span style='font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.55px;color:rgba(255,255,255,.65);'>KNr</span>"
-            + "<span style='font-size:13px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.2px;line-height:1;'>"
-            + gkEsc(entry.kundennummer) + "</span>"
-            + "</span>";
-    }}
-    html += "</div>";
-    if (addrLines.length) {{
-      html += "<div style='font-size:12.5px;color:#475569;line-height:1.65;flex:1;'>"
-            + addrLines.map(gkEsc).join("<br>") + "</div>";
-    }}
-    html += "</div>";
+    return {{ name: entry.name, kundennummer: entry.kundennummer, addrLines: addrLines }};
   }});
+  var anyHasAddr = standorte.some(function(s) {{ return s.addrLines.length > 0; }});
+
+  // KNr-Badge-Helper: einheitlich leicht (hellgrau, dunkelblauer Text)
+  function gkKnrBadge(knr) {{
+    if (!knr) return "";
+    return "<span style='display:inline-flex;align-items:baseline;gap:5px;background:#f1f5f9;"
+         + "border-radius:4px;padding:3px 9px;'>"
+         + "<span style='font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.55px;color:#94a3b8;'>KNr</span>"
+         + "<span style='font-size:13px;font-weight:800;color:#1e3a5f;font-variant-numeric:tabular-nums;letter-spacing:.2px;line-height:1;'>"
+         + gkEsc(knr) + "</span></span>";
+  }}
+
+  html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;overflow:hidden;'>";
+  html += "<div style='padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;'>"
+        + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#64748b;'>Standorte</span>"
+        + "</div>";
+
+  if (anyHasAddr) {{
+    // Zeilen-Layout (Name + KNr links, Adresse rechts)
+    standorte.forEach(function(s, ei) {{
+      var borderTop = ei > 0 ? "border-top:1px solid #f1f5f9;" : "";
+      html += "<div style='padding:12px 14px;display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap;" + borderTop + "'>";
+      html += "<div style='min-width:230px;flex:0 0 auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
+            + "<div style='font-size:13.5px;font-weight:700;color:#0f172a;line-height:1.3;'>" + gkEsc(s.name) + "</div>"
+            + gkKnrBadge(s.kundennummer)
+            + "</div>";
+      if (s.addrLines.length) {{
+        html += "<div style='font-size:12.5px;color:#475569;line-height:1.65;flex:1;'>"
+              + s.addrLines.map(gkEsc).join("<br>") + "</div>";
+      }}
+      html += "</div>";
+    }});
+  }} else {{
+    // Kompaktes Chip-Layout (keine Adressen vorhanden)
+    html += "<div style='padding:12px 14px;display:flex;flex-wrap:wrap;gap:8px;'>";
+    standorte.forEach(function(s) {{
+      html += "<div style='display:inline-flex;align-items:center;gap:9px;padding:7px 11px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;'>"
+            + "<span style='font-size:13px;font-weight:700;color:#0f172a;line-height:1.2;'>" + gkEsc(s.name) + "</span>"
+            + gkKnrBadge(s.kundennummer)
+            + "</div>";
+    }});
+    html += "</div>";
+  }}
+  html += "</div>";
   html += "</div>";
 
   // ════════════════════════════════════════════════════════════════════════════
