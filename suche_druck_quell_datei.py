@@ -6395,6 +6395,13 @@ function samToggle(el) {{
       + ".value{{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.15;margin-top:2px;}}"
       + "table{{width:100%;border-collapse:collapse;font-size:10.5px;}}th,td{{border:1px solid #cbd5e1;padding:4px 5px;text-align:left;vertical-align:top;}}"
       + "th{{background:#f1f5f9;font-size:9px;text-transform:uppercase;letter-spacing:.3px;}}.num{{text-align:right;font-variant-numeric:tabular-nums;}}.over{{font-weight:800;color:#991b1b;}}"
+      + ".month-block{{break-inside:avoid;margin-top:10px;border:1px solid #cbd5e1;border-radius:5px;overflow:hidden;}}"
+      + ".month-head{{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#f8fafc;border-bottom:1px solid #cbd5e1;padding:6px 8px;}}"
+      + ".month-title{{font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.45px;color:#1e3a5f;min-width:110px;}}"
+      + ".month-meta{{font-size:9.5px;color:#475569;font-weight:700;display:flex;gap:8px;flex-wrap:wrap;}}"
+      + ".mini{{border-bottom:1px solid #e2e8f0;padding:5px 8px;font-size:9.5px;line-height:1.35;}}"
+      + ".chip{{display:inline-block;border:1px solid #cbd5e1;border-radius:3px;padding:1px 4px;margin:1px 2px;font-weight:700;white-space:nowrap;}}"
+      + ".empty{{padding:7px 8px;color:#94a3b8;font-weight:700;text-align:center;}}"
       + "</style>";
   }}
 
@@ -6583,6 +6590,7 @@ function samToggle(el) {{
       var m = (s.tag || "").match(/(\d{{4}})$/);
       return m && m[1] === yr;
     }});
+
     var byMonth = {{}};
     yearShifts.forEach(function(s) {{
       var mi = _monthInfo(s);
@@ -6590,8 +6598,11 @@ function samToggle(el) {{
       byMonth[mi.key].shifts.push(s);
     }});
     _faAddAbsenceMonths(name, yr, byMonth);
+
     var monthKeys = Object.keys(byMonth).sort();
     var monthFilter = faShiftMonthFilterByDriver[name] || "all";
+    if (monthFilter !== "all" && !byMonth[monthFilter]) monthFilter = "all";
+
     var shifts = monthFilter === "all" ? yearShifts : ((byMonth[monthFilter] && byMonth[monthFilter].shifts) ? byMonth[monthFilter].shifts : []);
     var label = monthFilter === "all" ? "Alle Monate" : (byMonth[monthFilter] ? byMonth[monthFilter].label : "Monat");
     var stats = _summarizeShifts(shifts);
@@ -6602,10 +6613,11 @@ function samToggle(el) {{
     var lkwEntries = Object.keys(stats.lkwSet || {{}}).map(function(k) {{ return [k, stats.lkwSet[k]]; }}).sort(function(a,b) {{ return b[1]-a[1]; }});
     var printedAt = new Date().toLocaleString("de-DE");
 
-    var rows = "";
-    shifts.forEach(function(s) {{
-      var netto = _toMin(s.profil);
-      rows += "<tr>"
+    function _printRows(rowList) {{
+      var out = "";
+      rowList.forEach(function(s) {{
+        var netto = _toMin(s.profil);
+        out += "<tr>"
            + "<td>" + faEsc((s.wochentag || "") + " " + (s.tag || "")) + "</td>"
            + "<td>" + faEsc(s.beginn || "") + "</td>"
            + "<td>" + faEsc(s.ende || "") + (s.ende_naechster_tag ? " +1" : "") + "</td>"
@@ -6613,11 +6625,58 @@ function samToggle(el) {{
            + "<td class='num " + (netto > 600 ? "over" : "") + "'>" + faEsc(s.profil || "") + "</td>"
            + "<td>" + faEsc(s.lkw || "") + "</td>"
            + "</tr>";
-    }});
+      }});
+      if (!out) out = "<tr><td colspan='6' class='empty'>Keine Schichten in diesem Monat</td></tr>";
+      return out;
+    }}
+
+    function _printAbsenceLine(title, rows, styleAttr, suffixFn) {{
+      if (!rows || !rows.length) return "";
+      suffixFn = suffixFn || function() {{ return ""; }};
+      return "<div class='mini' style='" + styleAttr + "'><b>" + title + ":</b> "
+        + rows.map(function(e) {{ return faEsc(e.datum || e.dateKey) + suffixFn(e); }}).join(", ")
+        + "</div>";
+    }}
+
+    function _printLkwLine(entries) {{
+      if (!entries || !entries.length) return "";
+      return "<div class='mini'><b>LKW:</b> "
+        + entries.map(function(e) {{
+            return "<span class='chip'>" + faEsc(e[0]) + " <span style='color:#64748b;'>" + e[1] + "x</span></span>";
+          }}).join(" ")
+        + "</div>";
+    }}
+
+    function _printMonthSection(mk, monthLabel, rowList) {{
+      rowList = rowList || [];
+      var ms = _summarizeShifts(rowList);
+      var mSick = _faSickEntries(name, yr, mk);
+      var mVacation = _faVacationEntries(name, yr, mk);
+      var mVacationCredit = _vacationCreditMin(mVacation);
+      var mNettoWithVacation = ms.netto + mVacationCredit;
+      var mLkwEntries = Object.keys(ms.lkwSet || {{}}).map(function(k) {{ return [k, ms.lkwSet[k]]; }}).sort(function(a,b) {{ return b[1]-a[1]; }});
+      var sec = "<section class='month-block'>";
+      sec += "<div class='month-head'><div class='month-title'>" + faEsc(monthLabel) + "</div>";
+      sec += "<div class='month-meta'>"
+          + "<span>Schichten <b>" + ms.count + "</b></span>"
+          + "<span>Krank <b>" + mSick.length + "</b></span>"
+          + "<span>Urlaub <b>" + mVacation.length + "</b></span>"
+          + "<span>Netto <b>" + _fmtMin(ms.netto) + "</b></span>"
+          + "<span>Urlaub +8h <b>" + _fmtMin(mVacationCredit) + "</b></span>"
+          + "<span>Σ inkl. Urlaub <b>" + _fmtMin(mNettoWithVacation) + "</b></span>"
+          + "<span>&gt;10:00 <b style='color:#991b1b;'>" + ms.over10 + "</b></span>"
+          + "</div></div>";
+      sec += _printAbsenceLine("Kranktage", mSick, "border-color:#fecaca;background:#fff7f7;color:#991b1b;");
+      sec += _printAbsenceLine("Urlaubstage (+8:00 je Tag / Σ " + _fmtMin(mVacationCredit) + ")", mVacation, "border-color:#bae6fd;background:#f0f9ff;color:#075985;", function() {{ return " (+8:00)"; }});
+      sec += _printLkwLine(mLkwEntries);
+      sec += "<table><thead><tr><th>Tag</th><th>Beginn</th><th>Ende</th><th class='num'>Schichtdauer</th><th class='num'>Netto-Arbeitszeit</th><th>LKW</th></tr></thead><tbody>" + _printRows(rowList) + "</tbody></table>";
+      sec += "</section>";
+      return sec;
+    }}
 
     var doc = "<!doctype html><html><head><meta charset='utf-8'><title>Schichten " + faEsc(name) + " " + faEsc(label) + "</title>" + _printShiftStyles() + "</head><body>";
     doc += "<h1>Schichten / Tachograph</h1>";
-    doc += "<div class='sub'><b>Fahrer:</b> " + faEsc(name) + " &nbsp; · &nbsp; <b>Monat:</b> " + faEsc(label) + " &nbsp; · &nbsp; <b>Ausdruck:</b> " + faEsc(printedAt) + "</div>";
+    doc += "<div class='sub'><b>Fahrer:</b> " + faEsc(name) + " &nbsp; · &nbsp; <b>Auswahl:</b> " + faEsc(label) + " &nbsp; · &nbsp; <b>Ausdruck:</b> " + faEsc(printedAt) + "</div>";
     doc += "<div class='cards'>"
         + "<div class='card'><div class='label'>Schichten</div><div class='value'>" + stats.count + "</div></div>"
         + "<div class='card'><div class='label'>Kranktage</div><div class='value'>" + sickRows.length + "</div></div>"
@@ -6628,20 +6687,18 @@ function samToggle(el) {{
         + "<div class='card'><div class='label'>Schichten &gt; 10:00 Netto</div><div class='value'>" + stats.over10 + "</div></div>"
         + "<div class='card'><div class='label'>Σ Schichtdauer</div><div class='value'>" + _fmtMin(stats.dauer) + "</div></div>"
         + "</div>";
-    if (sickRows.length) {{
-      doc += "<div style='border:1px solid #fecaca;border-radius:4px;padding:6px 8px;margin:8px 0 6px 0;font-size:10.5px;'><b>Kranktage:</b> "
-          + sickRows.map(function(e) {{ return faEsc(e.datum || e.dateKey); }}).join(", ") + "</div>";
+
+    if (monthFilter === "all") {{
+      monthKeys.forEach(function(mk) {{
+        var grp = byMonth[mk] || {{ label: _monthLabelFromKey(mk), shifts: [] }};
+        doc += _printMonthSection(mk, grp.label, grp.shifts || []);
+      }});
+    }} else {{
+      var grp = byMonth[monthFilter] || {{ label: label, shifts: shifts }};
+      doc += _printMonthSection(monthFilter, label, grp.shifts || shifts);
     }}
-    if (vacationRows.length) {{
-      doc += "<div style='border:1px solid #bae6fd;border-radius:4px;padding:6px 8px;margin:6px 0 6px 0;font-size:10.5px;'><b>Urlaubstage (+8:00 je Tag / Σ " + _fmtMin(vacationCredit) + "):</b> "
-          + vacationRows.map(function(e) {{ return faEsc(e.datum || e.dateKey) + " (+8:00)"; }}).join(", ") + "</div>";
-    }}
-    if (lkwEntries.length) {{
-      doc += "<div style='border:1px solid #cbd5e1;border-radius:4px;padding:6px 8px;margin:6px 0 10px 0;font-size:10.5px;'><b>LKW in Auswahl:</b> "
-          + lkwEntries.map(function(e) {{ return "<span style='display:inline-block;border:1px solid #cbd5e1;border-radius:3px;padding:1px 4px;margin:1px 2px;font-weight:700;white-space:nowrap;'>" + faEsc(e[0]) + " <span style='color:#64748b;'>" + e[1] + "x</span></span>"; }}).join(" ") + "</div>";
-    }}
-    doc += "<table><thead><tr><th>Tag</th><th>Beginn</th><th>Ende</th><th class='num'>Schichtdauer</th><th class='num'>Netto-Arbeitszeit</th><th>LKW</th></tr></thead><tbody>" + rows + "</tbody></table>";
-    doc += "<script>window.onload=function(){{setTimeout(function(){{window.print();}},150);}}<\\/script>";
+
+    doc += "<script>window.onload=function(){{setTimeout(function(){{window.print();}},150);}}<\/script>";
     doc += "</body></html>";
 
     var w = window.open("", "_blank");
