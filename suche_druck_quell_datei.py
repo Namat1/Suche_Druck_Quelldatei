@@ -4497,8 +4497,8 @@ iframe.active{{display:block}}
   <!-- ── Fahrerauswertung Panel ───────────────────────────────────── -->
   <div id="panel-fa" style="display:none;flex:1;overflow:hidden;background:#e8ecf1;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
     <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:#f0f2f6;border-bottom:1.5px solid #c8cfd9;flex-wrap:wrap;flex-shrink:0;">
-      <h2 style="color:#1b66b3;font-size:16px;font-weight:900;margin:0;">&#128101; Fahrerauswertung</h2>
-      <input id="fa-search" placeholder="Fahrer suchen..." oninput="faSearchQuery=this.value;faBuildSidebarHighlight(faSelectedName);"
+      <h2 style="color:#1b66b3;font-size:16px;font-weight:900;margin:0;">&#128101; Schichten / Tachograph</h2>
+      <input id="fa-search" placeholder="Fahrer suchen..." oninput="faRender(this.value);"
         style="flex:1;min-width:130px;max-width:200px;padding:5px 12px;border:2px solid #1b66b3;border-radius:5px;font-size:12px;font-family:inherit;outline:none">
       <select id="fa-year-sel" onchange="faYearChange(this.value)"
         style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;font-size:12px;font-weight:700;color:#1b66b3;cursor:pointer;font-family:inherit;outline:none;background:#fff;">
@@ -4507,9 +4507,9 @@ iframe.active{{display:block}}
         <button onclick="faSort('name')" id="fa-sort-name"
           style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#1b66b3;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">A–Z</button>
         <button onclick="faSort('arbeit')" id="fa-sort-arbeit"
-          style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Arbeitstage</button>
+          style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Netto</button>
       </div>
-      <button onclick="faPDF()" style="padding:5px 14px;background:#dc2626;border:none;color:#fff;border-radius:5px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;">&#128196; PDF</button>
+      <button onclick="faPrintShiftMonth()" style="padding:5px 14px;background:#dc2626;border:none;color:#fff;border-radius:5px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;">&#128196; Monats-PDF</button>
       <div id="fa-stats" style="font-size:11px;color:#64748b;margin-left:auto;"></div>
     </div>
     <div style="display:flex;flex:1;overflow:hidden;">
@@ -5014,7 +5014,7 @@ var VERSTOSS_DATA           = {verstoss_json};
 var SPESEN_DATA            = {spesen_json};
 var GK_DATA                = {grosskunden_json};
 var TIMEREC_DATA           = {timerec_json};
-var faActiveTab            = "uebersicht";
+var faActiveTab            = "schichten";
 
 {spesen_js_code}
 
@@ -6120,7 +6120,7 @@ function samToggle(el) {{
     var selectedLabel = monthFilter === "all" ? "Alle Monate" : (byMonth[monthFilter] ? byMonth[monthFilter].label : "Monat");
     var stats = _summarizeShifts(shifts);
 
-    var html = faTabBar(name, true, !!FA_DATA.find(function(d){{return d.name===name;}}));
+    var html = "";
 
     html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;padding:14px 18px;margin-bottom:12px;'>"
           + "<div style='display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;'>"
@@ -6383,6 +6383,166 @@ function samToggle(el) {{
       window.faBuildSidebarHighlight(null);
     }};
   }}
+
+  // CSV-only Fahrerauswertung: keine alte Übersicht, kein Switcher.
+  window.faSort = function(mode) {{
+    faCurrentSort = mode;
+    ["name","arbeit"].forEach(function(m) {{
+      var btn = document.getElementById("fa-sort-" + m);
+      if (!btn) return;
+      btn.style.background = mode === m ? "#1b66b3" : "#fff";
+      btn.style.color = mode === m ? "#fff" : "#1b66b3";
+    }});
+    faBuildSidebarHighlight(null);
+  }};
+
+  window.faYearChange = function(yr) {{
+    faYearFilter = yr || "all";
+    faBuildSidebarHighlight(null);
+  }};
+
+  function _faAllShiftNames() {{
+    return Object.keys(TIMEREC_DATA || {{}}).filter(function(n) {{
+      return n && (TIMEREC_DATA[n] || []).length > 0;
+    }});
+  }}
+
+  function _faShiftRowsForYear(name) {{
+    var rows = (TIMEREC_DATA && TIMEREC_DATA[name] ? TIMEREC_DATA[name] : []).slice();
+    if (faYearFilter === "all") return rows;
+    return rows.filter(function(s) {{
+      var m = (s.tag || "").match(/(\d{{4}})$/);
+      return m && m[1] === faYearFilter;
+    }});
+  }}
+
+  function _faShiftStatsForName(name) {{
+    var rows = _faShiftRowsForYear(name);
+    return _summarizeShifts(rows);
+  }}
+
+  window.faGetFiltered = function() {{
+    var q = (faSearchQuery || "").toLowerCase().trim();
+    var list = _faAllShiftNames().map(function(n) {{
+      return {{ name: n, years: {{}}, _shiftsOnly: true }};
+    }}).filter(function(d) {{
+      if (q && d.name.toLowerCase().indexOf(q) < 0) return false;
+      if (faYearFilter !== "all" && !_faShiftRowsForYear(d.name).length) return false;
+      return true;
+    }});
+
+    if (faCurrentSort === "arbeit") {{
+      list.sort(function(a,b) {{
+        var sa = _faShiftStatsForName(a.name);
+        var sb = _faShiftStatsForName(b.name);
+        return (sb.netto - sa.netto) || (sb.count - sa.count) || a.name.localeCompare(b.name, "de");
+      }});
+    }} else {{
+      list.sort(function(a,b) {{ return a.name.localeCompare(b.name, "de"); }});
+    }}
+    return list;
+  }};
+
+  window.faBuildSidebarHighlight = function(activeName) {{
+    var sidebar = document.getElementById("fa-sidebar-list");
+    if (!sidebar) return;
+    var filtered = window.faGetFiltered();
+
+    var statsEl = document.getElementById("fa-stats");
+    if (statsEl) {{
+      var totalShifts = 0, totalNetto = 0, totalOver10 = 0;
+      filtered.forEach(function(d) {{
+        var s = _faShiftStatsForName(d.name);
+        totalShifts += s.count || 0;
+        totalNetto += s.netto || 0;
+        totalOver10 += s.over10 || 0;
+      }});
+      statsEl.innerHTML = "<b>" + filtered.length + "</b> Fahrer &nbsp;&middot;&nbsp; "
+        + "<b>" + totalShifts + "</b> Schichten &nbsp;&middot;&nbsp; Σ Netto <b>" + _fmtMin(totalNetto) + "</b>"
+        + " &nbsp;&middot;&nbsp; &gt;10:00 Netto <b style='color:#be123c;'>" + totalOver10 + "</b>";
+    }}
+
+    var html = "";
+    filtered.forEach(function(d) {{
+      var s = _faShiftStatsForName(d.name);
+      var active = d.name === activeName;
+      var bg = active ? "#1b66b3" : "#fff";
+      var fg = active ? "#fff" : "#0b1220";
+      var sub = active ? "rgba(255,255,255,.88)" : "#64748b";
+      var badgeBg = active ? "rgba(255,255,255,.18)" : "#dbeafe";
+      var badgeFg = active ? "#fff" : "#1b66b3";
+      var overBg = active ? "rgba(255,255,255,.16)" : "#fee2e2";
+      var overFg = active ? "#fff" : "#be123c";
+      html += "<div data-fa-driver='" + faEsc(d.name) + "'"
+        + " style='padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;background:" + bg + ";'>"
+        + "<div style='font-weight:800;font-size:13px;color:" + fg + ";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + faEsc(d.name) + "</div>"
+        + "<div style='font-size:10px;color:" + sub + ";font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums;'>" + s.count + " Schichten · Netto " + _fmtMin(s.netto) + "</div>"
+        + "<div style='display:flex;gap:3px;flex-wrap:wrap;margin-top:4px;'>"
+        + "<span style='font-size:8px;font-weight:800;padding:1px 4px;border-radius:2px;background:" + badgeBg + ";color:" + badgeFg + ";'>" + s.count + " S</span>"
+        + (s.over10 ? "<span style='font-size:8px;font-weight:800;padding:1px 4px;border-radius:2px;background:" + overBg + ";color:" + overFg + ";'>&gt;10h " + s.over10 + "</span>" : "")
+        + "</div></div>";
+    }});
+    sidebar.innerHTML = html || "<div style='padding:20px;color:#94a3b8;font-size:12px;text-align:center;'>Keine Tachograph-Schichten gefunden</div>";
+    Array.prototype.slice.call(sidebar.querySelectorAll("[data-fa-driver]")).forEach(function(item) {{
+      item.onclick = function() {{ window.faShowDetail(item.getAttribute("data-fa-driver")); }};
+    }});
+
+    if (!activeName && filtered.length) {{
+      faSelectedName = filtered[0].name;
+      window.faShowDetail(filtered[0].name);
+    }} else if (activeName) {{
+      faSelectedName = activeName;
+    }}
+  }};
+
+  window.faPopulateYears = function() {{
+    var allYears = [];
+    Object.keys(TIMEREC_DATA || {{}}).forEach(function(n) {{
+      (TIMEREC_DATA[n] || []).forEach(function(s) {{
+        var m = (s.tag || "").match(/(\d{{4}})$/);
+        if (m && m[1] !== "2024" && allYears.indexOf(m[1]) === -1) allYears.push(m[1]);
+      }});
+    }});
+    allYears.sort().reverse();
+    var yrSel = document.getElementById("fa-year-sel");
+    if (!yrSel) return;
+    var current = yrSel.value;
+    yrSel.innerHTML = allYears.map(function(y) {{ return "<option value='" + y + "'>" + y + "</option>"; }}).join("");
+    if (allYears.length > 1) yrSel.insertAdjacentHTML("beforeend", "<option value='all'>Alle Jahre</option>");
+    var curYr = String(new Date().getFullYear());
+    if (current && (allYears.indexOf(current) !== -1 || current === "all")) yrSel.value = current;
+    else if (allYears.indexOf(curYr) !== -1) yrSel.value = curYr;
+    else if (allYears.length) yrSel.value = allYears[0];
+    else yrSel.innerHTML = "<option value='all'>Keine Daten</option>";
+    faYearFilter = yrSel.value || "all";
+  }};
+
+  window.faShowDetail = function(name) {{
+    faSelectedName = name;
+    faBuildSidebarHighlight(name);
+    var panel = document.getElementById("fa-detail-panel");
+    if (!panel) return;
+    if (!faHasShifts(name)) {{
+      panel.innerHTML = "<div style='color:#94a3b8;padding:40px;text-align:center;font-size:14px;'>Keine Schichten / Tachograph-Daten f&uuml;r diesen Fahrer.</div>";
+      return;
+    }}
+    faRenderShifts(name, panel);
+  }};
+
+  window.faRender = function(q) {{
+    faSearchQuery = q || "";
+    if (!TIMEREC_DATA || !Object.keys(TIMEREC_DATA).length) {{
+      var c = document.getElementById("fa-detail-panel");
+      if (c) c.innerHTML = "<div style='color:#94a3b8;padding:40px;text-align:center;font-size:14px;'>Keine Tachograph-Daten vorhanden.<br>Bitte CSV <b>timerecording_v3*.csv</b> hochladen.</div>";
+      var side = document.getElementById("fa-sidebar-list");
+      if (side) side.innerHTML = "";
+      var stats = document.getElementById("fa-stats");
+      if (stats) stats.innerHTML = "";
+      return;
+    }}
+    window.faPopulateYears();
+    window.faBuildSidebarHighlight(null);
+  }};
 }})();
 // ── /Schichten-Tab ─────────────────────────────────────────────────────────────
 
