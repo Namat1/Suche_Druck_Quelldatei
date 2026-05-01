@@ -6107,6 +6107,10 @@ function samToggle(el) {{
     return (neg ? "-" : "") + h + ":" + (mm < 10 ? "0" + mm : mm);
   }}
 
+  function _vacationCreditMin(rows) {{
+    return (rows || []).length * 480;
+  }}
+
   function _monthInfo(s) {{
     var MONATE = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
     var m = (s.tag || "").match(/^(\d{{2}})\.(\d{{2}})\.(\d{{4}})$/);
@@ -6385,7 +6389,7 @@ function samToggle(el) {{
       + "@page{{size:A4 landscape;margin:9mm;}}"
       + "*{{box-sizing:border-box;}}body{{font-family:Arial,Helvetica,sans-serif;margin:0;color:#111827;font-size:11px;}}"
       + "h1{{font-size:20px;margin:0 0 2px 0;}}.sub{{font-size:11px;color:#475569;margin-bottom:10px;}}"
-      + ".cards{{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin:10px 0;}}"
+      + ".cards{{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0;}}"
       + ".card{{border:1px solid #cbd5e1;border-radius:4px;padding:7px 8px;break-inside:avoid;}}"
       + ".label{{font-size:9px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:.4px;}}"
       + ".value{{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.15;margin-top:2px;}}"
@@ -6475,6 +6479,8 @@ function samToggle(el) {{
     var vacationRows = _faVacationEntries(name, yr, monthFilter);
     var sickCount = sickRows.length;
     var vacationCount = vacationRows.length;
+    var vacationCredit = _vacationCreditMin(vacationRows);
+    var nettoWithVacation = stats.netto + vacationCredit;
 
     var html = "";
 
@@ -6482,7 +6488,7 @@ function samToggle(el) {{
           + "<div style='display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;'>"
           + "<div>"
           + "<div style='font-size:20px;font-weight:900;color:#0b1220;'>" + faEsc(name) + "</div>"
-          + "<div style='font-size:11.5px;color:#64748b;font-weight:700;margin-top:3px;'>Schichten / Tachograph · Netto-Arbeitszeit aus Arbeitszeitprofil</div>"
+          + "<div style='font-size:11.5px;color:#64748b;font-weight:700;margin-top:3px;'>Schichten / Tachograph · Netto-Arbeitszeit aus Arbeitszeitprofil · Urlaub +8:00 je Tag</div>"
           + "</div>"
           + "<div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>"
           + "<label style='font-size:10.5px;color:#64748b;font-weight:800;text-transform:uppercase;letter-spacing:.5px;'>Monat</label>"
@@ -6512,8 +6518,12 @@ function samToggle(el) {{
           + "<div style='font-size:17px;font-weight:900;color:" + (sickCount ? "#be123c" : "#166534") + ";font-variant-numeric:tabular-nums;line-height:1.15;'>" + sickCount + "</div></div>";
     html += "<div><div style='font-size:9.5px;color:#64748b;text-transform:uppercase;letter-spacing:.45px;font-weight:700;'>Urlaubstage</div>"
           + "<div style='font-size:17px;font-weight:900;color:" + (vacationCount ? "#075985" : "#166534") + ";font-variant-numeric:tabular-nums;line-height:1.15;'>" + vacationCount + "</div></div>";
-    html += "<div><div style='font-size:9.5px;color:#64748b;text-transform:uppercase;letter-spacing:.45px;font-weight:700;'>Σ Netto-Arbeitszeit</div>"
+    html += "<div><div style='font-size:9.5px;color:#64748b;text-transform:uppercase;letter-spacing:.45px;font-weight:700;'>Σ Netto Schichten</div>"
           + "<div style='font-size:17px;font-weight:900;color:#1e3a5f;font-variant-numeric:tabular-nums;line-height:1.15;'>" + _fmtMin(stats.netto) + "</div></div>";
+    html += "<div><div style='font-size:9.5px;color:#64748b;text-transform:uppercase;letter-spacing:.45px;font-weight:700;'>Urlaub +8h</div>"
+          + "<div style='font-size:17px;font-weight:900;color:" + (vacationCredit ? "#075985" : "#166534") + ";font-variant-numeric:tabular-nums;line-height:1.15;'>" + _fmtMin(vacationCredit) + "</div></div>";
+    html += "<div><div style='font-size:9.5px;color:#64748b;text-transform:uppercase;letter-spacing:.45px;font-weight:700;'>Σ Netto inkl. Urlaub</div>"
+          + "<div style='font-size:17px;font-weight:900;color:#0f172a;font-variant-numeric:tabular-nums;line-height:1.15;'>" + _fmtMin(nettoWithVacation) + "</div></div>";
     html += "<div><div style='font-size:9.5px;color:#64748b;text-transform:uppercase;letter-spacing:.45px;font-weight:700;'>Schichten &gt; 10:00 Netto</div>"
           + "<div style='font-size:17px;font-weight:900;color:" + (stats.over10 ? "#be123c" : "#166534") + ";font-variant-numeric:tabular-nums;line-height:1.15;'>" + stats.over10 + "</div></div>";
     html += "<div><div style='font-size:9.5px;color:#64748b;text-transform:uppercase;letter-spacing:.45px;font-weight:700;'>Σ Schichtdauer</div>"
@@ -6534,7 +6544,7 @@ function samToggle(el) {{
       html += "<div style='padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:14px;flex-wrap:wrap;'>";
       html += "<span style='font-size:12px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.6px;'>" + faEsc(selectedLabel) + "</span>";
       html += "<span style='font-size:11px;color:#94a3b8;font-weight:600;'>" + stats.count + " Schichten" + (sickCount ? " · Krank " + sickCount : "") + (vacationCount ? " · Urlaub " + vacationCount : "") + "</span>";
-      html += "<span style='margin-left:auto;font-size:11px;color:#64748b;font-weight:600;'>Σ Netto <b style='color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + _fmtMin(stats.netto) + "</b> &nbsp;·&nbsp; &gt; 10:00 Netto <b style='color:#be123c;font-variant-numeric:tabular-nums;'>" + stats.over10 + "</b></span>";
+      html += "<span style='margin-left:auto;font-size:11px;color:#64748b;font-weight:600;'>Σ Netto <b style='color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + _fmtMin(stats.netto) + "</b> &nbsp;·&nbsp; Urlaub +8h <b style='color:#075985;font-variant-numeric:tabular-nums;'>" + _fmtMin(vacationCredit) + "</b> &nbsp;·&nbsp; Σ inkl. Urlaub <b style='color:#0f172a;font-variant-numeric:tabular-nums;'>" + _fmtMin(nettoWithVacation) + "</b> &nbsp;·&nbsp; &gt; 10:00 Netto <b style='color:#be123c;font-variant-numeric:tabular-nums;'>" + stats.over10 + "</b></span>";
       html += "</div>" + _renderShiftTable(shifts) + "</div>";
     }} else {{
       monthKeys.forEach(function(mk) {{
@@ -6542,11 +6552,13 @@ function samToggle(el) {{
         var gs = _summarizeShifts(grp.shifts);
         var gsSick = _faSickEntries(name, yr, mk).length;
         var gsVacation = _faVacationEntries(name, yr, mk).length;
+        var gsVacationCredit = gsVacation * 480;
+        var gsNettoWithVacation = gs.netto + gsVacationCredit;
         html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;margin-bottom:12px;'>";
         html += "<div style='padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:14px;flex-wrap:wrap;'>";
         html += "<span style='font-size:12px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.6px;'>" + faEsc(grp.label) + "</span>";
         html += "<span style='font-size:11px;color:#94a3b8;font-weight:600;'>" + gs.count + " Schichten" + (gsSick ? " · Krank " + gsSick : "") + (gsVacation ? " · Urlaub " + gsVacation : "") + "</span>";
-        html += "<span style='margin-left:auto;font-size:11px;color:#64748b;font-weight:600;'>Σ Netto <b style='color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + _fmtMin(gs.netto) + "</b> &nbsp;·&nbsp; &gt; 10:00 Netto <b style='color:#be123c;font-variant-numeric:tabular-nums;'>" + gs.over10 + "</b></span>";
+        html += "<span style='margin-left:auto;font-size:11px;color:#64748b;font-weight:600;'>Σ Netto <b style='color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + _fmtMin(gs.netto) + "</b> &nbsp;·&nbsp; Urlaub +8h <b style='color:#075985;font-variant-numeric:tabular-nums;'>" + _fmtMin(gsVacationCredit) + "</b> &nbsp;·&nbsp; Σ inkl. Urlaub <b style='color:#0f172a;font-variant-numeric:tabular-nums;'>" + _fmtMin(gsNettoWithVacation) + "</b> &nbsp;·&nbsp; &gt; 10:00 Netto <b style='color:#be123c;font-variant-numeric:tabular-nums;'>" + gs.over10 + "</b></span>";
         html += "</div>" + _renderShiftTable(grp.shifts) + "</div>";
       }});
     }}
@@ -6585,6 +6597,8 @@ function samToggle(el) {{
     var stats = _summarizeShifts(shifts);
     var sickRows = _faSickEntries(name, yr, monthFilter);
     var vacationRows = _faVacationEntries(name, yr, monthFilter);
+    var vacationCredit = _vacationCreditMin(vacationRows);
+    var nettoWithVacation = stats.netto + vacationCredit;
     var lkwEntries = Object.keys(stats.lkwSet || {{}}).map(function(k) {{ return [k, stats.lkwSet[k]]; }}).sort(function(a,b) {{ return b[1]-a[1]; }});
     var printedAt = new Date().toLocaleString("de-DE");
 
@@ -6608,7 +6622,9 @@ function samToggle(el) {{
         + "<div class='card'><div class='label'>Schichten</div><div class='value'>" + stats.count + "</div></div>"
         + "<div class='card'><div class='label'>Kranktage</div><div class='value'>" + sickRows.length + "</div></div>"
         + "<div class='card'><div class='label'>Urlaubstage</div><div class='value'>" + vacationRows.length + "</div></div>"
-        + "<div class='card'><div class='label'>Σ Netto-Arbeitszeit</div><div class='value'>" + _fmtMin(stats.netto) + "</div></div>"
+        + "<div class='card'><div class='label'>Σ Netto Schichten</div><div class='value'>" + _fmtMin(stats.netto) + "</div></div>"
+        + "<div class='card'><div class='label'>Urlaub +8h</div><div class='value'>" + _fmtMin(vacationCredit) + "</div></div>"
+        + "<div class='card'><div class='label'>Σ Netto inkl. Urlaub</div><div class='value'>" + _fmtMin(nettoWithVacation) + "</div></div>"
         + "<div class='card'><div class='label'>Schichten &gt; 10:00 Netto</div><div class='value'>" + stats.over10 + "</div></div>"
         + "<div class='card'><div class='label'>Σ Schichtdauer</div><div class='value'>" + _fmtMin(stats.dauer) + "</div></div>"
         + "</div>";
@@ -6617,8 +6633,8 @@ function samToggle(el) {{
           + sickRows.map(function(e) {{ return faEsc(e.datum || e.dateKey); }}).join(", ") + "</div>";
     }}
     if (vacationRows.length) {{
-      doc += "<div style='border:1px solid #bae6fd;border-radius:4px;padding:6px 8px;margin:6px 0 6px 0;font-size:10.5px;'><b>Urlaubstage:</b> "
-          + vacationRows.map(function(e) {{ return faEsc(e.datum || e.dateKey); }}).join(", ") + "</div>";
+      doc += "<div style='border:1px solid #bae6fd;border-radius:4px;padding:6px 8px;margin:6px 0 6px 0;font-size:10.5px;'><b>Urlaubstage (+8:00 je Tag / Σ " + _fmtMin(vacationCredit) + "):</b> "
+          + vacationRows.map(function(e) {{ return faEsc(e.datum || e.dateKey) + " (+8:00)"; }}).join(", ") + "</div>";
     }}
     if (lkwEntries.length) {{
       doc += "<div style='border:1px solid #cbd5e1;border-radius:4px;padding:6px 8px;margin:6px 0 10px 0;font-size:10.5px;'><b>LKW in Auswahl:</b> "
@@ -6823,17 +6839,24 @@ function samToggle(el) {{
 
     var statsEl = document.getElementById("fa-stats");
     if (statsEl) {{
-      var totalShifts = 0, totalNetto = 0, totalOver10 = 0, totalSick = 0;
+      var totalShifts = 0, totalNetto = 0, totalOver10 = 0, totalSick = 0, totalVacation = 0, totalVacationCredit = 0;
       filtered.forEach(function(d) {{
         var s = _faShiftStatsForName(d.name);
         var sick = _faSickEntries(d.name, faYearFilter, "all").length;
+        var vacation = _faVacationEntries(d.name, faYearFilter, "all").length;
         totalShifts += s.count || 0;
         totalNetto += s.netto || 0;
         totalOver10 += s.over10 || 0;
         totalSick += sick || 0;
+        totalVacation += vacation || 0;
+        totalVacationCredit += vacation * 480;
       }});
       statsEl.innerHTML = "<b>" + filtered.length + "</b> Fahrer &nbsp;&middot;&nbsp; "
-        + "<b>" + totalShifts + "</b> Schichten &nbsp;&middot;&nbsp; Krank <b style='color:#be123c;'>" + totalSick + "</b> &nbsp;&middot;&nbsp; Σ Netto <b>" + _fmtMin(totalNetto) + "</b>"
+        + "<b>" + totalShifts + "</b> Schichten &nbsp;&middot;&nbsp; Krank <b style='color:#be123c;'>" + totalSick + "</b>"
+        + " &nbsp;&middot;&nbsp; Urlaub <b style='color:#075985;'>" + totalVacation + "</b>"
+        + " &nbsp;&middot;&nbsp; Σ Netto Schichten <b>" + _fmtMin(totalNetto) + "</b>"
+        + " &nbsp;&middot;&nbsp; Urlaub +8h <b style='color:#075985;'>" + _fmtMin(totalVacationCredit) + "</b>"
+        + " &nbsp;&middot;&nbsp; Σ inkl. Urlaub <b>" + _fmtMin(totalNetto + totalVacationCredit) + "</b>"
         + " &nbsp;&middot;&nbsp; &gt;10:00 Netto <b style='color:#be123c;'>" + totalOver10 + "</b>";
     }}
 
@@ -6853,7 +6876,7 @@ function samToggle(el) {{
       html += "<div data-fa-driver='" + faEsc(d.name) + "'"
         + " style='padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;background:" + bg + ";'>"
         + "<div style='font-weight:800;font-size:13px;color:" + fg + ";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + faEsc(d.name) + "</div>"
-        + "<div style='font-size:10px;color:" + sub + ";font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums;'>" + s.count + " Schichten" + (sick ? " · Krank " + sick : "") + (vacation ? " · Urlaub " + vacation : "") + " · Netto " + _fmtMin(s.netto) + "</div>"
+        + "<div style='font-size:10px;color:" + sub + ";font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums;'>" + s.count + " Schichten" + (sick ? " · Krank " + sick : "") + (vacation ? " · Urlaub " + vacation + " (+" + _fmtMin(vacation * 480) + ")" : "") + " · Netto " + _fmtMin(s.netto + (vacation * 480)) + "</div>"
         + "<div style='display:flex;gap:3px;flex-wrap:wrap;margin-top:4px;'>"
         + "<span style='font-size:8px;font-weight:800;padding:1px 4px;border-radius:2px;background:" + badgeBg + ";color:" + badgeFg + ";'>" + s.count + " S</span>"
         + (sick ? "<span style='font-size:8px;font-weight:800;padding:1px 4px;border-radius:2px;background:" + (active ? "rgba(255,255,255,.16)" : "#fee2e2") + ";color:" + (active ? "#fff" : "#be123c") + ";'>K " + sick + "</span>" : "")
