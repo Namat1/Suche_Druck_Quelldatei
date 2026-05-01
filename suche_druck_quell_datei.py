@@ -6215,9 +6215,13 @@ function samToggle(el) {{
     _faAddAbsenceMonths(name, yr, byMonth);
     var monthKeys = Object.keys(byMonth).sort();
 
-    if (monthKeys.length && (!faShiftMonthFilterByDriver[name] || (faShiftMonthFilterByDriver[name] !== "all" && !byMonth[faShiftMonthFilterByDriver[name]]))) {{
-      // Standard: aktueller/letzter vorhandener Monat, damit der Monatsdruck sofort passt
-      faShiftMonthFilterByDriver[name] = monthKeys[monthKeys.length - 1];
+    // Standardansicht beim Öffnen: Jahresübersicht / alle Monate.
+    // Nur wenn der Nutzer bewusst einen Monat gewählt hat und dieser Monat nicht mehr existiert,
+    // wird wieder auf die Jahresübersicht zurückgestellt.
+    if (!faShiftMonthFilterByDriver[name]) {{
+      faShiftMonthFilterByDriver[name] = "all";
+    }} else if (faShiftMonthFilterByDriver[name] !== "all" && !byMonth[faShiftMonthFilterByDriver[name]]) {{
+      faShiftMonthFilterByDriver[name] = "all";
     }}
     var monthFilter = faShiftMonthFilterByDriver[name] || "all";
     var shifts = monthFilter === "all" ? yearShifts : ((byMonth[monthFilter] && byMonth[monthFilter].shifts) ? byMonth[monthFilter].shifts : []);
@@ -6340,7 +6344,7 @@ function samToggle(el) {{
     }});
     _faAddAbsenceMonths(name, yr, byMonth);
     var monthKeys = Object.keys(byMonth).sort();
-    var monthFilter = faShiftMonthFilterByDriver[name] || (monthKeys.length ? monthKeys[monthKeys.length - 1] : "all");
+    var monthFilter = faShiftMonthFilterByDriver[name] || "all";
     var shifts = monthFilter === "all" ? yearShifts : ((byMonth[monthFilter] && byMonth[monthFilter].shifts) ? byMonth[monthFilter].shifts : []);
     var label = monthFilter === "all" ? "Alle Monate" : (byMonth[monthFilter] ? byMonth[monthFilter].label : "Monat");
     var stats = _summarizeShifts(shifts);
