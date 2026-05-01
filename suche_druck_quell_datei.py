@@ -3556,6 +3556,20 @@ function verstossFmtMin(n) {
   return sign + h + " Std. " + m + " Min.";
 }
 
+function verstossPct(part, total) {
+  part = Number(part) || 0;
+  total = Number(total) || 0;
+  if (!total || !part) return "0 %";
+  var pct = (part / total) * 100;
+  var digits = pct < 10 ? 1 : 0;
+  return pct.toLocaleString("de-DE", { minimumFractionDigits: digits, maximumFractionDigits: digits }) + " %";
+}
+
+function verstossCountPctLabel(count, total) {
+  count = Number(count) || 0;
+  return count + " (" + verstossPct(count, total) + ")";
+}
+
 function verstossVal(v) {
   return (v === null || v === undefined || v === "") ? "\u2014" : verstossEsc(v);
 }
@@ -3692,6 +3706,57 @@ function verstossChart(id, cfg) {
   _vsGraphCharts[id] = new Chart(canvas, cfg);
 }
 
+function verstossPctLabelPlugin(total, mode) {
+  return {
+    id: "verstossPctLabels_" + mode,
+    afterDatasetsDraw: function(chart) {
+      var dataset = (chart.data && chart.data.datasets && chart.data.datasets[0]) ? chart.data.datasets[0] : null;
+      if (!dataset || !Array.isArray(dataset.data)) return;
+      var meta = chart.getDatasetMeta(0);
+      if (!meta || !meta.data) return;
+      var ctx = chart.ctx;
+      ctx.save();
+      ctx.font = "800 10px Segoe UI, Arial, sans-serif";
+      ctx.fillStyle = "#0f172a";
+      ctx.textBaseline = "middle";
+      meta.data.forEach(function(el, i) {
+        var val = Number(dataset.data[i]) || 0;
+        if (!val) return;
+        var label = (mode === "doughnut") ? verstossPct(val, total) : verstossCountPctLabel(val, total);
+        var pos = el.tooltipPosition ? el.tooltipPosition() : { x: 0, y: 0 };
+        if (mode === "bar-y") {
+          ctx.textAlign = "left";
+          ctx.fillText(label, pos.x + 8, pos.y);
+        } else if (mode === "bar-x") {
+          ctx.textAlign = "center";
+          ctx.fillText(label, pos.x, pos.y - 10);
+        } else if (mode === "doughnut") {
+          if ((val / Math.max(Number(total) || 1, 1)) < 0.055) return;
+          ctx.textAlign = "center";
+          ctx.fillStyle = "#fff";
+          ctx.font = "900 11px Segoe UI, Arial, sans-serif";
+          ctx.fillText(label, pos.x, pos.y);
+          ctx.fillStyle = "#0f172a";
+          ctx.font = "800 10px Segoe UI, Arial, sans-serif";
+        }
+      });
+      ctx.restore();
+    }
+  };
+}
+
+function verstossTooltipPct(total, axis) {
+  return {
+    callbacks: {
+      label: function(ctx) {
+        var v = axis === "x" ? ctx.parsed.x : ctx.parsed.y;
+        v = Number(v) || 0;
+        return "Verstöße: " + verstossCountPctLabel(v, total);
+      }
+    }
+  };
+}
+
 function verstossInitGraph() {
   verstossPopulateGraphYears();
   verstossRenderGraph();
@@ -3747,16 +3812,16 @@ function verstossRenderGraph() {
   html += "</div>";
 
   html += "<div style='display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px;'>";
-  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:330px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:8px;'>Verstöße nach Monat</div><div style='height:270px;'><canvas id='verstoss-chart-month'></canvas></div></div>";
-  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:330px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:8px;'>Verstoßarten</div><div style='height:270px;'><canvas id='verstoss-chart-type'></canvas></div></div>";
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:330px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Verstöße nach Monat</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anzahl und Anteil an allen Verstößen</div><div style='height:270px;'><canvas id='verstoss-chart-month'></canvas></div></div>";
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:330px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Verstoßarten</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anteil je Verstoßart</div><div style='height:270px;'><canvas id='verstoss-chart-type'></canvas></div></div>";
   html += "</div>";
 
-  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:8px;'>Top Fahrer nach Anzahl</div><div style='height:360px;'><canvas id='verstoss-chart-driver'></canvas></div></div>";
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Top Fahrer nach Anzahl</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anzahl und Anteil an allen Verstößen</div><div style='height:360px;'><canvas id='verstoss-chart-driver'></canvas></div></div>";
 
   html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:14px;'>";
   html += "<div style='padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:900;color:#0f172a;'>Monatsübersicht " + verstossEsc(label) + "</div>";
   html += "<table style='width:100%;border-collapse:collapse;font-size:12px;'><thead><tr style='background:#1e3a5f;color:#fff;'>";
-  ["Monat", "Verstöße", "Bußgeld Fahrer", "Bußgeld Firma"].forEach(function(h, i) {
+  ["Monat", "Verstöße", "Anteil", "Bußgeld Fahrer", "Bußgeld Firma"].forEach(function(h, i) {
     html += "<th style='padding:8px 10px;text-align:" + (i === 0 ? "left" : "right") + ";font-size:11px;text-transform:uppercase;letter-spacing:.35px;'>" + h + "</th>";
   });
   html += "</tr></thead><tbody>";
@@ -3764,6 +3829,7 @@ function verstossRenderGraph() {
     html += "<tr style='background:" + (i % 2 ? "#f8fafc" : "#fff") + ";border-bottom:1px solid #eef2f7;'>";
     html += "<td style='padding:8px 10px;font-weight:800;color:#0f172a;'>" + m + "</td>";
     html += "<td style='padding:8px 10px;text-align:right;font-weight:900;color:#1e3a5f;'>" + monthCount[i] + "</td>";
+    html += "<td style='padding:8px 10px;text-align:right;font-weight:900;color:" + (monthCount[i] ? "#991b1b" : "#cbd5e1") + ";'>" + verstossPct(monthCount[i], total) + "</td>";
     html += "<td style='padding:8px 10px;text-align:right;font-weight:800;color:" + (monthDriver[i] ? "#dc2626" : "#cbd5e1") + ";'>" + verstossFmtEuro(monthDriver[i]) + "</td>";
     html += "<td style='padding:8px 10px;text-align:right;font-weight:800;color:" + (monthCompany[i] ? "#b45309" : "#cbd5e1") + ";'>" + verstossFmtEuro(monthCompany[i]) + "</td>";
     html += "</tr>";
@@ -3780,19 +3846,45 @@ function verstossRenderGraph() {
   verstossChart("verstoss-chart-month", {
     type: "bar",
     data: { labels: months, datasets: [{ label: "Verstöße", data: monthCount, backgroundColor: "#dc2626", borderRadius: 5 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    plugins: [verstossPctLabelPlugin(total, "bar-x")],
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { top: 18 } },
+      plugins: { legend: { display: false }, tooltip: verstossTooltipPct(total, "y") },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+    }
   });
 
   verstossChart("verstoss-chart-type", {
     type: "doughnut",
-    data: { labels: topTypes.map(function(x){ return x[0]; }), datasets: [{ data: topTypes.map(function(x){ return x[1]; }), backgroundColor: ["#dc2626", "#f97316", "#f59e0b", "#1e3a5f", "#2563eb", "#0891b2", "#16a34a", "#7c3aed", "#be123c", "#475569", "#0f766e", "#92400e"] }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } } } }
+    data: {
+      labels: topTypes.map(function(x){ return x[0] + " · " + verstossCountPctLabel(x[1], total); }),
+      datasets: [{ data: topTypes.map(function(x){ return x[1]; }), backgroundColor: ["#dc2626", "#f97316", "#f59e0b", "#1e3a5f", "#2563eb", "#0891b2", "#16a34a", "#7c3aed", "#be123c", "#475569", "#0f766e", "#92400e"] }]
+    },
+    plugins: [verstossPctLabelPlugin(total, "doughnut")],
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } },
+        tooltip: verstossTooltipPct(total, "y")
+      }
+    }
   });
 
   verstossChart("verstoss-chart-driver", {
     type: "bar",
     data: { labels: topDrivers.map(function(x){ return x[0]; }), datasets: [{ label: "Verstöße", data: topDrivers.map(function(x){ return x[1]; }), backgroundColor: "#1e3a5f", borderRadius: 5 }] },
-    options: { indexAxis: "y", responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } }
+    plugins: [verstossPctLabelPlugin(total, "bar-y")],
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { right: 90 } },
+      plugins: { legend: { display: false }, tooltip: verstossTooltipPct(total, "x") },
+      scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+    }
   });
 }
 
