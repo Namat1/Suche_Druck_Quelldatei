@@ -4506,10 +4506,7 @@ iframe.active{{display:block}}
       <div style="display:flex;gap:4px;">
         <button onclick="faSort('name')" id="fa-sort-name"
           style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#1b66b3;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">A–Z</button>
-        <button onclick="faSort('arbeit')" id="fa-sort-arbeit"
-          style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Netto</button>
       </div>
-      <button onclick="faPrintShiftMonth()" style="padding:5px 14px;background:#dc2626;border:none;color:#fff;border-radius:5px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;">&#128196; Monats-PDF</button>
       <div id="fa-stats" style="font-size:11px;color:#64748b;margin-left:auto;"></div>
     </div>
     <div style="display:flex;flex:1;overflow:hidden;">
@@ -6069,26 +6066,35 @@ function samToggle(el) {{
       var tagDisplay = (s.wochentag ? "<span style='display:inline-block;width:22px;color:#94a3b8;font-weight:700;font-size:10.5px;'>" + faEsc(s.wochentag) + "</span> " : "") + faEsc(s.tag);
 
       html += "<tr style='background:" + rowBg + ";border-bottom:1px solid #f1f5f9;'>";
-      html += "<td style='padding:6px 11px;color:" + tagColor + ";font-weight:" + (weekend ? "700" : "600") + ";font-variant-numeric:tabular-nums;'>" + tagDisplay + "</td>";
-      html += "<td style='padding:6px 11px;color:#475569;font-variant-numeric:tabular-nums;'>" + faEsc(s.beginn || "") + "</td>";
-      html += "<td style='padding:6px 11px;color:#475569;font-variant-numeric:tabular-nums;'>" + endeStr + "</td>";
-      html += "<td style='padding:6px 11px;text-align:right;font-weight:800;color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + faEsc(s.schichtdauer || "") + "</td>";
-      html += "<td style='padding:6px 11px;text-align:right;font-weight:" + (over ? "900" : "700") + ";color:" + (over ? "#be123c" : "#0f172a") + ";font-variant-numeric:tabular-nums;'>" + faEsc(s.profil || "") + "</td>";
-      html += "<td style='padding:6px 11px;color:#166534;font-weight:600;font-size:11px;'>" + faEsc(s.lkw || "") + "</td>";
+      html += "<td style='padding:5px 8px;color:" + tagColor + ";font-weight:" + (weekend ? "700" : "600") + ";font-variant-numeric:tabular-nums;white-space:nowrap;'>" + tagDisplay + "</td>";
+      html += "<td style='padding:5px 6px;color:#475569;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc(s.beginn || "") + "</td>";
+      html += "<td style='padding:5px 6px;color:#475569;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + endeStr + "</td>";
+      html += "<td style='padding:5px 7px;text-align:right;font-weight:800;color:#1e3a5f;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc(s.schichtdauer || "") + "</td>";
+      html += "<td style='padding:5px 7px;text-align:right;font-weight:" + (over ? "900" : "700") + ";color:" + (over ? "#be123c" : "#0f172a") + ";font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc(s.profil || "") + "</td>";
+      html += "<td style='padding:5px 8px;color:#166534;font-weight:600;font-size:11px;white-space:normal;'>" + faEsc(s.lkw || "") + "</td>";
       html += "</tr>";
     }});
     return html;
   }}
 
   function _renderShiftTable(rows) {{
-    var html = "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
+    var thBase = "padding:6px 8px;font-weight:800;font-size:9.5px;text-transform:uppercase;letter-spacing:.35px;border-bottom:1px solid #e2e8f0;white-space:nowrap;";
+    var html = "<table style='width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;'>";
+    html += "<colgroup>"
+          + "<col style='width:128px;'>"
+          + "<col style='width:68px;'>"
+          + "<col style='width:68px;'>"
+          + "<col style='width:94px;'>"
+          + "<col style='width:108px;'>"
+          + "<col>"
+          + "</colgroup>";
     html += "<thead><tr style='background:#fafbfc;color:#64748b;'>"
-          + "<th style='padding:7px 11px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Tag</th>"
-          + "<th style='padding:7px 11px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Beginn</th>"
-          + "<th style='padding:7px 11px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Ende</th>"
-          + "<th style='padding:7px 11px;text-align:right;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Schichtdauer</th>"
-          + "<th style='padding:7px 11px;text-align:right;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Netto-Arbeitszeit</th>"
-          + "<th style='padding:7px 11px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>LKW</th>"
+          + "<th style='" + thBase + "text-align:left;'>Tag</th>"
+          + "<th style='" + thBase + "text-align:left;'>Beginn</th>"
+          + "<th style='" + thBase + "text-align:left;'>Ende</th>"
+          + "<th style='" + thBase + "text-align:right;'>Schichtdauer</th>"
+          + "<th style='" + thBase + "text-align:right;'>Netto</th>"
+          + "<th style='" + thBase + "text-align:left;'>LKW</th>"
           + "</tr></thead><tbody>";
     html += _renderShiftRows(rows);
     html += "</tbody></table>";
@@ -6136,7 +6142,6 @@ function samToggle(el) {{
       html += "<option value='" + faEsc(mk) + "'" + (monthFilter === mk ? " selected" : "") + ">" + faEsc(byMonth[mk].label) + "</option>";
     }});
     html += "</select>"
-          + "<button onclick=\\\"faPrintShiftMonth()\\\" style='padding:8px 12px;border:1px solid #2563eb;background:#eff6ff;color:#1d4ed8;border-radius:5px;font-size:12px;font-weight:900;cursor:pointer;'>Monats-PDF drucken</button>"
           + "</div></div></div>";
 
     if (!yearShifts.length) {{
