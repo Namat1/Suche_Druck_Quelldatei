@@ -6030,9 +6030,141 @@ function samToggle(el) {{
     return (MONATE[parseInt(m[2],10)-1] || m[2]) + " " + m[1];
   }}
 
+  var _faPlanDriverIndex = null;
+  // Manuelle Ausnahmezuordnung, falls Schreibweisen trotz Normalisierung nicht eindeutig passen.
+  // Links: Name aus Tachograph-CSV, rechts: Name aus Tourenplanung/Fahrerauswertung.
+  var FA_NAME_ALIASES = {{
+    // Beispiel: "Mustermann, H." : "Mustermann, Hans"
+  }};
+
+  function _faNameNorm(value) {{
+    var s = String(value == null ? "" : value).toLowerCase();
+    try {{ s = s.normalize("NFKD").replace(/[\u0300-\u036f]/g, ""); }} catch(e) {{}}
+    s = s.replace(/ß/g, "ss").replace(/æ/g, "ae").replace(/œ/g, "oe");
+    s = s.replace(/\([^)]*\)/g, " ");
+    s = s.replace(/[_.\/,;:|]+/g, " ");
+    s = s.replace(/[-–—]+/g, " ");
+    s = s.replace(/\s+/g, " ").trim();
+    return s;
+  }}
+
+  function _faNameTokens(value) {{
+    return _faNameNorm(value).split(" ").filter(function(t) {{
+      return t && t !== "fahrer" && t !== "fahrerin" && t !== "herr" && t !== "frau";
+    }});
+  }}
+
+  function _faNameCombos(value) {{
+    var raw = String(value == null ? "" : value);
+    var combos = [];
+    if (raw.indexOf(",") >= 0) {{
+      var parts = raw.split(",");
+      var last = _faNameNorm(parts.shift() || "");
+      var first = _faNameNorm(parts.join(" ") || "");
+      if (last || first) combos.push({{ last:last, first:first }});
+    }}
+    var t = _faNameTokens(raw);
+    if (t.length >= 2) {{
+      // Variante Vorname Nachname
+      combos.push({{ last:t[t.length-1], first:t.slice(0, -1).join(" ") }});
+      // Variante Nachname Vorname
+      combos.push({{ last:t[0], first:t.slice(1).join(" ") }});
+    }} else if (t.length === 1) {{
+      combos.push({{ last:t[0], first:"" }});
+    }}
+    var seen = {{}};
+    return combos.filter(function(c) {{
+      var k = c.last + "|" + c.first;
+      if (seen[k]) return false;
+      seen[k] = true;
+      return !!(c.last || c.first);
+    }});
+  }}
+
+  function _faNameKeys(value, initialOnly) {{
+    var out = {{}};
+    var norm = _faNameNorm(value);
+    if (norm && !initialOnly) out[norm] = true;
+    var tokens = _faNameTokens(value);
+    if (tokens.length > 1 && !initialOnly) {{
+      out[tokens.join(" ")] = true;
+      out[tokens.slice().reverse().join(" ")] = true;
+    }}
+    _faNameCombos(value).forEach(function(c) {{
+      if (!c.last) return;
+      if (!initialOnly) {{
+        out[c.last + "|" + c.first] = true;
+        if (c.first) {{
+          out[c.last + " " + c.first] = true;
+          out[c.first + " " + c.last] = true;
+        }}
+      }}
+      var firstInitial = (c.first || "").charAt(0);
+      if (firstInitial) out[c.last + "|" + firstInitial] = true;
+    }});
+    return Object.keys(out);
+  }}
+
+  function _faIndexAdd(bucket, key, driver) {{
+    if (!key) return;
+    if (!bucket[key]) bucket[key] = [];
+    if (bucket[key].indexOf(driver) < 0) bucket[key].push(driver);
+  }}
+
+  function _faBuildPlanDriverIndex() {{
+    var idx = {{ exact:{{}}, initial:{{}}, last:{{}} }};
+    (FA_DATA || []).forEach(function(d) {{
+      if (!d || !d.name) return;
+      _faNameKeys(d.name, false).forEach(function(k) {{ _faIndexAdd(idx.exact, k, d); }});
+      _faNameKeys(d.name, true).forEach(function(k) {{ _faIndexAdd(idx.initial, k, d); }});
+      _faNameCombos(d.name).forEach(function(c) {{ _faIndexAdd(idx.last, c.last, d); }});
+    }});
+    return idx;
+  }}
+
+  function _faPickUniqueFromIndex(bucket, keys) {{
+    for (var i=0; i<keys.length; i++) {{
+      var arr = bucket[keys[i]] || [];
+      if (arr.length === 1) return arr[0];
+    }}
+    return null;
+  }}
+
   function _faPlanDriver(name) {{
-    if (!Array.isArray(FA_DATA)) return null;
-    return FA_DATA.find(function(d) {{ return d && d.name === name; }}) || null;
+    if (!Array.isArray(FA_DATA) || !FA_DATA.length) return null;
+
+    // 1) Direkter Treffer bleibt bevorzugt.
+    var direct = FA_DATA.find(function(d) {{ return d && d.name === name; }});
+    if (direct) return direct;
+
+    // 1b) Manuelle Ausnahmen, wenn ein Name in den Dateien wirklich unterschiedlich geschrieben ist.
+    var alias = FA_NAME_ALIASES[name] || FA_NAME_ALIASES[_faNameNorm(name)] || "";
+    if (alias) {{
+      var aliasNorm = _faNameNorm(alias);
+      var aliasDriver = FA_DATA.find(function(d) {{
+        return d && (d.name === alias || _faNameNorm(d.name) === aliasNorm);
+      }});
+      if (aliasDriver) return aliasDriver;
+    }}
+
+    // 2) Robuster Namensabgleich: Komma egal, Reihenfolge egal, Umlaute egal, Bindestriche egal.
+    if (!_faPlanDriverIndex) _faPlanDriverIndex = _faBuildPlanDriverIndex();
+
+    var exact = _faPickUniqueFromIndex(_faPlanDriverIndex.exact, _faNameKeys(name, false));
+    if (exact) return exact;
+
+    // 3) Fallback: gleicher Nachname + eindeutiger Vorname-Anfangsbuchstabe.
+    var initial = _faPickUniqueFromIndex(_faPlanDriverIndex.initial, _faNameKeys(name, true));
+    if (initial) return initial;
+
+    // 4) Sehr vorsichtiger Fallback: gleicher Nachname und eindeutiger Kandidat.
+    var combos = _faNameCombos(name);
+    for (var c=0; c<combos.length; c++) {{
+      var candidates = _faPlanDriverIndex.last[combos[c].last] || [];
+      if (candidates.length === 1) return candidates[0];
+    }}
+
+    return null;
   }}
 
   function _faPlanDateKey(entry) {{
