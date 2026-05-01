@@ -6251,6 +6251,26 @@ function samToggle(el) {{
     return _renderAbsenceBox(vacationRows, {{ title:"Urlaubstage", border:"#bae6fd", bg:"#e0f2fe", text:"#075985", badgeBg:"#e0f2fe", badgeText:"#075985" }});
   }}
 
+  function _renderLkwBox(lkwEntries) {{
+    if (!lkwEntries || !lkwEntries.length) return "";
+    var total = lkwEntries.reduce(function(sum, e) {{ return sum + (parseInt(e[1], 10) || 0); }}, 0);
+    var html = "<details style='background:#fff;border:1px solid #dbe4ef;border-radius:5px;margin-bottom:10px;overflow:hidden;'>";
+    html += "<summary style='cursor:pointer;padding:7px 10px;display:flex;align-items:center;gap:8px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.45px;color:#1e3a5f;'>"
+          + "<span>LKW in Auswahl</span>"
+          + "<span style='display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:18px;border-radius:4px;background:#f1f5f9;border:1px solid #dbe4ef;color:#1e3a5f;font-size:10px;font-weight:900;'>" + lkwEntries.length + "</span>"
+          + "<span style='color:#94a3b8;font-size:10px;font-weight:700;text-transform:none;letter-spacing:0;'>" + total + " Einsätze</span>"
+          + "<span style='margin-left:auto;color:#64748b;font-size:10px;font-weight:700;text-transform:none;letter-spacing:0;'>anklicken zum Anzeigen</span>"
+          + "</summary>";
+    html += "<div style='border-top:1px solid #dbe4ef;padding:7px 10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:4px;max-height:92px;overflow:auto;'>";
+    lkwEntries.forEach(function(e) {{
+      html += "<span style='min-height:22px;display:inline-flex;align-items:center;justify-content:space-between;gap:6px;background:#f8fafc;border:1px solid #dbe4ef;border-radius:4px;padding:2px 7px;font-size:10.5px;font-weight:800;color:#1e3a5f;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;'>"
+            + "<span style='overflow:hidden;text-overflow:ellipsis;'>" + faEsc(e[0]) + "</span>"
+            + "<span style='font-size:10px;color:#94a3b8;font-weight:700;flex:0 0 auto;'>" + e[1] + "x</span></span>";
+    }});
+    html += "</div></details>";
+    return html;
+  }}
+
   function _summarizeShifts(shifts) {{
     var out = {{ count: shifts.length, dauer: 0, netto: 0, over10: 0, samstage: 0, sonntage: 0, lkwSet: {{}} }};
     shifts.forEach(function(s) {{
@@ -6415,16 +6435,7 @@ function samToggle(el) {{
     html += _renderVacationBox(vacationRows);
 
     var lkwEntries = Object.keys(stats.lkwSet).map(function(k){{return [k, stats.lkwSet[k]];}}).sort(function(a,b){{return b[1]-a[1];}});
-    if (lkwEntries.length) {{
-      html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin-bottom:14px;'>";
-      html += "<div style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#64748b;margin-bottom:7px;'>LKW in Auswahl</div>";
-      html += "<div style='display:flex;flex-wrap:wrap;gap:5px;'>";
-      lkwEntries.forEach(function(e) {{
-        html += "<span style='display:inline-flex;align-items:baseline;gap:5px;background:#f1f5f9;border-radius:4px;padding:3px 9px;font-size:11.5px;font-weight:700;color:#1e3a5f;font-variant-numeric:tabular-nums;'>"
-              + faEsc(e[0]) + "<span style='font-size:10px;color:#94a3b8;font-weight:600;'>" + e[1] + "x</span></span>";
-      }});
-      html += "</div></div>";
-    }}
+    html += _renderLkwBox(lkwEntries);
 
     if (monthFilter !== "all") {{
       html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;margin-bottom:12px;'>";
