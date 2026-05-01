@@ -6142,6 +6142,7 @@ function samToggle(el) {{
       html += "<option value='" + faEsc(mk) + "'" + (monthFilter === mk ? " selected" : "") + ">" + faEsc(byMonth[mk].label) + "</option>";
     }});
     html += "</select>"
+          + "<button type='button' onclick='faPrintShiftMonth()' title='Aktuelle Monatsauswahl drucken' style='padding:8px 12px;border:1px solid #dc2626;border-radius:5px;background:#dc2626;color:#fff;font-size:12px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap;'>PDF Druck</button>"
           + "</div></div></div>";
 
     if (!yearShifts.length) {{
