@@ -5076,17 +5076,19 @@ function gkBuildTiles(activeIdx) {{
       if (k.entries.length === 1) singleKnr = k.entries[0].kundennummer || "";
       else multiCount = k.entries.length;
     }}
-    var bg      = active ? "#1e3a5f" : "#fff";
-    var border  = active ? "#1e3a5f" : "#e2e8f0";
-    var txtMain = active ? "#fff"    : "#0f172a";
-    var txtSub  = active ? "rgba(255,255,255,.65)" : "#94a3b8";
-    var knrBg    = active ? "rgba(255,255,255,.14)" : "#f1f5f9";
-    var knrTxt   = active ? "#fff" : "#1e3a5f";
-    var knrLabel = active ? "rgba(255,255,255,.55)" : "#94a3b8";
+    var bg      = active ? "linear-gradient(180deg,#f6dc67 0%,#e6be22 100%)" : "#fff";
+    var border  = active ? "#d5ac10" : "#e2e8f0";
+    var txtMain = active ? "#5a4200" : "#0f172a";
+    var txtSub  = active ? "rgba(90,66,0,.65)" : "#94a3b8";
+    var knrBg    = active ? "rgba(90,66,0,.14)" : "#f1f5f9";
+    var knrTxt   = active ? "#5a4200" : "#1e3a5f";
+    var knrLabel = active ? "rgba(90,66,0,.6)" : "#94a3b8";
     html += "<button type='button' onclick='gkShow(" + realIdx + ")'"
           + " style='cursor:pointer;border-radius:6px;padding:8px 11px;text-align:left;font-family:inherit;"
           + "border:1px solid " + border + ";background:" + bg + ";"
-          + "transition:all .12s;min-width:118px;max-width:230px;user-select:none;'>"
+          + "transition:all .12s;min-width:118px;max-width:230px;user-select:none;"
+          + (active ? "box-shadow:0 2px 8px rgba(214,172,16,.28);" : "")
+          + "'>"
           + "<div style='font-size:12px;font-weight:700;color:" + txtMain + ";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25;'>"
           + gkEsc(k.name) + "</div>";
     if (singleKnr) {{
