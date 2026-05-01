@@ -2450,7 +2450,118 @@ def parse_fahrer_excel(dateien: list) -> str:
     return _json.dumps(result, ensure_ascii=False)
 
 
-def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', spesen_json: str = '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}', grosskunden_json: str = "[]", last_updated: str = "") -> str:
+def parse_timerecording_csv(uploaded_file) -> str:
+    """Liest die Tachograph-Schicht-CSV (timerecording_v3*.csv) und liefert JSON
+    pro Fahrer:
+        {"Nachname, Vorname": [
+            {"tag":"DD.MM.YYYY","wochentag":"Mo","beginn":"HH:MM","ende":"HH:MM",
+             "ende_naechster_tag":bool,"schichtdauer":"HH:MM","profil":"HH:MM","lkw":"..."}, ...]}
+    """
+    import json as _json
+    import csv as _csv
+    import datetime as _dt
+    from io import StringIO
+
+    raw = read_upload_bytes(uploaded_file)
+    if not raw:
+        return "{}"
+    # BOM-tolerant decoding
+    for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        return "{}"
+
+    reader = _csv.reader(StringIO(text), delimiter=";", quotechar='"')
+    rows = list(reader)
+    if not rows or len(rows) < 2:
+        return "{}"
+
+    header = [h.strip().lower() for h in rows[0]]
+
+    def col(name_variants):
+        for v in name_variants:
+            v = v.lower().strip()
+            if v in header:
+                return header.index(v)
+        return -1
+
+    idx_person = col(["person"])
+    idx_beg    = col(["schichtbeginn"])
+    idx_end    = col(["schichtende"])
+    idx_dauer  = col(["schichtdauer"])
+    idx_profil = col(["arbeitszeit nach arbeitszeitprofil"])
+    idx_lkw    = col(["fahrzeuge"])
+
+    if idx_person < 0 or idx_beg < 0:
+        return "{}"
+
+    WD = ["Mo","Di","Mi","Do","Fr","Sa","So"]
+    by_driver = {}
+
+    def split_dt(s):
+        s = (s or "").strip()
+        if not s:
+            return ("", "")
+        # "DD.MM.YYYY HH:MM"
+        parts = s.split(" ")
+        if len(parts) >= 2:
+            return (parts[0].strip(), parts[1].strip())
+        return (s, "")
+
+    for r in rows[1:]:
+        if not r or len(r) <= idx_person:
+            continue
+        name = (r[idx_person] or "").strip()
+        if not name:
+            continue
+        beg_d, beg_t = split_dt(r[idx_beg]) if idx_beg < len(r) else ("", "")
+        end_d, end_t = split_dt(r[idx_end]) if 0 <= idx_end < len(r) else ("", "")
+        dauer  = (r[idx_dauer]  or "").strip() if 0 <= idx_dauer  < len(r) else ""
+        profil = (r[idx_profil] or "").strip() if 0 <= idx_profil < len(r) else ""
+        lkw    = (r[idx_lkw]    or "").strip() if 0 <= idx_lkw    < len(r) else ""
+
+        if not beg_d:
+            continue
+
+        # Wochentag + ISO-Sortierschlüssel
+        sort_key = beg_d
+        wd = ""
+        try:
+            d_obj = _dt.datetime.strptime(beg_d, "%d.%m.%Y")
+            wd = WD[d_obj.weekday()]
+            sort_key = d_obj.strftime("%Y-%m-%d") + " " + (beg_t or "00:00")
+        except Exception:
+            pass
+
+        next_day = bool(end_d) and end_d != beg_d
+
+        entry = {
+            "tag": beg_d,
+            "wochentag": wd,
+            "beginn": beg_t,
+            "ende": end_t,
+            "ende_naechster_tag": next_day,
+            "schichtdauer": dauer,
+            "profil": profil,
+            "lkw": lkw,
+            "_sort": sort_key,
+        }
+        by_driver.setdefault(name, []).append(entry)
+
+    # Sortieren je Fahrer
+    for n in by_driver:
+        by_driver[n].sort(key=lambda e: e.get("_sort", ""))
+        for e in by_driver[n]:
+            e.pop("_sort", None)
+
+    return _json.dumps(by_driver, ensure_ascii=False)
+
+
+def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', spesen_json: str = '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}', grosskunden_json: str = "[]", timerec_json: str = "{}", last_updated: str = "") -> str:
     try:
         _logo_up = st.session_state.get("g_logo")
     except Exception:
@@ -4902,6 +5013,8 @@ var ZULAGE_XLSX_DRITTKUNDEN = "{zulage_xlsx_drittkunden}";
 var VERSTOSS_DATA           = {verstoss_json};
 var SPESEN_DATA            = {spesen_json};
 var GK_DATA                = {grosskunden_json};
+var TIMEREC_DATA           = {timerec_json};
+var faActiveTab            = "uebersicht";
 
 {spesen_js_code}
 
@@ -5827,6 +5940,300 @@ function samToggle(el) {{
 }}
 
 {fa_js_code}
+
+// ── Fahrerauswertung: Schichten-Tab (Tachograph-Daten) ─────────────────────────
+(function() {{
+  var _faShowDetailOrig = window.faShowDetail;
+  if (typeof _faShowDetailOrig !== "function") return;
+
+  function faHasShifts(name) {{
+    return TIMEREC_DATA && TIMEREC_DATA[name] && TIMEREC_DATA[name].length > 0;
+  }}
+
+  function faTabBar(driverName, hasShifts, hasUebersicht) {{
+    var tabs = [];
+    if (hasUebersicht) tabs.push(["uebersicht","Übersicht"]);
+    if (hasShifts)     tabs.push(["schichten","Schichten"]);
+    if (tabs.length < 2) return "";
+    var html = "<div style='display:flex;gap:2px;margin-bottom:14px;border-bottom:1px solid #e2e8f0;'>";
+    tabs.forEach(function(t) {{
+      var active = faActiveTab === t[0];
+      html += "<button onclick=\"faSwitchTab('" + t[0] + "')\""
+            + " style='padding:9px 18px;border:none;background:none;cursor:pointer;font-family:inherit;"
+            + "font-size:13px;font-weight:" + (active ? "800" : "600") + ";"
+            + "color:" + (active ? "#1b66b3" : "#64748b") + ";"
+            + "border-bottom:2px solid " + (active ? "#1b66b3" : "transparent") + ";"
+            + "margin-bottom:-1px;'>" + t[1] + "</button>";
+    }});
+    html += "</div>";
+    return html;
+  }}
+
+  function _toMin(t) {{
+    if (!t) return 0;
+    var p = String(t).split(":");
+    if (p.length < 2) return 0;
+    var h = parseInt(p[0], 10) || 0;
+    var m = parseInt(p[1], 10) || 0;
+    return h * 60 + m;
+  }}
+  function _fmtMin(m) {{
+    if (!m) return "0:00";
+    var h = Math.floor(m / 60);
+    var mm = m % 60;
+    return h + ":" + (mm < 10 ? "0" + mm : mm);
+  }}
+
+  function faRenderShifts(name, panel) {{
+    var all = (TIMEREC_DATA[name] || []).slice();
+    var yr = faYearFilter;
+    var shifts = (yr === "all") ? all : all.filter(function(s) {{
+      var m = (s.tag || "").match(/(\d{{4}})$/);
+      return m && m[1] === yr;
+    }});
+
+    var html = faTabBar(name, true, !!FA_DATA.find(function(d){{return d.name===name;}}));
+
+    // Driver-Header
+    html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;padding:14px 18px;margin-bottom:12px;'>"
+          + "<div style='font-size:20px;font-weight:900;color:#0b1220;'>" + name + "</div>"
+          + "</div>";
+
+    if (!shifts.length) {{
+      html += "<div style='color:#94a3b8;padding:40px;text-align:center;font-size:14px;background:#fff;border:1px solid #e2e8f0;border-radius:5px;'>"
+            + "Keine Schichten in diesem Zeitraum.</div>";
+      panel.innerHTML = html;
+      panel.scrollTop = 0;
+      return;
+    }}
+
+    // Aggregate
+    var totalDauer = 0, totalProfil = 0, totalSat = 0, totalSun = 0;
+    var lkwSet = {{}};
+    shifts.forEach(function(s) {{
+      totalDauer  += _toMin(s.schichtdauer);
+      totalProfil += _toMin(s.profil);
+      if (s.wochentag === "Sa") totalSat++;
+      if (s.wochentag === "So") totalSun++;
+      (s.lkw || "").split(",").forEach(function(l) {{
+        l = l.trim();
+        if (l) lkwSet[l] = (lkwSet[l] || 0) + 1;
+      }});
+    }});
+
+    // Summary card
+    html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:14px 18px;margin-bottom:14px;display:flex;gap:24px;flex-wrap:wrap;'>";
+    html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Schichten</div>"
+          + "<div style='font-size:20px;font-weight:800;color:#0f172a;font-variant-numeric:tabular-nums;line-height:1.2;'>" + shifts.length + "</div></div>";
+    html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Σ Schichtdauer</div>"
+          + "<div style='font-size:20px;font-weight:800;color:#1e3a5f;font-variant-numeric:tabular-nums;line-height:1.2;'>" + _fmtMin(totalDauer) + "</div></div>";
+    html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Σ Arbeitszeitprofil</div>"
+          + "<div style='font-size:20px;font-weight:800;color:#1e3a5f;font-variant-numeric:tabular-nums;line-height:1.2;'>" + _fmtMin(totalProfil) + "</div></div>";
+    if (totalSat) html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Samstage</div>"
+          + "<div style='font-size:20px;font-weight:800;color:#b45309;font-variant-numeric:tabular-nums;line-height:1.2;'>" + totalSat + "</div></div>";
+    if (totalSun) html += "<div><div style='font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;font-weight:700;'>Sonntage</div>"
+          + "<div style='font-size:20px;font-weight:800;color:#dc2626;font-variant-numeric:tabular-nums;line-height:1.2;'>" + totalSun + "</div></div>";
+    html += "</div>";
+
+    // LKW-Liste
+    var lkwEntries = Object.keys(lkwSet).map(function(k){{return [k, lkwSet[k]];}}).sort(function(a,b){{return b[1]-a[1];}});
+    if (lkwEntries.length) {{
+      html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin-bottom:14px;'>";
+      html += "<div style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#64748b;margin-bottom:7px;'>LKW</div>";
+      html += "<div style='display:flex;flex-wrap:wrap;gap:5px;'>";
+      lkwEntries.forEach(function(e) {{
+        html += "<span style='display:inline-flex;align-items:baseline;gap:5px;background:#f1f5f9;border-radius:4px;padding:3px 9px;font-size:11.5px;font-weight:700;color:#1e3a5f;font-variant-numeric:tabular-nums;'>"
+              + e[0] + "<span style='font-size:10px;color:#94a3b8;font-weight:600;'>" + e[1] + "x</span></span>";
+      }});
+      html += "</div></div>";
+    }}
+
+    // Gruppieren nach Monat
+    var MONATE = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+    var byMonth = {{}};
+    shifts.forEach(function(s) {{
+      var m = (s.tag || "").match(/^(\d{{2}})\.(\d{{2}})\.(\d{{4}})$/);
+      var key   = m ? (m[3] + "-" + m[2]) : "0000-00";
+      var label = m ? (MONATE[parseInt(m[2],10)-1] + " " + m[3]) : "Unbekannt";
+      if (!byMonth[key]) byMonth[key] = {{ label: label, shifts: [] }};
+      byMonth[key].shifts.push(s);
+    }});
+    var monthKeys = Object.keys(byMonth).sort();
+
+    monthKeys.forEach(function(mk) {{
+      var grp = byMonth[mk];
+      var grpDauer = 0, grpProfil = 0;
+      grp.shifts.forEach(function(s) {{
+        grpDauer  += _toMin(s.schichtdauer);
+        grpProfil += _toMin(s.profil);
+      }});
+
+      html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;margin-bottom:12px;'>";
+      html += "<div style='padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:14px;flex-wrap:wrap;'>";
+      html += "<span style='font-size:12px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.6px;'>" + grp.label + "</span>";
+      html += "<span style='font-size:11px;color:#94a3b8;font-weight:600;'>" + grp.shifts.length + " Schichten</span>";
+      html += "<span style='margin-left:auto;font-size:11px;color:#64748b;font-weight:600;'>"
+            + "Σ Dauer <b style='color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + _fmtMin(grpDauer) + "</b>"
+            + " &nbsp;·&nbsp; Σ Profil <b style='color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + _fmtMin(grpProfil) + "</b>"
+            + "</span>";
+      html += "</div>";
+
+      html += "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
+      html += "<thead><tr style='background:#fafbfc;color:#64748b;'>"
+            + "<th style='padding:7px 11px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Tag</th>"
+            + "<th style='padding:7px 11px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Beginn</th>"
+            + "<th style='padding:7px 11px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Ende</th>"
+            + "<th style='padding:7px 11px;text-align:right;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Schichtdauer</th>"
+            + "<th style='padding:7px 11px;text-align:right;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>Arbeitszeitprofil</th>"
+            + "<th style='padding:7px 11px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid #e2e8f0;'>LKW</th>"
+            + "</tr></thead><tbody>";
+
+      grp.shifts.forEach(function(s, i) {{
+        var weekend = s.wochentag === "Sa" || s.wochentag === "So";
+        var rowBg = weekend ? "#fff7ed" : (i % 2 === 0 ? "#fff" : "#fafbfc");
+        var tagColor = weekend ? (s.wochentag === "So" ? "#dc2626" : "#b45309") : "#0f172a";
+        var endeStr = s.ende || "";
+        if (endeStr && s.ende_naechster_tag) endeStr += " <span style='color:#94a3b8;font-size:9.5px;font-weight:600;'>+1</span>";
+        var tagDisplay = (s.wochentag ? "<span style='display:inline-block;width:22px;color:#94a3b8;font-weight:700;font-size:10.5px;'>" + s.wochentag + "</span> " : "") + s.tag;
+
+        html += "<tr style='background:" + rowBg + ";border-bottom:1px solid #f1f5f9;'>";
+        html += "<td style='padding:6px 11px;color:" + tagColor + ";font-weight:" + (weekend ? "700" : "600") + ";font-variant-numeric:tabular-nums;'>" + tagDisplay + "</td>";
+        html += "<td style='padding:6px 11px;color:#475569;font-variant-numeric:tabular-nums;'>" + (s.beginn || "") + "</td>";
+        html += "<td style='padding:6px 11px;color:#475569;font-variant-numeric:tabular-nums;'>" + endeStr + "</td>";
+        html += "<td style='padding:6px 11px;text-align:right;font-weight:800;color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + (s.schichtdauer || "") + "</td>";
+        html += "<td style='padding:6px 11px;text-align:right;font-weight:600;color:#475569;font-variant-numeric:tabular-nums;'>" + (s.profil || "") + "</td>";
+        html += "<td style='padding:6px 11px;color:#166534;font-weight:600;font-size:11px;'>" + (s.lkw || "") + "</td>";
+        html += "</tr>";
+      }});
+
+      html += "</tbody></table></div>";
+    }});
+
+    panel.innerHTML = html;
+    panel.scrollTop = 0;
+  }}
+
+  window.faSwitchTab = function(tab) {{
+    faActiveTab = tab;
+    if (faSelectedName) window.faShowDetail(faSelectedName);
+  }};
+
+  // Override
+  window.faShowDetail = function(name) {{
+    faSelectedName = name;
+    faBuildSidebarHighlight(name);
+    var panel = document.getElementById("fa-detail-panel");
+    if (!panel) return;
+
+    var hasShifts = faHasShifts(name);
+    var driver = FA_DATA.find(function(d){{ return d.name === name; }});
+    var hasUebersicht = !!driver;
+
+    // Wenn nur Schichten-Daten vorhanden, automatisch dorthin wechseln
+    if (!hasUebersicht && hasShifts && faActiveTab !== "schichten") {{
+      faActiveTab = "schichten";
+    }}
+    if (!hasShifts && faActiveTab === "schichten") {{
+      faActiveTab = "uebersicht";
+    }}
+
+    if (faActiveTab === "schichten" && hasShifts) {{
+      faRenderShifts(name, panel);
+    }} else if (hasUebersicht) {{
+      _faShowDetailOrig(name);
+      // Tab-Bar oben einfuegen, falls beide Tabs verfuegbar
+      var tabBar = faTabBar(name, hasShifts, true);
+      if (tabBar) panel.insertAdjacentHTML('afterbegin', tabBar);
+    }} else {{
+      // Kein Driver in FA_DATA und keine Schichten
+      panel.innerHTML = "<div style='color:#94a3b8;padding:40px;text-align:center;font-size:14px;'>Keine Daten f&uuml;r diesen Fahrer.</div>";
+    }}
+  }};
+
+  // faBuildSidebarHighlight ergänzen: Fahrer aus TIMEREC_DATA hinzufügen, die nicht in FA_DATA sind
+  var _faGetFilteredOrig = window.faGetFiltered;
+  if (typeof _faGetFilteredOrig === "function") {{
+    window.faGetFiltered = function() {{
+      var list = _faGetFilteredOrig();
+      // Schichten-only Fahrer mergen
+      if (TIMEREC_DATA && typeof TIMEREC_DATA === "object") {{
+        var have = {{}};
+        list.forEach(function(d) {{ have[d.name] = true; }});
+        var q = (faSearchQuery || "").toLowerCase().trim();
+        Object.keys(TIMEREC_DATA).forEach(function(n) {{
+          if (have[n]) return;
+          if (q && n.toLowerCase().indexOf(q) < 0) return;
+          // Year-Filter prüfen
+          if (faYearFilter !== "all") {{
+            var hasYr = (TIMEREC_DATA[n] || []).some(function(s) {{
+              var m = (s.tag || "").match(/(\d{{4}})$/);
+              return m && m[1] === faYearFilter;
+            }});
+            if (!hasYr) return;
+          }}
+          list.push({{ name: n, years: {{}}, _shiftsOnly: true }});
+        }});
+        if (faCurrentSort === "name") {{
+          list.sort(function(a,b){{ return a.name.localeCompare(b.name, "de"); }});
+        }}
+      }}
+      return list;
+    }};
+  }}
+
+  // faPopulateYears erweitern: Jahre aus TIMEREC_DATA hinzufuegen
+  var _faPopulateYearsOrig = window.faPopulateYears;
+  if (typeof _faPopulateYearsOrig === "function") {{
+    window.faPopulateYears = function() {{
+      _faPopulateYearsOrig();
+      var yrSel = document.getElementById("fa-year-sel");
+      if (!yrSel) return;
+      var existing = {{}};
+      Array.prototype.slice.call(yrSel.options).forEach(function(o){{ existing[o.value] = true; }});
+      var newYears = [];
+      Object.keys(TIMEREC_DATA || {{}}).forEach(function(n) {{
+        (TIMEREC_DATA[n] || []).forEach(function(s) {{
+          var m = (s.tag || "").match(/(\d{{4}})$/);
+          if (m && !existing[m[1]] && m[1] !== "2024") {{
+            existing[m[1]] = true;
+            newYears.push(m[1]);
+          }}
+        }});
+      }});
+      if (newYears.length) {{
+        var current = yrSel.value;
+        var allValues = Array.prototype.slice.call(yrSel.options).map(function(o){{return o.value;}}).concat(newYears);
+        allValues = allValues.filter(function(v,i,a){{ return a.indexOf(v) === i; }});
+        allValues.sort().reverse();
+        yrSel.innerHTML = allValues.map(function(y){{
+          return "<option value='" + y + "'>" + y + "</option>";
+        }}).join("");
+        if (current && allValues.indexOf(current) !== -1) yrSel.value = current;
+        else yrSel.value = allValues[0];
+        faYearFilter = yrSel.value;
+      }}
+    }};
+  }}
+
+  // faRender erweitern: auch bei leerem FA_DATA arbeiten, sofern TIMEREC_DATA da ist
+  var _faRenderOrig = window.faRender;
+  if (typeof _faRenderOrig === "function") {{
+    window.faRender = function(q) {{
+      faSearchQuery = q || "";
+      var hasFA = FA_DATA && FA_DATA.length;
+      var hasTR = TIMEREC_DATA && Object.keys(TIMEREC_DATA).length > 0;
+      if (!hasFA && !hasTR) {{
+        var c = document.getElementById("fa-detail-panel");
+        if (c) c.innerHTML = "<div style='color:#94a3b8;padding:40px;text-align:center;font-size:14px;'>Keine Daten vorhanden.<br>Bitte Fahrerauswertungs- oder Schicht-Dateien hochladen.</div>";
+        return;
+      }}
+      window.faPopulateYears();
+      window.faBuildSidebarHighlight(null);
+    }};
+  }}
+}})();
+// ── /Schichten-Tab ─────────────────────────────────────────────────────────────
+
 {zulage_js_code}
 {verstoss_js_code}
 
@@ -7375,6 +7782,26 @@ if grosskunden_up:
 elif st.session_state.get("grosskunden_json"):
     st.caption("Großkunden geladen")
 
+timerec_up = st.file_uploader(
+    "Schichten / Tachograph (CSV: timerecording_v3*.csv)",
+    type=["csv"], key="timerec_upload_v1"
+)
+if timerec_up:
+    timerec_sig = upload_signature(timerec_up)
+    if st.session_state.get("timerec_sig") != timerec_sig:
+        with st.spinner("Verarbeite Schichten-CSV ..."):
+            st.session_state.timerec_json = parse_timerecording_csv(timerec_up)
+            st.session_state.timerec_sig = timerec_sig
+    try:
+        _tr = json.loads(st.session_state.get("timerec_json", "{}"))
+        _tr_drivers = len(_tr)
+        _tr_shifts  = sum(len(v) for v in _tr.values())
+        st.caption(f"{_tr_drivers} Fahrer, {_tr_shifts} Schichten")
+    except Exception:
+        st.caption("Schichten geladen")
+elif st.session_state.get("timerec_json"):
+    st.caption("Schichten geladen")
+
 st.divider()
 
 # -- Download -----------------------------------------------------------------
@@ -7410,6 +7837,7 @@ if ready:
             verstoss_json=st.session_state.get("verstoss_json", '{"drivers":[],"total_violations":0}'),
             spesen_json=st.session_state.get("spesen_json", '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}'),
             grosskunden_json=st.session_state.get("grosskunden_json", "[]"),
+            timerec_json=st.session_state.get("timerec_json", "{}"),
             last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
         )
     st.download_button(
