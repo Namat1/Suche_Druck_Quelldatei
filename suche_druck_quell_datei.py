@@ -5958,7 +5958,7 @@ function samToggle(el) {{
     var html = "<div style='display:flex;gap:2px;margin-bottom:14px;border-bottom:1px solid #e2e8f0;'>";
     tabs.forEach(function(t) {{
       var active = faActiveTab === t[0];
-      html += "<button onclick=\"faSwitchTab('" + t[0] + "')\""
+      html += "<button onclick=\\\"faSwitchTab('" + t[0] + "')\\\""
             + " style='padding:9px 18px;border:none;background:none;cursor:pointer;font-family:inherit;"
             + "font-size:13px;font-weight:" + (active ? "800" : "600") + ";"
             + "color:" + (active ? "#1b66b3" : "#64748b") + ";"
