@@ -1,4 +1,4 @@
-# =============================================================================
+a# =============================================================================
 # app.py  -  Kombinierter Generator: Suche + Fahrzeugwäsche  ->  eine app.html
 # =============================================================================
 # Vollstaendig in sich geschlossen. Keine Suche.py / Druck.py benoetigt.
@@ -6493,6 +6493,7 @@ function samToggle(el) {{
     var stats = _summarizeShifts(shifts);
     var sickRows = _faSickEntries(name, yr, monthFilter);
     var vacationRows = _faVacationEntries(name, yr, monthFilter);
+    var lkwEntries = Object.keys(stats.lkwSet || {{}}).map(function(k) {{ return [k, stats.lkwSet[k]]; }}).sort(function(a,b) {{ return b[1]-a[1]; }});
     var printedAt = new Date().toLocaleString("de-DE");
 
     var rows = "";
@@ -6524,8 +6525,12 @@ function samToggle(el) {{
           + sickRows.map(function(e) {{ return faEsc(e.datum || e.dateKey); }}).join(", ") + "</div>";
     }}
     if (vacationRows.length) {{
-      doc += "<div style='border:1px solid #bae6fd;border-radius:4px;padding:6px 8px;margin:6px 0 10px 0;font-size:10.5px;'><b>Urlaubstage:</b> "
+      doc += "<div style='border:1px solid #bae6fd;border-radius:4px;padding:6px 8px;margin:6px 0 6px 0;font-size:10.5px;'><b>Urlaubstage:</b> "
           + vacationRows.map(function(e) {{ return faEsc(e.datum || e.dateKey); }}).join(", ") + "</div>";
+    }}
+    if (lkwEntries.length) {{
+      doc += "<div style='border:1px solid #cbd5e1;border-radius:4px;padding:6px 8px;margin:6px 0 10px 0;font-size:10.5px;'><b>LKW in Auswahl:</b> "
+          + lkwEntries.map(function(e) {{ return "<span style='display:inline-block;border:1px solid #cbd5e1;border-radius:3px;padding:1px 4px;margin:1px 2px;font-weight:700;white-space:nowrap;'>" + faEsc(e[0]) + " <span style='color:#64748b;'>" + e[1] + "x</span></span>"; }}).join(" ") + "</div>";
     }}
     doc += "<table><thead><tr><th>Tag</th><th>Beginn</th><th>Ende</th><th class='num'>Schichtdauer</th><th class='num'>Netto-Arbeitszeit</th><th>LKW</th></tr></thead><tbody>" + rows + "</tbody></table>";
     doc += "<script>window.onload=function(){{setTimeout(function(){{window.print();}},150);}}<\\/script>";
