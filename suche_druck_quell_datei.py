@@ -5070,7 +5070,6 @@ function gkBuildTiles(activeIdx) {{
   visible.forEach(function(realIdx) {{
     var k = GK_DATA[realIdx];
     var active = realIdx === activeIdx;
-    // KNr-Anzeige: Single -> grosses Badge, Multi -> Eintragszahl
     var singleKnr = "";
     var multiCount = 0;
     if (k.type === "structured" && k.entries && k.entries.length) {{
@@ -5078,32 +5077,27 @@ function gkBuildTiles(activeIdx) {{
       else multiCount = k.entries.length;
     }}
     var bg      = active ? "#1e3a5f" : "#fff";
-    var border  = active ? "#1e3a5f" : "#d8e0ea";
+    var border  = active ? "#1e3a5f" : "#e2e8f0";
     var txtMain = active ? "#fff"    : "#0f172a";
-    var txtSub  = active ? "rgba(255,255,255,.70)" : "#64748b";
-    var tileColors = ["#1b66b3","#166534","#b45309","#7c3aed","#0891b2","#dc2626","#059669","#d97706","#4f46e5","#0f766e","#c2410c","#7e22ce","#1d4ed8","#15803d","#b91c1c","#6d28d9"];
-    var accent = tileColors[realIdx % tileColors.length];
-    var topBar = active ? "border-left:4px solid #fbbf24;" : "border-left:4px solid " + accent + ";";
-    // KNr-Badge: stark sichtbar (gelb auf aktiv, dunkelblau auf inaktiv)
-    var knrBg     = active ? "#fbbf24" : "#1e3a5f";
-    var knrTxt    = active ? "#1e293b" : "#fff";
-    var knrLabel  = active ? "rgba(30,41,59,.65)" : "rgba(255,255,255,.65)";
+    var txtSub  = active ? "rgba(255,255,255,.65)" : "#94a3b8";
+    var knrBg    = active ? "rgba(255,255,255,.14)" : "#f1f5f9";
+    var knrTxt   = active ? "#fff" : "#1e3a5f";
+    var knrLabel = active ? "rgba(255,255,255,.55)" : "#94a3b8";
     html += "<button type='button' onclick='gkShow(" + realIdx + ")'"
-          + " style='cursor:pointer;border-radius:6px;padding:7px 10px;text-align:left;font-family:inherit;"
+          + " style='cursor:pointer;border-radius:6px;padding:8px 11px;text-align:left;font-family:inherit;"
           + "border:1px solid " + border + ";background:" + bg + ";"
-          + topBar
-          + "transition:all .12s;min-width:110px;max-width:230px;user-select:none;box-shadow:" + (active ? "0 2px 8px rgba(30,58,95,.20)" : "none") + ";'>"
-          + "<div style='font-size:11.5px;font-weight:800;color:" + txtMain + ";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25;'>"
+          + "transition:all .12s;min-width:118px;max-width:230px;user-select:none;'>"
+          + "<div style='font-size:12px;font-weight:700;color:" + txtMain + ";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25;'>"
           + gkEsc(k.name) + "</div>";
     if (singleKnr) {{
-      html += "<div style='margin-top:4px;display:inline-flex;align-items:baseline;gap:5px;"
-            + "background:" + knrBg + ";border-radius:4px;padding:2px 8px 2px 7px;'>"
-            + "<span style='font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:" + knrLabel + ";'>KNr</span>"
-            + "<span style='font-size:13px;font-weight:900;color:" + knrTxt + ";font-variant-numeric:tabular-nums;letter-spacing:.3px;line-height:1;'>"
+      html += "<div style='margin-top:5px;display:inline-flex;align-items:baseline;gap:5px;"
+            + "background:" + knrBg + ";border-radius:3px;padding:2px 7px;'>"
+            + "<span style='font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.55px;color:" + knrLabel + ";'>KNr</span>"
+            + "<span style='font-size:12px;font-weight:800;color:" + knrTxt + ";font-variant-numeric:tabular-nums;letter-spacing:.2px;line-height:1;'>"
             + gkEsc(singleKnr) + "</span></div>";
     }} else if (multiCount) {{
-      html += "<div style='font-size:10px;color:" + txtSub + ";margin-top:2px;font-weight:700;'>"
-            + multiCount + " Eintr.</div>";
+      html += "<div style='font-size:10.5px;color:" + txtSub + ";margin-top:4px;font-weight:600;'>"
+            + multiCount + " Eintr&auml;ge</div>";
     }}
     html += "</button>";
   }});
@@ -5167,21 +5161,24 @@ function gkRenderStructured(customer, detail) {{
     }});
   }});
 
+  var entryCount = customer.entries.length;
+  var subline = entryCount === 1 ? "1 Standort" : entryCount + " Standorte";
+
   var html = "<div style='width:100%;'>";
 
-  // ── Sheet-Titel ──────────────────────────────────────────────────────────────
-  html += "<div style='margin-bottom:12px;'>"
-        + "<h1 style='font-size:19px;font-weight:900;color:#0f172a;margin:0 0 4px;letter-spacing:-.3px;'>"
+  // ── Header ───────────────────────────────────────────────────────────────────
+  html += "<div style='margin-bottom:14px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;'>"
+        + "<h1 style='font-size:22px;font-weight:800;color:#0f172a;margin:0;letter-spacing:-.4px;line-height:1.1;'>"
         + gkEsc(customer.name) + "</h1>"
-        + "<div style='height:3px;width:36px;background:#1e3a5f;border-radius:2px;'></div>"
+        + "<span style='font-size:12px;color:#94a3b8;font-weight:600;letter-spacing:.2px;'>" + subline + "</span>"
         + "</div>";
 
   // ════════════════════════════════════════════════════════════════════════════
-  // BLOCK 1: Namen + Adressen aller Entries
+  // BLOCK 1: Standorte
   // ════════════════════════════════════════════════════════════════════════════
-  html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:8px;margin-bottom:12px;overflow:hidden;box-shadow:0 1px 6px rgba(15,23,42,.06);'>";
-  html += "<div style='padding:8px 12px;background:linear-gradient(90deg,#1e3a5f 0%,#1b66b3 100%);display:flex;align-items:center;gap:8px;'>"
-        + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:rgba(255,255,255,.8);'>Name &amp; Adresse</span>"
+  html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;overflow:hidden;'>";
+  html += "<div style='padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;'>"
+        + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#64748b;'>Standorte</span>"
         + "</div>";
 
   customer.entries.forEach(function(entry, ei) {{
@@ -5195,25 +5192,21 @@ function gkRenderStructured(customer, detail) {{
       }});
     }}
 
-    var entryColors2 = ["#1b66b3","#166534","#b45309","#7c3aed","#0891b2","#dc2626","#059669","#d97706","#4f46e5","#0f766e","#c2410c","#7e22ce","#1d4ed8","#15803d","#b91c1c","#6d28d9"];
-    var ec = entryColors2[ei % entryColors2.length];
-    var borderTop = ei > 0 ? "border-top:1px solid #eef2f7;" : "";
-    html += "<div style='padding:8px 12px 8px 11px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;" + borderTop + "border-left:3px solid " + ec + ";'>";
-    html += "<div style='min-width:200px;flex:0 0 auto;'>"
-          + "<div style='font-size:13px;font-weight:800;color:#0f172a;line-height:1.3;'>" + gkEsc(entry.name) + "</div>";
+    var borderTop = ei > 0 ? "border-top:1px solid #f1f5f9;" : "";
+    html += "<div style='padding:12px 14px;display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap;" + borderTop + "'>";
+    html += "<div style='min-width:230px;flex:0 0 auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
+          + "<div style='font-size:13.5px;font-weight:700;color:#0f172a;line-height:1.3;'>" + gkEsc(entry.name) + "</div>";
     if (entry.kundennummer) {{
-      html += "<div style='margin-top:7px;'><span style='display:inline-flex;align-items:baseline;gap:7px;background:#1e3a5f;color:#fff;"
-            + "border-radius:6px;padding:5px 13px 6px 12px;box-shadow:0 1px 3px rgba(15,23,42,.18);"
-            + "border:1px solid #15294a;'>"
-            + "<span style='font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:rgba(255,255,255,.70);'>KNr</span>"
-            + "<span style='font-size:18px;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:.5px;line-height:1;'>"
+      html += "<span style='display:inline-flex;align-items:baseline;gap:5px;background:#1e3a5f;color:#fff;"
+            + "border-radius:4px;padding:3px 9px;'>"
+            + "<span style='font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.55px;color:rgba(255,255,255,.65);'>KNr</span>"
+            + "<span style='font-size:13px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.2px;line-height:1;'>"
             + gkEsc(entry.kundennummer) + "</span>"
-            + "</span></div>";
+            + "</span>";
     }}
     html += "</div>";
-    // Adresse
     if (addrLines.length) {{
-      html += "<div style='font-size:12px;color:#475569;line-height:1.7;flex:1;'>"
+      html += "<div style='font-size:12.5px;color:#475569;line-height:1.65;flex:1;'>"
             + addrLines.map(gkEsc).join("<br>") + "</div>";
     }}
     html += "</div>";
@@ -5289,46 +5282,40 @@ function gkRenderStructured(customer, detail) {{
 
   var rastingNfcEmails = gkRastingNfcEmailsFromRows(customer, allContactRows);
 
-  // Zweispaltiges Layout: Kontakte links, Hinweise rechts
-  html += "<div style='display:grid;grid-template-columns:minmax(360px,1.1fr) minmax(280px,.9fr);gap:12px;align-items:stretch;'>";
+  // Zwei-Spalten-Layout: Kontakte links, Hinweise rechts
+  html += "<div style='display:grid;grid-template-columns:minmax(360px,1.1fr) minmax(280px,.9fr);gap:12px;align-items:start;'>";
 
   // ── LINKE SPALTE: Kontaktkarte ─────────────────────────────────────────────
-  html += "<div style='flex:1 1 0;min-width:0;display:flex;flex-direction:column;'>";
+  html += "<div style='min-width:0;'>";
   if (hasAnyContact && allContactRows.length) {{
-    html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:8px;overflow:hidden;box-shadow:0 1px 6px rgba(15,23,42,.06);flex:1;display:flex;flex-direction:column;'>";
-    html += "<div style='padding:9px 12px;background:#f8fafc;border-bottom:1px solid #e8edf2;"
-          + "border-left:4px solid #1b66b3;display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
-          + "<span style='font-size:12.5px;font-weight:800;color:#0f172a;flex:1;'>" + gkEsc(customer.name) + "</span>"
-          + gkEdekaLagerNmsLink(customer);
-    html += "</div>";
-    html += "<div style='padding:0 14px 8px;'>";
+    html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;'>";
+    html += "<div style='padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
+          + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#64748b;flex:1;'>Kontakte</span>"
+          + gkEdekaLagerNmsLink(customer)
+          + "</div>";
+    html += "<div style='padding:4px 14px 12px;'>";
     allContactRows.forEach(function(cr, ri) {{
       if (cr.isLabel) {{
-        var sectionColors = {{
-          "wareneingang":"#0891b2","dispo":"#7c3aed","nfc":"#166534","spedition":"#b45309"
-        }};
-        var sKey = cr.text.replace(/:$/, "").toLowerCase().trim();
-        var sColor = sectionColors[sKey] || "#1b66b3";
-        html += "<div style='margin:10px 0 4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>"
-              + "<span style='display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;"
-              + "letter-spacing:.5px;color:#fff;background:" + sColor + ";border-radius:3px;padding:2px 8px;'>"
-              + gkEsc(cr.text.replace(/:$/, "")) + "</span>";
+        var sectionName = cr.text.replace(/:$/, "");
+        var sKey = sectionName.toLowerCase().trim();
+        html += "<div style='margin:14px 0 6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-bottom:5px;border-bottom:1px solid #e2e8f0;'>"
+              + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1e3a5f;'>"
+              + gkEsc(sectionName) + "</span>";
         if (sKey === "nfc" && rastingNfcEmails.length) {{
           html += gkDistributorLinkHtml(rastingNfcEmails, "Mail an den Verteiler", "Rasting / NFC");
         }}
         html += "</div>";
       }} else if (cr.isOther) {{
-        html += "<div style='padding:6px 0;border-bottom:1px solid #f8fafc;display:flex;gap:10px;align-items:baseline;'>"
-              + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;white-space:nowrap;flex-shrink:0;'>" + gkEsc(cr.header) + "</span>"
-              + "<span style='font-size:12px;color:#334155;'>" + cr.vals.map(gkEsc).join("<br>") + "</span>"
+        html += "<div style='padding:7px 0;border-bottom:1px solid #f1f5f9;display:flex;gap:12px;align-items:baseline;'>"
+              + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;white-space:nowrap;flex-shrink:0;min-width:90px;'>" + gkEsc(cr.header) + "</span>"
+              + "<span style='font-size:12.5px;color:#334155;line-height:1.5;'>" + cr.vals.map(gkEsc).join("<br>") + "</span>"
               + "</div>";
       }} else {{
         // Kontaktzeile: (Email oder LabelText) + Tel als Paar
         var hasEmail     = cr.emails && cr.emails.length;
         var hasLabelText = cr.labelText && cr.labelText.length;
         var hasTel       = cr.tels && cr.tels.length;
-        var rowBg = ri % 2 === 0 ? "#f8fafc" : "#fff";
-        html += "<div style='display:flex;align-items:center;gap:0;padding:5px 8px;border-radius:4px;margin:1px 0;background:" + rowBg + ";'>";
+        html += "<div style='display:flex;align-items:center;gap:0;padding:7px 0;border-bottom:1px solid #f1f5f9;'>";
         // Linke Seite: Email-Link ODER Beschriftungstext ODER Strich
         html += "<span style='flex:1;min-width:0;'>";
         if (hasEmail) {{
@@ -5336,25 +5323,23 @@ function gkRenderStructured(customer, detail) {{
             var m = em.match(/^[^\s@]+@[^\s@]+/);
             var isMailAddr = m !== null;
             return isMailAddr
-              ? "<a href='mailto:" + gkEsc(em) + "' style='color:#1b66b3;font-size:12px;font-weight:600;text-decoration:none;'>" + gkEsc(em) + "</a>"
-              : "<span style='font-size:12px;color:#334155;'>" + gkEsc(em) + "</span>";
+              ? "<a href='mailto:" + gkEsc(em) + "' style='color:#1b66b3;font-size:12.5px;font-weight:500;text-decoration:none;'>" + gkEsc(em) + "</a>"
+              : "<span style='font-size:12.5px;color:#334155;'>" + gkEsc(em) + "</span>";
           }}).join(" ");
         }} else if (hasLabelText) {{
-          html += "<span style='font-size:12px;font-weight:600;color:#334155;'>" + gkEsc(cr.labelText) + "</span>";
+          html += "<span style='font-size:12.5px;font-weight:600;color:#334155;'>" + gkEsc(cr.labelText) + "</span>";
         }} else {{
           html += "<span style='color:#cbd5e1;font-size:12px;'>&ndash;</span>";
         }}
         html += "</span>";
         // Rechte Seite: Telefon
         if (hasTel) {{
-          html += "<span style='display:flex;align-items:center;gap:5px;flex-shrink:0;padding-left:12px;border-left:1px solid #e8edf2;margin-left:8px;'>"
-                + "<span style='font-size:10px;color:#94a3b8;'>&#128222;</span>"
+          html += "<span style='display:flex;align-items:center;gap:6px;flex-shrink:0;padding-left:14px;'>"
                 + cr.tels.map(function(t) {{
-                    var num = t.replace(/[^\d\+]/g, "").length >= 4 ? t : t;
                     var href = "tel:" + t.replace(/[^\d\+]/g,"");
-                    return "<a href='" + href + "' style='font-size:12px;font-weight:700;color:#166534;"
-                         + "font-variant-numeric:tabular-nums;white-space:nowrap;text-decoration:none;"
-                         + "font-family:monospace;letter-spacing:.3px;'>" + gkEsc(t) + "</a>";
+                    return "<a href='" + href + "' style='font-size:12.5px;font-weight:600;color:#1e3a5f;"
+                         + "font-variant-numeric:tabular-nums;white-space:nowrap;text-decoration:none;letter-spacing:.2px;'>"
+                         + "<span style='color:#94a3b8;font-weight:400;margin-right:4px;'>&#9742;</span>" + gkEsc(t) + "</a>";
                   }}).join(" ")
                 + "</span>";
         }}
@@ -5366,29 +5351,30 @@ function gkRenderStructured(customer, detail) {{
   html += "</div>"; // linke Spalte
 
   // ── RECHTE SPALTE: Hinweise ────────────────────────────────────────────────
+  html += "<div style='min-width:0;'>";
   if (allHints.length) {{
-    html += "<div style='flex:1 1 0;min-width:0;display:flex;flex-direction:column;'>";
-    html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:8px;overflow:hidden;box-shadow:0 1px 6px rgba(15,23,42,.06);flex:1;display:flex;flex-direction:column;'>";
-    html += "<div style='padding:9px 12px;background:#fffbeb;border-bottom:1px solid #fde68a;border-left:4px solid #d97706;'>"
-          + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#92400e;'>Hinweise</span>"
+    html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;'>";
+    html += "<div style='padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:8px;'>"
+          + "<span style='display:inline-block;width:6px;height:6px;border-radius:50%;background:#d97706;'></span>"
+          + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#64748b;flex:1;'>Hinweise</span>"
+          + "<span style='font-size:10.5px;font-weight:700;color:#94a3b8;font-variant-numeric:tabular-nums;'>" + allHints.length + "</span>"
           + "</div>";
+    html += "<div>";
     allHints.forEach(function(h, i) {{
-      var hbg = i % 2 === 0 ? "#fffbeb" : "#fff";
-      html += "<div style='display:flex;align-items:flex-start;gap:9px;padding:9px 16px;"
-            + "background:" + hbg + ";"
-            + (i < allHints.length-1 ? "border-bottom:1px solid #fde68a44;" : "") + "'>"
-            + "<span style='font-size:11px;font-weight:800;color:#d97706;flex-shrink:0;margin-top:2px;"
-            + "min-width:18px;text-align:right;background:#fef3c7;border-radius:3px;padding:0 3px;'>" + (i+1) + "</span>"
-            + "<span style='font-size:12px;color:#334155;line-height:1.55;'>" + gkEsc(h) + "</span>"
+      html += "<div style='display:flex;align-items:flex-start;gap:12px;padding:9px 14px;"
+            + (i < allHints.length-1 ? "border-bottom:1px solid #f1f5f9;" : "") + "'>"
+            + "<span style='font-size:11px;font-weight:700;color:#94a3b8;flex-shrink:0;margin-top:2px;"
+            + "min-width:18px;text-align:right;font-variant-numeric:tabular-nums;'>" + (i+1) + "</span>"
+            + "<span style='font-size:12.5px;color:#334155;line-height:1.55;'>" + gkEsc(h) + "</span>"
             + "</div>";
     }});
-    html += "</div>";
-    html += "</div>"; // rechte Spalte
+    html += "</div></div>";
   }}
+  html += "</div>"; // rechte Spalte
 
-  html += "</div>"; // flex row
+  html += "</div>"; // grid
 
-  html += "</div>";
+  html += "</div>"; // root
   detail.innerHTML = html;
 }}
 
@@ -5396,18 +5382,14 @@ function gkRenderStructured(customer, detail) {{
 function gkRenderFreeform(customer, detail) {{
   var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   var rastingNfcEmails = gkRastingNfcEmailsFromLines(customer);
-  var html = "<div style='max-width:700px;'>";
+  var html = "<div style='max-width:760px;'>";
 
-  html += "<div style='margin-bottom:12px;'>"
-        + "<div style='display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
-        + "<h1 style='font-size:22px;font-weight:900;color:#0f172a;margin:0;'>" + gkEsc(customer.name) + "</h1>"
+  html += "<div style='margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;'>"
+        + "<h1 style='font-size:22px;font-weight:800;color:#0f172a;margin:0;letter-spacing:-.4px;line-height:1.1;'>" + gkEsc(customer.name) + "</h1>"
         + gkEdekaLagerNmsLink(customer)
-        + "</div>"
-        + "<div style='height:3px;width:40px;background:#1e3a5f;border-radius:2px;margin-top:6px;'></div>"
         + "</div>";
 
-
-  html += "<div style='background:#fff;border:1px solid #dde3ea;border-radius:8px;overflow:hidden;'>";
+  html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;'>";
 
   (customer.lines || []).forEach(function(line) {{
     var t = line.trim();
@@ -5420,28 +5402,27 @@ function gkRenderFreeform(customer, detail) {{
     if (isSection) {{
       var sectionName = t.replace(/:$/, "");
       var sectionKey = sectionName.toLowerCase().trim();
-      html += "<div style='padding:8px 16px;background:#f8fafc;border-bottom:1px solid #eef2f7;"
-            + "font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#64748b;"
-            + "display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>"
-            + "<span>" + gkEsc(sectionName) + "</span>";
+      html += "<div style='padding:10px 14px 8px;background:#f8fafc;border-bottom:1px solid #e2e8f0;"
+            + "display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
+            + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1e3a5f;'>"
+            + gkEsc(sectionName) + "</span>";
       if (sectionKey === "nfc" && rastingNfcEmails.length) {{
         html += gkDistributorLinkHtml(rastingNfcEmails, "Mail an den Verteiler", "Rasting / NFC");
       }}
       html += "</div>";
     }} else if (isEmail) {{
-      html += "<div style='padding:7px 16px;border-bottom:1px solid #f8fafc;'>"
-            + "<a href='mailto:" + gkEsc(t) + "' style='color:#1b66b3;font-size:12px;font-weight:600;text-decoration:none;'>" + gkEsc(t) + "</a>"
+      html += "<div style='padding:8px 14px;border-bottom:1px solid #f1f5f9;'>"
+            + "<a href='mailto:" + gkEsc(t) + "' style='color:#1b66b3;font-size:12.5px;font-weight:500;text-decoration:none;'>" + gkEsc(t) + "</a>"
             + "</div>";
     }} else if (hasTelNum) {{
-      // Kann Email+Tel kombiniert sein
-      html += "<div style='padding:7px 16px;border-bottom:1px solid #f8fafc;font-size:12px;font-weight:600;color:#166534;font-variant-numeric:tabular-nums;'>"
-            + gkEsc(t) + "</div>";
+      html += "<div style='padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:12.5px;font-weight:600;color:#1e3a5f;font-variant-numeric:tabular-nums;letter-spacing:.2px;'>"
+            + "<span style='color:#94a3b8;font-weight:400;margin-right:5px;'>&#9742;</span>" + gkEsc(t) + "</div>";
     }} else if (isLong) {{
-      html += "<div style='padding:10px 16px;border-bottom:1px solid #f8fafc;"
-            + "border-left:3px solid #f59e0b;background:#fffbeb;"
-            + "font-size:12px;color:#78350f;line-height:1.6;'>" + gkEsc(t) + "</div>";
+      html += "<div style='padding:10px 14px;border-bottom:1px solid #f1f5f9;"
+            + "background:#fffbeb;"
+            + "font-size:12.5px;color:#78350f;line-height:1.6;'>" + gkEsc(t) + "</div>";
     }} else {{
-      html += "<div style='padding:7px 16px;border-bottom:1px solid #f8fafc;font-size:12px;color:#334155;'>" + gkEsc(t) + "</div>";
+      html += "<div style='padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:12.5px;color:#334155;'>" + gkEsc(t) + "</div>";
     }}
   }});
 
