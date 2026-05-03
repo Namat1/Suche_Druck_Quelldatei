@@ -21,7 +21,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "10h-touren-pdf-fahrer-match-2026-05-03-v2"
+APP_CACHE_VERSION = "10h-touren-saso-unzugeordnet-fix-2026-05-03-v1"
 
 EXCLUDED_DRIVER_NAMES = (
     "Ch.Holtz", "Paasch", "Meyer", "Ihde", "Spedition M+S Express 4", "Spedition M+S Express 3",
@@ -4424,9 +4424,15 @@ function verstossPdfOne(name) {
                 return int(parts[0]) * 60 + int(parts[1])
             except: return None
 
+        def _is_planung_driver(name):
+            return str(name or "").strip().lower() in ("unzugeordnet, planung", "planung, unzugeordnet")
+
         # Scan fa_json for Sunday entries before 15:00
+        # Wichtig: interne Planungszeilen ohne Fahrer nicht als echter Fahrer in Sa+So anzeigen.
         for fd in fa_list:
             name = fd["name"]
+            if _is_planung_driver(name):
+                continue
             for yr_data in fd.get("years", {}).values():
                 for e in yr_data.get("eintraege", []):
                     if not e.get("datum", "").startswith("Sonntag"):
@@ -4449,7 +4455,11 @@ function verstossPdfOne(name) {
                     sam_by_name[name]["daten"].append(entry)
 
         # Add all fa drivers with 0 deployments if still missing
+        # Planungszeilen ohne Fahrer bleiben nur als technische Matching-Daten für 10H,
+        # sie werden nicht als Fahrer in der Sa+So-Übersicht geführt.
         for fd in fa_list:
+            if _is_planung_driver(fd.get("name")):
+                continue
             if fd["name"] not in sam_by_name:
                 d = {
                     "name": fd["name"],
