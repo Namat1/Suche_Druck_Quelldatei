@@ -21,7 +21,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "10h-touren-saso-unzugeordnet-fix-2026-05-03-v1"
+APP_CACHE_VERSION = "fahrerauswertung-lila-button-fix-2026-05-03-v1"
 
 EXCLUDED_DRIVER_NAMES = (
     "Ch.Holtz", "Paasch", "Meyer", "Ihde", "Spedition M+S Express 4", "Spedition M+S Express 3",
@@ -7135,8 +7135,13 @@ function samToggle(el) {{
   function _faSet10hButton(active) {{
     var btn = document.getElementById("fa-btn-10h");
     if (!btn) return;
-    btn.style.background = active ? "#7c3aed" : "#fff";
-    btn.style.color = active ? "#fff" : "#7c3aed";
+    btn.textContent = "10H Touren";
+    // Wichtig: CSS aus dem lila Schema arbeitet mit !important.
+    // Deshalb auch hier setProperty(..., "important"), sonst wird der Text
+    // beim aktiven Button lila auf lila und wirkt verschwunden.
+    btn.style.setProperty("background", active ? "#7c3aed" : "#fff", "important");
+    btn.style.setProperty("color", active ? "#fff" : "#7c3aed", "important");
+    btn.style.setProperty("border-color", "#7c3aed", "important");
   }}
 
   function _faShiftDateKey(s) {{
