@@ -2738,7 +2738,7 @@ def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa
 var spesenSearchQuery = "";
 var spesenMonthFilter = "all";
 var spesenSelectedName = null;
-var spesenSortMode = "gesamt";
+var spesenSortMode = "name";
 var spesenViewMode = "detail";  // "detail" = Fahrer-Detail, "latestarts" = Spätstart-Übersicht
 // Spätstart-Kontrolle: Start zwischen 18:00 und 21:00 (inkl.)
 var SPESEN_LATE_FROM = "18:00";
@@ -2846,6 +2846,19 @@ function spesenMonthChange(value) {
   spesenRefresh();
   if(spesenViewMode === "latestarts") spesenShowLateStarts();
   else if(spesenSelectedName) spesenShowDetail(spesenSelectedName);
+}
+function spesenResetView() {
+  spesenSearchQuery = "";
+  spesenMonthFilter = "all";
+  spesenSortMode = "name";
+  spesenViewMode = "detail";
+  spesenSelectedName = null;
+  var search = document.getElementById("spesen-search");
+  if(search) search.value = "";
+  var month = document.getElementById("spesen-month-sel");
+  if(month) month.value = "all";
+  spesenFilteredCache = null;
+  spesenRefresh();
 }
 function spesenInit() {
   spesenPopulateMonths();
@@ -4851,13 +4864,8 @@ iframe.active{{display:block}}
       <select id="spesen-month-sel" onchange="spesenMonthChange(this.value)"
         style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;font-size:12px;font-weight:700;color:#1b66b3;cursor:pointer;font-family:inherit;outline:none;background:#fff;">
       </select>
-      <div style="display:flex;gap:4px;">
-        <button onclick="spesenSort('gesamt')" id="spesen-sort-gesamt" style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#1b66b3;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Betrag</button>
-        <button onclick="spesenSort('tage')" id="spesen-sort-tage" style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Einträge</button>
-        <button onclick="spesenSort('name')" id="spesen-sort-name" style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">A&ndash;Z</button>
-      </div>
-      <button onclick="spesenShowLateStarts()" title="Übersicht: Fahrer mit Start zwischen 18:00 und 21:00 Uhr, gruppiert nach Monat"
-        style="padding:5px 12px;border:2px solid #6d28d9;border-radius:5px;background:linear-gradient(180deg,#7c3aed 0%,#6d28d9 100%);color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 1px 3px rgba(109,40,217,.32);">&#127769; 20 Uhr Kontrolle</button>
+      <button onclick="spesenResetView()"
+        style="padding:5px 12px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;">Reset</button>
       <div id="spesen-stats" style="font-size:11px;color:#64748b;margin-left:auto;font-weight:700;"></div>
     </div>
     <div style="display:flex;flex:1;overflow:hidden;">
