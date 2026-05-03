@@ -4064,6 +4064,15 @@ function verstossFilter(q) {
   verstossRender();
 }
 
+function verstossResetSearch() {
+  _vsSearchQ = "";
+  _vsOpenDriver = null;
+  _vsTypeFilter = "";
+  var inp = document.getElementById("verstoss-search");
+  if (inp) inp.value = "";
+  verstossRender();
+}
+
 function verstossToggleDriver(name) {
   if (_vsOpenDriver === name) {
     _vsOpenDriver = null;
@@ -4873,6 +4882,12 @@ iframe.active{{display:block}}
         <input id="verstoss-search" placeholder="Fahrer suchen..." oninput="verstossFilter(this.value)"
           style="flex:1;min-width:160px;max-width:300px;padding:8px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#fff;transition:border .15s;color:#0f172a;"
           onfocus="this.style.borderColor='#dc2626'" onblur="this.style.borderColor='#cbd5e1'">
+        <button id="verstoss-search-reset" onclick="verstossResetSearch()"
+          style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;font-size:12px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 1px 2px rgba(15,23,42,.05);">
+          Reset</button>
+        <button id="verstoss-search-all" onclick="verstossResetSearch()"
+          style="padding:8px 12px;border:1.5px solid #1e3a5f;border-radius:8px;background:#1e3a5f;color:#fff;font-size:12px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 1px 2px rgba(15,23,42,.08);">
+          Alle anzeigen</button>
         <span id="verstoss-stats" style="font-size:12px;font-weight:700;color:#64748b;margin-left:auto;"></span>
       </div>
       <div id="verstoss-body" style="flex:1;overflow-y:auto;padding:4px 2px 30px 2px;">
