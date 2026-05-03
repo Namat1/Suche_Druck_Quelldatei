@@ -4757,10 +4757,10 @@ iframe.active{{display:block}}
         style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;font-size:12px;font-weight:700;color:#1b66b3;cursor:pointer;font-family:inherit;outline:none;background:#fff;">
         </select>
       <div style="display:flex;gap:4px;">
-        <button onclick="faSort('name')" id="fa-sort-name"
+        <button onclick="faShowFahrerUebersicht()" id="fa-sort-name"
           style="padding:5px 12px;border:2px solid #1b66b3;border-radius:5px;background:#1b66b3;color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;">Fahrer Übersicht</button>
       </div>
-      <button onclick="faShow10hTours()" id="fa-btn-10h" title="Alle Schichten mit mehr als 10:00 Netto-Arbeitszeit anzeigen"
+      <button onclick="faShow10hTours('')" id="fa-btn-10h" title="Alle Schichten mit mehr als 10:00 Netto-Arbeitszeit anzeigen"
         style="padding:5px 12px;border:2px solid #be123c;border-radius:5px;background:#fff;color:#be123c;font-size:11px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap;">10H Touren</button>
       <div id="fa-stats" style="font-size:11px;color:#64748b;margin-left:auto;"></div>
     </div>
@@ -7550,7 +7550,7 @@ function samToggle(el) {{
     if (!panel) return;
     _faSet10hButton(true);
     window.FA_10H_MODE = true;
-    var selectedDriver = String(driverFilter || window.FA_10H_SELECTED_DRIVER || "").trim();
+    var selectedDriver = (driverFilter === undefined || driverFilter === null) ? String(window.FA_10H_SELECTED_DRIVER || "").trim() : String(driverFilter || "").trim();
     window.FA_10H_SELECTED_DRIVER = selectedDriver;
     if (selectedDriver) {{
       faSelectedName = selectedDriver;
@@ -7730,7 +7730,215 @@ function samToggle(el) {{
     window.faPopulateYears();
     if (window.FA_10H_MODE) window.faShow10hTours(window.FA_10H_SELECTED_DRIVER || "");
     else window.faBuildSidebarHighlight(null);
+
   }};
+
+  // ── Korrektur: Fahrer Übersicht bleibt die normale Übersicht, 10H ist nur die 10H-Gesamtansicht ──
+  function _faFindDriverObj(name) {{
+    return (FA_DATA || []).find(function(d) {{ return d && d.name === name; }}) || null;
+  }}
+
+  function _faAllDriverNamesCombined() {{
+    var seen = {{}}, out = [];
+    (FA_DATA || []).forEach(function(d) {{
+      if (d && d.name && !seen[d.name]) {{ seen[d.name] = true; out.push(d.name); }}
+    }});
+    Object.keys(TIMEREC_DATA || {{}}).forEach(function(n) {{
+      if (n && !seen[n]) {{ seen[n] = true; out.push(n); }}
+    }});
+    return out;
+  }}
+
+  function _faHasOverviewYear(name) {{
+    var d = _faFindDriverObj(name);
+    if (!d) return false;
+    if (faYearFilter === "all") return true;
+    return !!(d.years && d.years[faYearFilter]);
+  }}
+
+  function _faHasShiftYear(name) {{
+    if (!TIMEREC_DATA || !TIMEREC_DATA[name]) return false;
+    if (faYearFilter === "all") return (TIMEREC_DATA[name] || []).length > 0;
+    return _faShiftRowsForYear(name).length > 0;
+  }}
+
+  window.faShowFahrerUebersicht = function() {{
+    window.FA_10H_MODE = false;
+    window.FA_10H_SELECTED_DRIVER = "";
+    faActiveTab = "uebersicht";
+    _faSet10hButton(false);
+    faCurrentSort = "name";
+    var btn = document.getElementById("fa-sort-name");
+    if (btn) {{ btn.style.background = "#1b66b3"; btn.style.color = "#fff"; }}
+    window.faBuildSidebarHighlight(null);
+  }};
+
+  window.faGetFiltered = function() {{
+    var q = (faSearchQuery || "").toLowerCase().trim();
+    var list = _faAllDriverNamesCombined().filter(function(name) {{
+      if (q && String(name).toLowerCase().indexOf(q) < 0) return false;
+      if (faYearFilter !== "all" && !_faHasOverviewYear(name) && !_faHasShiftYear(name)) return false;
+      return true;
+    }}).map(function(name) {{
+      return {{ name: name, driver: _faFindDriverObj(name), _hasShifts: !!(TIMEREC_DATA && TIMEREC_DATA[name] && TIMEREC_DATA[name].length) }};
+    }});
+
+    if (faCurrentSort === "arbeit") {{
+      list.sort(function(a,b) {{
+        var da = a.driver, db = b.driver;
+        var aa = da ? faGetStats(da, faYearFilter).arbeit : 0;
+        var ab = db ? faGetStats(db, faYearFilter).arbeit : 0;
+        if (ab !== aa) return ab - aa;
+        var sa = _faShiftStatsForName(a.name).netto || 0;
+        var sb = _faShiftStatsForName(b.name).netto || 0;
+        return (sb - sa) || a.name.localeCompare(b.name, "de");
+      }});
+    }} else {{
+      list.sort(function(a,b) {{ return a.name.localeCompare(b.name, "de"); }});
+    }}
+    return list;
+  }};
+
+  window.faBuildSidebarHighlight = function(activeName) {{
+    var sidebar = document.getElementById("fa-sidebar-list");
+    if (!sidebar) return;
+    var filtered = window.faGetFiltered();
+
+    var statsEl = document.getElementById("fa-stats");
+    if (statsEl) {{
+      var totalFahrer = filtered.length, totalArbeit = 0, totalKrank = 0, totalUrlaub = 0, totalShifts = 0, totalOver10 = 0;
+      filtered.forEach(function(x) {{
+        if (x.driver) {{
+          var fs = faGetStats(x.driver, faYearFilter);
+          totalArbeit += fs.arbeit || 0;
+          totalKrank += fs.krank || 0;
+          totalUrlaub += fs.urlaub || 0;
+        }}
+        var ss = _faShiftStatsForName(x.name);
+        totalShifts += ss.count || 0;
+        totalOver10 += ss.over10 || 0;
+      }});
+      statsEl.innerHTML = "<b>" + totalFahrer + "</b> Fahrer"
+        + (totalArbeit ? " &nbsp;&middot;&nbsp; Σ <b>" + totalArbeit + "</b> Arbeitstage" : "")
+        + (totalShifts ? " &nbsp;&middot;&nbsp; <b>" + totalShifts + "</b> Schichten" : "")
+        + (totalKrank ? " &nbsp;&middot;&nbsp; Krank <b style='color:#be123c;'>" + totalKrank + "</b>" : "")
+        + (totalUrlaub ? " &nbsp;&middot;&nbsp; Urlaub <b style='color:#075985;'>" + totalUrlaub + "</b>" : "")
+        + (totalOver10 ? " &nbsp;&middot;&nbsp; &gt;10:00 <b style='color:#be123c;'>" + totalOver10 + "</b>" : "");
+    }}
+
+    var html = "";
+    filtered.forEach(function(x) {{
+      var name = x.name;
+      var d = x.driver;
+      var fs = d ? faGetStats(d, faYearFilter) : null;
+      var ss = _faShiftStatsForName(name);
+      var active = name === activeName;
+      var bg = active ? "#1b66b3" : "#fff";
+      var fg = active ? "#fff" : "#0b1220";
+      var sub = active ? "rgba(255,255,255,.88)" : "#64748b";
+      var badgeBg = active ? "rgba(255,255,255,.18)" : "#dbeafe";
+      var badgeFg = active ? "#fff" : "#1b66b3";
+      html += "<div data-fa-driver='" + faEsc(name) + "' style='padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;background:" + bg + ";'>";
+      html += "<div style='font-weight:800;font-size:13px;color:" + fg + ";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + faEsc(name) + "</div>";
+      if (fs) {{
+        html += "<div style='font-size:10px;color:" + sub + ";font-weight:700;margin-top:3px;'>" + (fs.arbeit || 0) + " Arbeitstage"
+          + (fs.krank ? " · Krank " + fs.krank : "")
+          + (fs.urlaub ? " · Urlaub " + fs.urlaub : "")
+          + (ss.count ? " · Schichten " + ss.count : "") + "</div>";
+      }} else {{
+        html += "<div style='font-size:10px;color:" + sub + ";font-weight:700;margin-top:3px;'>" + (ss.count || 0) + " Schichten · Netto " + _fmtMin(ss.netto || 0) + "</div>";
+      }}
+      html += "<div style='display:flex;gap:3px;flex-wrap:wrap;margin-top:4px;'>";
+      if (fs) html += "<span style='font-size:8px;font-weight:800;padding:1px 4px;border-radius:2px;background:" + badgeBg + ";color:" + badgeFg + ";'>" + (fs.arbeit || 0) + " T</span>";
+      if (fs && fs.krank) html += "<span style='font-size:8px;font-weight:800;padding:1px 4px;border-radius:2px;background:" + (active ? "rgba(255,255,255,.16)" : "#fee2e2") + ";color:" + (active ? "#fff" : "#be123c") + ";'>K " + fs.krank + "</span>";
+      if (fs && fs.urlaub) html += "<span style='font-size:8px;font-weight:800;padding:1px 4px;border-radius:2px;background:" + (active ? "rgba(255,255,255,.16)" : "#e0f2fe") + ";color:" + (active ? "#fff" : "#075985") + ";'>U " + fs.urlaub + "</span>";
+      if (ss.over10) html += "<span style='font-size:8px;font-weight:800;padding:1px 4px;border-radius:2px;background:" + (active ? "rgba(255,255,255,.16)" : "#fee2e2") + ";color:" + (active ? "#fff" : "#be123c") + ";'>&gt;10h " + ss.over10 + "</span>";
+      html += "</div></div>";
+    }});
+    sidebar.innerHTML = html || "<div style='padding:20px;color:#94a3b8;font-size:12px;text-align:center;'>Kein Fahrer gefunden</div>";
+    Array.prototype.slice.call(sidebar.querySelectorAll("[data-fa-driver]")).forEach(function(item) {{
+      item.onclick = function() {{ window.faShowDetail(item.getAttribute("data-fa-driver")); }};
+    }});
+
+    if (!activeName && filtered.length) {{
+      faSelectedName = filtered[0].name;
+      window.faShowDetail(filtered[0].name);
+    }} else if (activeName) {{
+      faSelectedName = activeName;
+    }}
+  }};
+
+  window.faShowDetail = function(name) {{
+    faSelectedName = name;
+    if (window.FA_10H_MODE) {{
+      window.FA_10H_SELECTED_DRIVER = name || "";
+      window.faBuildSidebarHighlight(name);
+      window.faShow10hTours(name || "");
+      return;
+    }}
+    _faSet10hButton(false);
+    window.faBuildSidebarHighlight(name);
+    var panel = document.getElementById("fa-detail-panel");
+    if (!panel) return;
+    var driver = _faFindDriverObj(name);
+    var hasShifts = faHasShifts(name);
+    if (faActiveTab === "schichten" && hasShifts) {{
+      faRenderShifts(name, panel);
+      return;
+    }}
+    if (driver) {{
+      _faShowDetailOrig(name);
+      if (hasShifts) {{
+        var tabBar = faTabBar(name, true, true);
+        if (tabBar) panel.insertAdjacentHTML("afterbegin", tabBar);
+      }}
+      return;
+    }}
+    if (hasShifts) {{
+      faActiveTab = "schichten";
+      faRenderShifts(name, panel);
+      return;
+    }}
+    panel.innerHTML = "<div style='color:#94a3b8;padding:40px;text-align:center;font-size:14px;'>Keine Daten f&uuml;r diesen Fahrer.</div>";
+  }};
+
+  window.faSwitchTab = function(tab) {{
+    faActiveTab = tab || "uebersicht";
+    window.FA_10H_MODE = false;
+    window.FA_10H_SELECTED_DRIVER = "";
+    _faSet10hButton(false);
+    if (faSelectedName) window.faShowDetail(faSelectedName);
+  }};
+
+  window.faSort = function(mode) {{
+    faCurrentSort = mode || "name";
+    window.faShowFahrerUebersicht();
+  }};
+
+  window.faYearChange = function(yr) {{
+    faYearFilter = yr || "all";
+    if (window.FA_10H_MODE) window.faShow10hTours(window.FA_10H_SELECTED_DRIVER || "");
+    else window.faShowFahrerUebersicht();
+  }};
+
+  window.faRender = function(q) {{
+    faSearchQuery = q || "";
+    var hasFA = !!(FA_DATA && FA_DATA.length);
+    var hasTR = !!(TIMEREC_DATA && Object.keys(TIMEREC_DATA).length);
+    var c = document.getElementById("fa-detail-panel");
+    if (!hasFA && !hasTR) {{
+      if (c) c.innerHTML = "<div style='color:#94a3b8;padding:40px;text-align:center;font-size:14px;'>Keine Daten vorhanden.<br>Bitte Fahrerauswertungs- oder Tachograph-Dateien hochladen.</div>";
+      var side = document.getElementById("fa-sidebar-list");
+      if (side) side.innerHTML = "";
+      var stats = document.getElementById("fa-stats");
+      if (stats) stats.innerHTML = "";
+      return;
+    }}
+    window.faPopulateYears();
+    if (window.FA_10H_MODE) window.faShow10hTours(window.FA_10H_SELECTED_DRIVER || "");
+    else window.faShowFahrerUebersicht();
+  }};
+
 }})();
 // ── /Schichten-Tab ─────────────────────────────────────────────────────────────
 
