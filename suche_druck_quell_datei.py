@@ -3690,6 +3690,7 @@ var _vsSearchQ = "";
 var _vsOpenDriver = null;      // welcher Fahrer ist aufgeklappt
 var _vsSortKey = "letzter";    // name | count | letzter | dp | cp
 var _vsSortDir = "desc";       // asc | desc
+var _vsTypeFilter = "";       // aktive Verstoßart im aufgeklappten Fahrer
 
 function verstossEsc(v) {
   return String(v == null ? "" : v)
@@ -4059,11 +4060,27 @@ function verstossGraphKpi(label, value, color, icon) {
 function verstossFilter(q) {
   _vsSearchQ = (q || "").toLowerCase().trim();
   _vsOpenDriver = null;
+  _vsTypeFilter = "";
   verstossRender();
 }
 
 function verstossToggleDriver(name) {
-  _vsOpenDriver = (_vsOpenDriver === name) ? null : name;
+  if (_vsOpenDriver === name) {
+    _vsOpenDriver = null;
+  } else {
+    _vsOpenDriver = name;
+  }
+  _vsTypeFilter = "";
+  verstossRender();
+}
+
+function verstossFilterType(type) {
+  _vsTypeFilter = String(type || "");
+  verstossRender();
+}
+
+function verstossResetTypeFilter() {
+  _vsTypeFilter = "";
   verstossRender();
 }
 
@@ -4225,24 +4242,41 @@ function verstossRender() {
       html += "<td colspan='6' style='padding:0;'>";
       html += "<div style='padding:12px 18px 16px 22px;'>";
 
+      var detailList = (d.verstoesse || []).slice();
+      if (_vsTypeFilter) {
+        detailList = detailList.filter(function(v) { return String(v.violation || "") === _vsTypeFilter; });
+      }
+
       // Detail-Header mit PDF-Button
       html += "<div style='display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;'>";
       html += "<span style='font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;'>"
-            + d.count + " Verstöße &middot; neueste zuerst</span>";
+            + detailList.length + " von " + d.count + " Verstöße &middot; neueste zuerst"
+            + (_vsTypeFilter ? " &middot; gefiltert: " + verstossEsc(_vsTypeFilter) : "")
+            + "</span>";
       html += "<button onclick='event.stopPropagation();verstossPdfOne(" + JSON.stringify(d.name) + ")' "
             + "style='margin-left:auto;padding:6px 14px;background:linear-gradient(180deg,#ef4444 0%,#dc2626 100%);color:#fff;border:none;border-radius:6px;"
             + "font-weight:800;font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 1px 3px rgba(220,38,38,.28);'>"
             + "&#128196; PDF drucken</button>";
       html += "</div>";
 
-      // Verstoßarten-Chips
+      // Verstoßarten-Chips als Filter
       if (d.types && d.types.length) {
         html += "<div style='display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;'>";
         html += "<span style='font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;'>Arten:</span>";
+        html += "<button onclick='event.stopPropagation();verstossResetTypeFilter()' "
+              + "style='background:" + (!_vsTypeFilter ? "#1e3a5f" : "#fff") + ";border:1px solid " + (!_vsTypeFilter ? "#1e3a5f" : "#cbd5e1") + ";color:" + (!_vsTypeFilter ? "#fff" : "#334155") + ";"
+              + "border-radius:4px;padding:3px 9px;font-size:10.5px;font-weight:900;cursor:pointer;font-family:inherit;'>Alle anzeigen</button>";
         d.types.forEach(function(t) {
-          html += "<span style='background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:2px 8px;font-size:10.5px;'>"
-                + verstossEsc(t[0]) + " <b style='color:#dc2626;margin-left:3px;'>" + t[1] + "</b></span>";
+          var activeType = String(t[0]) === _vsTypeFilter;
+          html += "<button onclick='event.stopPropagation();verstossFilterType(" + JSON.stringify(String(t[0])) + ")' "
+                + "style='background:" + (activeType ? "#fee2e2" : "#fff") + ";border:1px solid " + (activeType ? "#ef4444" : "#e2e8f0") + ";color:#334155;"
+                + "border-radius:4px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit;'>"
+                + verstossEsc(t[0]) + " <b style='color:#dc2626;margin-left:3px;'>" + t[1] + "</b></button>";
         });
+        if (_vsTypeFilter) {
+          html += "<button onclick='event.stopPropagation();verstossResetTypeFilter()' "
+                + "style='background:#f8fafc;border:1px solid #cbd5e1;color:#475569;border-radius:4px;padding:3px 9px;font-size:10.5px;font-weight:800;cursor:pointer;font-family:inherit;'>Reset</button>";
+        }
         html += "</div>";
       }
 
@@ -4257,7 +4291,10 @@ function verstossRender() {
       });
       html += "</tr></thead><tbody>";
 
-      d.verstoesse.forEach(function(v, j) {
+      if (!detailList.length) {
+        html += "<tr><td colspan='8' style='padding:18px;text-align:center;color:#94a3b8;font-weight:700;'>Keine Verstöße für diesen Filter.</td></tr>";
+      }
+      detailList.forEach(function(v, j) {
         var jbg = j % 2 === 0 ? "#fff" : "#f8fafc";
         html += "<tr style='background:" + jbg + ";border-bottom:1px solid #eef2f7;'>";
         html += "<td style='padding:5px 8px;color:#0f172a;font-weight:600;white-space:nowrap;'>" + verstossEsc(v.start) + "</td>";
