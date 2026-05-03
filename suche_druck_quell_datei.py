@@ -7361,8 +7361,9 @@ function samToggle(el) {{
         if (netto <= 600) return;
         var plan = _faFindPlanEntryForShift(name, s);
         var tourText = plan && plan.tour ? String(plan.tour).trim() : "";
-        // Keine unsicheren Platzhalter mehr anzeigen: ohne gefundene Tour wird der Datensatz ausgelassen.
-        if (!tourText) return;
+        // 10H-Schichten immer anzeigen. Wenn keine Tour gefunden wurde,
+        // bleibt die Zeile sichtbar und wird in der Tour-Spalte markiert.
+        if (!tourText) tourText = "nicht gefunden";
         var dk = _faShiftDateKey(s);
         rows.push({{
           fahrer: name,
@@ -7449,14 +7450,14 @@ function samToggle(el) {{
     }}).join("");
 
     return "<div style='display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;'>"
-      + renderBox("Touren-Häufigkeit", "Welche Tournummer / welcher Tourtext kommt in den 10H-Touren wie oft vor", ["Tournummer", "Anzahl", "Fahrer", "Netto"], tourRows, sortedList(tourMap).length + " Touren")
+      + renderBox("Touren-Häufigkeit", "Welche Tournummer / welcher Tourtext kommt in den 10H-Schichten wie oft vor", ["Tournummer", "Anzahl", "Fahrer", "Netto"], tourRows, sortedList(tourMap).length + " Touren")
       + renderBox("Fahrer-Häufigkeit", "Welche Fahrer haben wie viele 10H-Touren", ["Fahrer", "Anzahl", "Touren", "Netto"], fahrerRows, sortedList(fahrerMap).length + " Fahrer")
       + "</div>";
   }}
 
   function _faRender10hRows(rows) {{
     if (!rows.length) {{
-      return "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:40px;text-align:center;color:#94a3b8;font-size:14px;'>Keine 10H Touren mit gefundener Tour in der aktuellen Auswahl.</div>";
+      return "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:40px;text-align:center;color:#94a3b8;font-size:14px;'>Keine 10H Touren in der aktuellen Auswahl.</div>";
     }}
     var html = "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:auto;'>";
     html += "<table style='width:100%;min-width:1380px;border-collapse:collapse;font-size:12px;table-layout:fixed;'>";
@@ -7518,7 +7519,7 @@ function samToggle(el) {{
   window.faExport10hPdf = function() {{
     var rows = (window.FA_LAST_10H_ALL_ROWS || window.FA_LAST_10H_ROWS || []).slice();
     if (!rows.length) rows = _faBuild10hRows("");
-    if (!rows.length) {{ alert("Keine 10H Touren mit gefundener Tour in der aktuellen Auswahl."); return; }}
+    if (!rows.length) {{ alert("Keine 10H Touren in der aktuellen Auswahl."); return; }}
     if(!window.jspdf || !window.jspdf.jsPDF || typeof window.jspdf.jsPDF !== "function") {{
       alert("PDF-Bibliothek ist noch nicht geladen. Bitte kurz warten und erneut versuchen.");
       return;
@@ -7664,7 +7665,7 @@ function samToggle(el) {{
     html += "<div style='background:#fff;border:1.5px solid #ddd6fe;border-radius:5px;padding:14px 18px;margin-bottom:12px;'>";
     html += "<div style='display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;'>";
     html += "<div><div style='font-size:20px;font-weight:950;color:#6d28d9;'>10H Touren" + (selectedDriver ? " · " + faEsc(selectedDriver) : "") + "</div>";
-    html += "<div style='font-size:11.5px;color:#64748b;font-weight:700;margin-top:3px;'>Alle Schichten mit mehr als 10:00 Netto-Arbeitszeit. Es werden nur Schichten mit gefundener Tour angezeigt. Zuordnung nach Fahrer, Anfangsdatum, LKW und Startzeit.</div></div>";
+    html += "<div style='font-size:11.5px;color:#64748b;font-weight:700;margin-top:3px;'>Alle Schichten mit mehr als 10:00 Netto-Arbeitszeit. Schichten ohne passende Tour werden mit „nicht gefunden“ angezeigt. Zuordnung nach Fahrer, Anfangsdatum, LKW und Startzeit.</div></div>";
     html += "<div style='display:flex;gap:8px;flex-wrap:wrap;align-items:center;'>";
     var driverOptions = Object.keys(allRows.reduce(function(o, r) {{ if (r.fahrer) o[r.fahrer] = true; return o; }}, {{}})).sort(function(a,b) {{ return a.localeCompare(b, "de"); }}).map(function(n) {{
       return "<option value='" + faEsc(n) + "'" + (n === selectedDriver ? " selected" : "") + ">" + faEsc(n) + "</option>";
