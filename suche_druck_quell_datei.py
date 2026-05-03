@@ -4823,6 +4823,21 @@ iframe.active{{display:block}}
     #fa-detail-panel {{ background:#f5f3ff !important; }}
     #fa-detail-panel thead tr {{ background:linear-gradient(180deg,#7c3aed 0%,#6d28d9 100%) !important; }}
     #fa-detail-panel .fa-tabs button {{ color:#6d28d9; }}
+    /* graue Texte in der Fahrerauswertung deutlich dunkler */
+    #panel-fa, #panel-fa td, #panel-fa th, #panel-fa div, #panel-fa span {{ color:#111827; }}
+    #panel-fa [style*="#94a3b8"],
+    #panel-fa [style*="#64748b"],
+    #panel-fa [style*="#475569"],
+    #panel-fa [style*="#6b7280"],
+    #panel-fa [style*="#9ca3af"],
+    #panel-fa [style*="#8b94a7"],
+    #panel-fa [style*="#718096"] {{ color:#1f2937 !important; }}
+    #panel-fa small, #panel-fa .muted {{ color:#374151 !important; }}
+    #panel-fa thead th, #panel-fa thead th * {{ color:#ffffff !important; }}
+    #panel-fa button[style*="background:#7c3aed"],
+    #panel-fa button[style*="background:#6d28d9"],
+    #panel-fa button[style*="background:linear-gradient"] {{ color:#ffffff !important; }}
+    #fa-stats, #fa-stats * {{ color:#1f2937 !important; }}
   </style>
   <!-- ── Fahrerauswertung Panel ───────────────────────────────────── -->
   <div id="panel-fa" style="display:none;flex:1;overflow:hidden;background:#f5f3ff;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
@@ -4839,7 +4854,7 @@ iframe.active{{display:block}}
       </div>
       <button onclick="faShow10hTours('')" id="fa-btn-10h" title="Alle Schichten mit mehr als 10:00 Netto-Arbeitszeit anzeigen"
         style="padding:5px 12px;border:2px solid #7c3aed;border-radius:5px;background:#fff;color:#7c3aed;font-size:11px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap;">10H Touren</button>
-      <div id="fa-stats" style="font-size:11px;color:#64748b;margin-left:auto;"></div>
+      <div id="fa-stats" style="font-size:11px;color:#1f2937;margin-left:auto;font-weight:700;"></div>
     </div>
     <div style="display:flex;flex:1;overflow:hidden;">
       <div style="width:220px;flex-shrink:0;border-right:1.5px solid #ddd6fe;overflow-y:auto;background:#ede9fe;">
