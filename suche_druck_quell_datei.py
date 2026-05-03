@@ -1,4 +1,4 @@
-# =============================================================================
+a# =============================================================================
 # app.py  -  Kombinierter Generator: Suche + Fahrzeugwäsche  ->  eine app.html
 # =============================================================================
 # Vollstaendig in sich geschlossen. Keine Suche.py / Druck.py benoetigt.
@@ -4282,10 +4282,6 @@ function verstossRender() {
                 + "border-radius:4px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit;'>"
                 + verstossEsc(t[0]) + " <b style='color:#dc2626;margin-left:3px;'>" + t[1] + "</b></button>";
         });
-        if (_vsTypeFilter) {
-          html += "<button onclick='event.stopPropagation();verstossResetTypeFilter()' "
-                + "style='background:#f8fafc;border:1px solid #cbd5e1;color:#475569;border-radius:4px;padding:3px 9px;font-size:10.5px;font-weight:800;cursor:pointer;font-family:inherit;'>Reset</button>";
-        }
         html += "</div>";
       }
 
@@ -4882,9 +4878,6 @@ iframe.active{{display:block}}
         <input id="verstoss-search" placeholder="Fahrer suchen..." oninput="verstossFilter(this.value)"
           style="flex:1;min-width:160px;max-width:300px;padding:8px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#fff;transition:border .15s;color:#0f172a;"
           onfocus="this.style.borderColor='#dc2626'" onblur="this.style.borderColor='#cbd5e1'">
-        <button id="verstoss-search-reset" onclick="verstossResetSearch()"
-          style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;font-size:12px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 1px 2px rgba(15,23,42,.05);">
-          Reset</button>
         <button id="verstoss-search-all" onclick="verstossResetSearch()"
           style="padding:8px 12px;border:1.5px solid #1e3a5f;border-radius:8px;background:#1e3a5f;color:#fff;font-size:12px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 1px 2px rgba(15,23,42,.08);">
           Alle anzeigen</button>
