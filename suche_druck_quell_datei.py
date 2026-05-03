@@ -4817,8 +4817,10 @@ iframe.active{{display:block}}
     #panel-fa > div:first-child {{ background:#ede9fe !important; border-bottom-color:#ddd6fe !important; }}
     #panel-fa h2 {{ color:#6d28d9 !important; }}
     #fa-search, #fa-year-sel {{ border-color:#7c3aed !important; color:#6d28d9 !important; }}
-    #fa-sort-name {{ border-color:#7c3aed !important; background:#7c3aed !important; color:#fff !important; }}
-    #fa-btn-10h {{ border-color:#7c3aed !important; color:#7c3aed !important; }}
+    #fa-sort-name {{ border-color:#eab308 !important; background:linear-gradient(180deg,#fde68a 0%,#facc15 100%) !important; color:#713f12 !important; box-shadow:0 1px 0 rgba(255,255,255,.55) inset !important; }}
+    #fa-sort-name:hover {{ background:linear-gradient(180deg,#fef3c7 0%,#fde047 100%) !important; color:#713f12 !important; }}
+    #fa-btn-10h {{ border-color:#dc2626 !important; background:#fff !important; color:#dc2626 !important; }}
+    #fa-btn-10h:hover {{ background:#fee2e2 !important; color:#991b1b !important; }}
     #panel-fa > div:nth-child(2) > div:first-child {{ background:#f5f3ff !important; border-right-color:#ddd6fe !important; }}
     #fa-detail-panel {{ background:#f5f3ff !important; }}
     #fa-detail-panel thead tr {{ background:linear-gradient(180deg,#7c3aed 0%,#6d28d9 100%) !important; }}
@@ -4850,10 +4852,10 @@ iframe.active{{display:block}}
         </select>
       <div style="display:flex;gap:4px;">
         <button onclick="faShowFahrerUebersicht()" id="fa-sort-name"
-          style="padding:5px 12px;border:2px solid #7c3aed;border-radius:5px;background:#7c3aed;color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;">Fahrer Übersicht</button>
+          style="padding:5px 12px;border:2px solid #eab308;border-radius:5px;background:linear-gradient(180deg,#fde68a 0%,#facc15 100%);color:#713f12;font-size:11px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap;">Fahrer Übersicht</button>
       </div>
       <button onclick="faShow10hTours('')" id="fa-btn-10h" title="Alle Schichten mit mehr als 10:00 Netto-Arbeitszeit anzeigen"
-        style="padding:5px 12px;border:2px solid #7c3aed;border-radius:5px;background:#fff;color:#7c3aed;font-size:11px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap;">10H Touren</button>
+        style="padding:5px 12px;border:2px solid #dc2626;border-radius:5px;background:#fff;color:#dc2626;font-size:11px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap;">10H Touren</button>
       <div id="fa-stats" style="font-size:11px;color:#1f2937;margin-left:auto;font-weight:700;"></div>
     </div>
     <div style="display:flex;flex:1;overflow:hidden;">
@@ -7139,9 +7141,16 @@ function samToggle(el) {{
     // Wichtig: CSS aus dem lila Schema arbeitet mit !important.
     // Deshalb auch hier setProperty(..., "important"), sonst wird der Text
     // beim aktiven Button lila auf lila und wirkt verschwunden.
-    btn.style.setProperty("background", active ? "#7c3aed" : "#fff", "important");
-    btn.style.setProperty("color", active ? "#fff" : "#7c3aed", "important");
-    btn.style.setProperty("border-color", "#7c3aed", "important");
+    btn.style.setProperty("background", active ? "#dc2626" : "#fff", "important");
+    btn.style.setProperty("color", active ? "#fff" : "#dc2626", "important");
+    btn.style.setProperty("border-color", "#dc2626", "important");
+    var btnDriver = document.getElementById("fa-sort-name");
+    if (btnDriver) {{
+      btnDriver.textContent = "Fahrer Übersicht";
+      btnDriver.style.setProperty("background", "linear-gradient(180deg,#fde68a 0%,#facc15 100%)", "important");
+      btnDriver.style.setProperty("color", "#713f12", "important");
+      btnDriver.style.setProperty("border-color", "#eab308", "important");
+    }}
   }}
 
   function _faShiftDateKey(s) {{
