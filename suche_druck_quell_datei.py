@@ -21,7 +21,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "10h-touren-2026-05-03-v1"
+APP_CACHE_VERSION = "10h-touren-pdf-starttag-2026-05-03-v1"
 
 EXCLUDED_DRIVER_NAMES = (
     "Ch.Holtz", "Paasch", "Meyer", "Ihde", "Spedition M+S Express 4", "Spedition M+S Express 3",
@@ -2487,15 +2487,71 @@ def parse_fahrer_excel(dateien: list) -> str:
             datum_str = f"{wd}, {datum.strftime('%d.%m.%Y')}"
             uhrzeit = fmt_zeit(row[8] if len(row) > 8 else None)
             tour = fmt_tour(row[15] if len(row) > 15 else None)
+            # Sonderfälle: Bei z.b.v. / Sonderaufgaben steht der Tourtext in manchen
+            # Exporten nicht in der normalen Tournummer-Spalte P. Dann gezielt
+            # nach diesem Text in den nahen Tour-/Bemerkungsspalten suchen.
+            if not tour:
+                for _idx in (0, 1, 2, 12, 13, 15, 16, 17, 18):
+                    if len(row) <= _idx:
+                        continue
+                    _cand = fmt_tour(row[_idx])
+                    if _cand and _re.search(r"z\.?\s*b\.?\s*v|sonderaufgaben|sonder", _cand, _re.I):
+                        tour = _cand
+                        break
             lkw_raw = row[11] if len(row) > 11 and _pd.notna(row[11]) else ""
             lkw_str = str(lkw_raw).strip()
             lkw = str(int(float(lkw_str))) if lkw_str.replace(".", "").replace("-", "").isdigit() else (lkw_str if lkw_str not in ("nan", "None", "") else "")
 
             paare = []
-            if len(row) > 4 and _pd.notna(row[3]) and _pd.notna(row[4]):
-                paare.append((str(row[3]).strip(), str(row[4]).strip()))
-            if len(row) > 7 and _pd.notna(row[6]) and _pd.notna(row[7]):
-                paare.append((str(row[6]).strip(), str(row[7]).strip()))
+
+            def _cell_text(v):
+                try:
+                    if _pd.isna(v):
+                        return ""
+                except Exception:
+                    pass
+                s = str(v).strip()
+                if s.lower() in ("nan", "none", "nat"):
+                    return ""
+                return _re.sub(r"\s+", " ", s)
+
+            def _add_pair(nachname, vorname):
+                nachname = _cell_text(nachname)
+                vorname = _cell_text(vorname)
+                if not nachname or not vorname:
+                    return
+                key = (nachname.lower(), vorname.lower())
+                if key not in {(a.lower(), b.lower()) for a, b in paare}:
+                    paare.append((nachname, vorname))
+
+            def _add_full_name(value):
+                full = _cell_text(value)
+                if not full:
+                    return
+                if _re.search(r"z\.?\s*b\.?\s*v|sonderaufgaben|sonder|krank|urlaub|ausgleich", full, _re.I):
+                    return
+                # Standard: "Nachname, Vorname"
+                if "," in full:
+                    parts = [p.strip() for p in full.split(",") if p.strip()]
+                    if len(parts) >= 2:
+                        _add_pair(parts[0], " ".join(parts[1:]))
+                    return
+                # Fallback für eine einzelne Namenszelle: beide üblichen Reihenfolgen
+                # zulassen; der spätere JavaScript-Abgleich ist ebenfalls robust.
+                parts = full.split()
+                if len(parts) >= 2 and not any(ch.isdigit() for ch in full):
+                    _add_pair(parts[-1], " ".join(parts[:-1]))
+                    _add_pair(parts[0], " ".join(parts[1:]))
+
+            # Normale Exportstruktur: D/E und G/H sind Nachname/Vorname.
+            if len(row) > 4:
+                _add_pair(row[3], row[4])
+            if len(row) > 7:
+                _add_pair(row[6], row[7])
+            # Robuster Fallback: z.b.v.-Zeilen haben den Fahrer manchmal in nur einer Zelle.
+            for _idx in (3, 4, 6, 7):
+                if len(row) > _idx:
+                    _add_full_name(row[_idx])
 
             for nachname, vorname in paare:
                 if not nachname or not vorname:
@@ -7007,20 +7063,47 @@ function samToggle(el) {{
     return Math.abs(a - b);
   }}
 
+  function _faAddDaysKey(key, days) {{
+    var m = String(key || "").match(/^(\d{{4}})-(\d{{2}})-(\d{{2}})$/);
+    if (!m) return "";
+    var d = new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10));
+    d.setDate(d.getDate() + (days || 0));
+    var y = d.getFullYear();
+    var mo = String(d.getMonth()+1).padStart(2,"0");
+    var da = String(d.getDate()).padStart(2,"0");
+    return y + "-" + mo + "-" + da;
+  }}
+
+  function _faCandidateDateKeys(shift) {{
+    var dk = _faShiftDateKey(shift);
+    // Wichtig: Zuordnung immer nach dem Datum des Anfangstages suchen.
+    // Auch bei Ende +1 wird NICHT auf den Folgetag gewechselt.
+    return dk ? [dk] : [];
+  }}
+
   function _faPlanEntriesForShift(name, shift) {{
     var driver = _faPlanDriver(name);
     if (!driver || !driver.years) return [];
-    var dk = _faShiftDateKey(shift);
-    if (!dk) return [];
+    var candidateKeys = _faCandidateDateKeys(shift);
+    if (!candidateKeys.length) return [];
+    var keyRank = {{}};
+    candidateKeys.forEach(function(k, i) {{ keyRank[k] = i; }});
     var years = faYearFilter === "all" ? Object.keys(driver.years || {{}}) : [faYearFilter];
+    // Bei Schichten über Jahreswechsel auch angrenzende Jahre durchsuchen.
+    candidateKeys.forEach(function(k) {{
+      var y = k.slice(0,4);
+      if (years.indexOf(y) < 0) years.push(y);
+    }});
     var out = [];
     years.forEach(function(y) {{
       var data = driver.years[y];
       if (!data) return;
       (data.eintraege || []).forEach(function(e) {{
-        if (_faPlanDateKey(e) !== dk) return;
+        var planKey = _faPlanDateKey(e);
+        if (keyRank[planKey] === undefined) return;
         var t = String(e.tour || "");
         if (/krank|urlaub|ausgleich/i.test(t)) return;
+        e._matchDateRank = keyRank[planKey];
         out.push(e);
       }});
     }});
@@ -7034,10 +7117,15 @@ function samToggle(el) {{
     var bestScore = 999999;
     candidates.forEach(function(e) {{
       var score = 1000;
-      if (_faLkwMatch(e.lkw, shift.lkw)) score -= 600;
+      // Es wird nur der Anfangstag zugelassen; Rank bleibt zur Sicherheit im Score.
+      score += (e._matchDateRank || 0) * 120;
+      if (_faLkwMatch(e.lkw, shift.lkw)) score -= 650;
       var diff = _faEntryTimeDiffMin(e.zeit, shift.beginn);
-      if (diff <= 90) score -= (300 - diff);
-      if (String(e.tour || "").trim()) score -= 50;
+      if (diff <= 90) score -= (320 - diff);
+      // z.b.v. / Sonderaufgaben und andere Texttouren ausdrücklich als gültige Tour anzeigen.
+      var tourText = String(e.tour || "").trim();
+      if (tourText) score -= 80;
+      if (/z\.?\s*b\.?\s*v|sonder/i.test(tourText)) score -= 60;
       if (score < bestScore) {{ bestScore = score; best = e; }}
     }});
     return best;
@@ -7072,7 +7160,8 @@ function samToggle(el) {{
           lkw: s.lkw || "",
           tour: plan && plan.tour ? String(plan.tour).trim() : "nicht gefunden",
           planLkw: plan && plan.lkw ? String(plan.lkw).trim() : "",
-          planZeit: plan && plan.zeit ? String(plan.zeit).trim() : ""
+          planZeit: plan && plan.zeit ? String(plan.zeit).trim() : "",
+          planDatum: plan ? _faDateLabelFromKey(_faPlanDateKey(plan)) : ""
         }});
       }});
     }});
@@ -7109,16 +7198,16 @@ function samToggle(el) {{
       }});
     }}
 
-    function renderBox(title, sub, headers, rowsHtml) {{
-      return "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;min-width:0;'>"
-        + "<div style='padding:10px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;'>"
-        + "<div style='font-size:13px;font-weight:950;color:#0f172a;'>" + title + "</div>"
-        + "<div style='font-size:10.5px;font-weight:700;color:#64748b;margin-top:2px;'>" + sub + "</div>"
-        + "</div>"
+    function renderBox(title, sub, headers, rowsHtml, countLabel) {{
+      return "<details style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;min-width:0;'>"
+        + "<summary style='list-style:none;cursor:pointer;padding:10px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:10px;'>"
+        + "<span><span style='font-size:13px;font-weight:950;color:#0f172a;'>" + title + "</span><span style='display:block;font-size:10.5px;font-weight:700;color:#64748b;margin-top:2px;'>" + sub + "</span></span>"
+        + "<span style='font-size:10px;font-weight:950;color:#be123c;background:#fff1f2;border:1px solid #fecdd3;border-radius:999px;padding:3px 8px;white-space:nowrap;'>" + countLabel + "</span>"
+        + "</summary>"
         + "<div style='max-height:260px;overflow:auto;'>"
         + "<table style='width:100%;border-collapse:collapse;font-size:11.5px;'>"
         + "<thead><tr style='background:#f1f5f9;'>" + headers.map(function(h) {{ return "<th style='position:sticky;top:0;background:#f1f5f9;padding:7px 9px;border-bottom:1px solid #cbd5e1;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.35px;color:#475569;font-weight:950;'>" + h + "</th>"; }}).join("") + "</tr></thead>"
-        + "<tbody>" + rowsHtml + "</tbody></table></div></div>";
+        + "<tbody>" + rowsHtml + "</tbody></table></div></details>";
     }}
 
     var tourRows = sortedList(tourMap).map(function(t, i) {{
@@ -7140,8 +7229,8 @@ function samToggle(el) {{
     }}).join("");
 
     return "<div style='display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;'>"
-      + renderBox("Touren-Häufigkeit", "Welche Tournummer / welcher Tourtext kommt in den 10H-Touren wie oft vor", ["Tournummer", "Anzahl", "Fahrer", "Netto"], tourRows)
-      + renderBox("Fahrer-Häufigkeit", "Welche Fahrer haben wie viele 10H-Touren", ["Fahrer", "Anzahl", "Touren", "Netto"], fahrerRows)
+      + renderBox("Touren-Häufigkeit", "Welche Tournummer / welcher Tourtext kommt in den 10H-Touren wie oft vor", ["Tournummer", "Anzahl", "Fahrer", "Netto"], tourRows, sortedList(tourMap).length + " Touren")
+      + renderBox("Fahrer-Häufigkeit", "Welche Fahrer haben wie viele 10H-Touren", ["Fahrer", "Anzahl", "Touren", "Netto"], fahrerRows, sortedList(fahrerMap).length + " Fahrer")
       + "</div>";
   }}
 
@@ -7150,8 +7239,8 @@ function samToggle(el) {{
       return "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:40px;text-align:center;color:#94a3b8;font-size:14px;'>Keine 10H Touren in der aktuellen Auswahl.</div>";
     }}
     var html = "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:auto;'>";
-    html += "<table style='width:100%;min-width:1220px;border-collapse:collapse;font-size:12px;table-layout:fixed;'>";
-    html += "<colgroup><col style='width:180px;'><col style='width:96px;'><col style='width:68px;'><col style='width:68px;'><col style='width:82px;'><col style='width:82px;'><col style='width:120px;'><col style='width:230px;'><col style='width:190px;'></colgroup>";
+    html += "<table style='width:100%;min-width:1380px;border-collapse:collapse;font-size:12px;table-layout:fixed;'>";
+    html += "<colgroup><col style='width:185px;'><col style='width:104px;'><col style='width:70px;'><col style='width:70px;'><col style='width:82px;'><col style='width:82px;'><col style='width:120px;'><col style='width:340px;'><col style='width:240px;'></colgroup>";
     html += "<thead><tr style='background:#fff1f2;color:#9f1239;'>";
     ["Fahrer","Datum","Beginn","Ende","Schicht","Netto","LKW","Tournummer","Zuordnung"].forEach(function(h) {{
       html += "<th style='padding:8px 9px;border-bottom:1px solid #fecdd3;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.35px;font-weight:900;'>" + h + "</th>";
@@ -7169,12 +7258,134 @@ function samToggle(el) {{
       html += "<td style='padding:7px 9px;text-align:right;color:#be123c;font-weight:950;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc(r.nettoText) + "</td>";
       html += "<td style='padding:7px 9px;color:#166534;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + faEsc(r.lkw) + "</td>";
       html += "<td style='padding:7px 9px;font-weight:950;color:" + (found ? "#0f172a" : "#be123c") + ";white-space:normal;overflow:visible;text-overflow:clip;line-height:1.25;'>" + faEsc(r.tour) + "</td>";
-      html += "<td style='padding:7px 9px;color:#64748b;font-size:10.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + (found ? ("Excel: " + faEsc((r.planZeit ? r.planZeit + " · " : "") + (r.planLkw || ""))) : "kein passender Excel-Eintrag") + "</td>";
+      html += "<td style='padding:7px 9px;color:#64748b;font-size:10.5px;font-weight:700;white-space:normal;line-height:1.25;overflow:visible;text-overflow:clip;'>" + (found ? ("Excel: " + faEsc((r.planDatum ? r.planDatum + " · " : "") + (r.planZeit ? r.planZeit + " · " : "") + (r.planLkw || ""))) : "kein passender Excel-Eintrag") + "</td>";
       html += "</tr>";
     }});
     html += "</tbody></table></div>";
     return html;
   }}
+
+  function _fa10hAggRows(rows, mode) {{
+    var map = {{}};
+    (rows || []).forEach(function(r) {{
+      var tour = String(r.tour || "nicht gefunden").trim() || "nicht gefunden";
+      var driver = String(r.fahrer || "unbekannt").trim() || "unbekannt";
+      if (mode === "tour") {{
+        if (!map[tour]) map[tour] = {{ name: tour, count: 0, netto: 0, fahrer: {{}} }};
+        map[tour].count += 1;
+        map[tour].netto += r.nettoMin || 0;
+        map[tour].fahrer[driver] = true;
+      }} else {{
+        if (!map[driver]) map[driver] = {{ name: driver, count: 0, netto: 0, touren: {{}} }};
+        map[driver].count += 1;
+        map[driver].netto += r.nettoMin || 0;
+        map[driver].touren[tour] = true;
+      }}
+    }});
+    return Object.keys(map).map(function(k) {{ return map[k]; }}).sort(function(a,b) {{
+      return (b.count - a.count) || a.name.localeCompare(b.name, "de");
+    }});
+  }}
+
+  function _faSafePdfName(v) {{
+    return String(v || "")
+      .replace(/[\\/:*?"<>|]+/g, "_")
+      .replace(/\s+/g, "_")
+      .slice(0, 80) || "Auswertung";
+  }}
+
+  window.faExport10hPdf = function() {{
+    var rows = (window.FA_LAST_10H_ROWS || []).slice();
+    if (!rows.length) rows = _faBuild10hRows();
+    if (!rows.length) {{ alert("Keine 10H Touren in der aktuellen Auswahl."); return; }}
+    if(!window.jspdf || !window.jspdf.jsPDF || typeof window.jspdf.jsPDF !== "function") {{
+      alert("PDF-Bibliothek ist noch nicht geladen. Bitte kurz warten und erneut versuchen.");
+      return;
+    }}
+    var jsPDF = window.jspdf.jsPDF;
+    var doc = new jsPDF({{ orientation:"landscape", unit:"mm", format:"a4" }});
+    var yearLabel = faYearFilter === "all" ? "Alle Jahre" : faYearFilter;
+    var sumNetto = rows.reduce(function(s, r) {{ return s + (r.nettoMin || 0); }}, 0);
+    var missing = rows.filter(function(r) {{ return !r.tour || r.tour === "nicht gefunden"; }}).length;
+    var title = "10H Touren - " + yearLabel;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text(title, 12, 14);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text("Treffer: " + rows.length + "   Netto gesamt: " + _fmtMin(sumNetto) + "   ohne Tournummer: " + missing + "   Zuordnung nach Anfangstag", 12, 20);
+
+    var y = 26;
+    var tourAgg = _fa10hAggRows(rows, "tour").slice(0, 25).map(function(t) {{
+      return [t.name, String(t.count), String(_faCountKeys(t.fahrer)), _fmtMin(t.netto)];
+    }});
+    doc.autoTable({{
+      startY: y,
+      head: [["Tournummer / Tourtext", "Anzahl", "Fahrer", "Netto"]],
+      body: tourAgg,
+      styles: {{ fontSize: 7.2, cellPadding: 1.6, overflow: "linebreak" }},
+      headStyles: {{ fillColor: [159, 18, 57], textColor: 255, fontStyle: "bold" }},
+      columnStyles: {{ 0: {{ cellWidth: 125 }}, 1: {{ halign: "right", cellWidth: 20 }}, 2: {{ halign: "right", cellWidth: 20 }}, 3: {{ halign: "right", cellWidth: 25 }} }},
+      margin: {{ left: 12, right: 150 }}
+    }});
+    var yAfterTour = doc.lastAutoTable ? doc.lastAutoTable.finalY : 26;
+
+    var fahrerAgg = _fa10hAggRows(rows, "fahrer").slice(0, 25).map(function(f) {{
+      return [f.name, String(f.count), String(_faCountKeys(f.touren)), _fmtMin(f.netto)];
+    }});
+    doc.autoTable({{
+      startY: 26,
+      head: [["Fahrer", "Anzahl", "Touren", "Netto"]],
+      body: fahrerAgg,
+      styles: {{ fontSize: 7.2, cellPadding: 1.6, overflow: "linebreak" }},
+      headStyles: {{ fillColor: [30, 64, 175], textColor: 255, fontStyle: "bold" }},
+      columnStyles: {{ 0: {{ cellWidth: 80 }}, 1: {{ halign: "right", cellWidth: 20 }}, 2: {{ halign: "right", cellWidth: 20 }}, 3: {{ halign: "right", cellWidth: 25 }} }},
+      margin: {{ left: 150, right: 12 }}
+    }});
+    var yAfterFahrer = doc.lastAutoTable ? doc.lastAutoTable.finalY : 26;
+
+    y = Math.max(yAfterTour, yAfterFahrer) + 8;
+    doc.autoTable({{
+      startY: y,
+      head: [["Fahrer", "Datum", "Beginn", "Ende", "Schicht", "Netto", "LKW", "Tournummer", "Zuordnung"]],
+      body: rows.map(function(r) {{
+        var found = r.tour && r.tour !== "nicht gefunden";
+        return [
+          r.fahrer || "",
+          (r.wochentag ? r.wochentag + " " : "") + (r.datum || ""),
+          r.beginn || "",
+          r.ende || "",
+          r.schichtdauer || "",
+          r.nettoText || "",
+          r.lkw || "",
+          r.tour || "nicht gefunden",
+          found ? ((r.planDatum ? r.planDatum + " · " : "") + (r.planZeit ? r.planZeit + " · " : "") + (r.planLkw || "")) : "kein passender Excel-Eintrag"
+        ];
+      }}),
+      styles: {{ fontSize: 7.2, cellPadding: 1.5, overflow: "linebreak", valign: "top" }},
+      headStyles: {{ fillColor: [190, 18, 60], textColor: 255, fontStyle: "bold" }},
+      columnStyles: {{
+        0: {{ cellWidth: 36 }},
+        1: {{ cellWidth: 24 }},
+        2: {{ cellWidth: 16 }},
+        3: {{ cellWidth: 17 }},
+        4: {{ cellWidth: 17, halign: "right" }},
+        5: {{ cellWidth: 17, halign: "right" }},
+        6: {{ cellWidth: 24 }},
+        7: {{ cellWidth: 76 }},
+        8: {{ cellWidth: 55 }}
+      }},
+      margin: {{ left: 8, right: 8 }},
+      didDrawPage: function(data) {{
+        var pageCount = doc.internal.getNumberOfPages();
+        doc.setFontSize(7);
+        doc.setTextColor(120);
+        doc.text("Seite " + pageCount, 282, 202, {{ align: "right" }});
+      }}
+    }});
+    doc.save("10H_Touren_" + _faSafePdfName(yearLabel) + ".pdf");
+  }};
 
   window.faShow10hTours = function() {{
     var panel = document.getElementById("fa-detail-panel");
@@ -7182,6 +7393,7 @@ function samToggle(el) {{
     _faSet10hButton(true);
     faSelectedName = null;
     var rows = _faBuild10hRows();
+    window.FA_LAST_10H_ROWS = rows;
     var sumNetto = rows.reduce(function(s, r) {{ return s + (r.nettoMin || 0); }}, 0);
     var tourMissing = rows.filter(function(r) {{ return !r.tour || r.tour === "nicht gefunden"; }}).length;
     var yearLabel = faYearFilter === "all" ? "Alle Jahre" : faYearFilter;
@@ -7189,8 +7401,9 @@ function samToggle(el) {{
     html += "<div style='background:#fff;border:1.5px solid #fecdd3;border-radius:5px;padding:14px 18px;margin-bottom:12px;'>";
     html += "<div style='display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;'>";
     html += "<div><div style='font-size:20px;font-weight:950;color:#9f1239;'>10H Touren</div>";
-    html += "<div style='font-size:11.5px;color:#64748b;font-weight:700;margin-top:3px;'>Alle Schichten mit mehr als 10:00 Netto-Arbeitszeit. Tournummer wird aus den Touren-Excel-Listen über Fahrer, Datum und LKW zugeordnet.</div></div>";
-    html += "<div style='display:flex;gap:8px;flex-wrap:wrap;'>";
+    html += "<div style='font-size:11.5px;color:#64748b;font-weight:700;margin-top:3px;'>Alle Schichten mit mehr als 10:00 Netto-Arbeitszeit. Tournummer wird aus den Touren-Excel-Listen über Fahrer, Anfangsdatum und LKW zugeordnet. Ende +1 bleibt beim Anfangstag.</div></div>";
+    html += "<div style='display:flex;gap:8px;flex-wrap:wrap;align-items:center;'>";
+    html += "<button type='button' onclick='faExport10hPdf()' style='border:2px solid #be123c;background:#be123c;color:#fff;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:950;cursor:pointer;font-family:inherit;'>PDF Druck</button>";
     html += "<span style='background:#fee2e2;color:#991b1b;border:1px solid #fecaca;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:900;'>" + rows.length + " Treffer</span>";
     html += "<span style='background:#f8fafc;color:#0f172a;border:1px solid #e2e8f0;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:800;'>Auswahl: " + faEsc(yearLabel) + "</span>";
     html += "<span style='background:#f8fafc;color:#0f172a;border:1px solid #e2e8f0;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:800;'>Σ Netto " + _fmtMin(sumNetto) + "</span>";
