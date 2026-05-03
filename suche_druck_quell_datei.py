@@ -2414,6 +2414,7 @@ def parse_fahrer_excel(dateien: list) -> str:
     from io import BytesIO
     import datetime as _dt
     import pandas as _pd
+    import re as _re
 
     WOCHENTAGE = ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"]
 
@@ -2440,6 +2441,22 @@ def parse_fahrer_excel(dateien: list) -> str:
         elif isinstance(val, _dt.time):
             return val.strftime("%H:%M")
         return "n.A."
+
+    def fmt_tour(val):
+        """Tournummer / Tourtext robust aus Excel übernehmen.
+        Auch Texte wie 'z.b.v. / Sonderaufgaben' werden unverändert als Tour angezeigt.
+        """
+        try:
+            if _pd.isna(val):
+                return ""
+        except Exception:
+            pass
+        txt = str(val).strip()
+        if txt.lower() in ("nan", "none", "nat"):
+            return ""
+        # Excel-Zellumbrüche und doppelte Leerzeichen sauber im HTML anzeigen
+        txt = _re.sub(r"\s+", " ", txt)
+        return txt
 
     # fahrer_map: name → { year → { eintraege:[], krank, urlaub, ausgleich } }
     fahrer_map = {}
@@ -2469,7 +2486,7 @@ def parse_fahrer_excel(dateien: list) -> str:
             wd = WOCHENTAGE[datum.weekday()]
             datum_str = f"{wd}, {datum.strftime('%d.%m.%Y')}"
             uhrzeit = fmt_zeit(row[8] if len(row) > 8 else None)
-            tour = str(row[15]).strip() if len(row) > 15 and _pd.notna(row[15]) else ""
+            tour = fmt_tour(row[15] if len(row) > 15 else None)
             lkw_raw = row[11] if len(row) > 11 and _pd.notna(row[11]) else ""
             lkw_str = str(lkw_raw).strip()
             lkw = str(int(float(lkw_str))) if lkw_str.replace(".", "").replace("-", "").isdigit() else (lkw_str if lkw_str not in ("nan", "None", "") else "")
@@ -7065,13 +7082,76 @@ function samToggle(el) {{
     return rows;
   }}
 
+  function _faCountKeys(obj) {{
+    return Object.keys(obj || {{}}).length;
+  }}
+
+  function _faRender10hFrequency(rows) {{
+    if (!rows.length) return "";
+    var tourMap = {{}}, fahrerMap = {{}};
+    rows.forEach(function(r) {{
+      var tour = String(r.tour || "nicht gefunden").trim() || "nicht gefunden";
+      if (!tourMap[tour]) tourMap[tour] = {{ name: tour, count: 0, netto: 0, fahrer: {{}} }};
+      tourMap[tour].count += 1;
+      tourMap[tour].netto += r.nettoMin || 0;
+      tourMap[tour].fahrer[r.fahrer || ""] = true;
+
+      var fahrer = String(r.fahrer || "").trim() || "unbekannt";
+      if (!fahrerMap[fahrer]) fahrerMap[fahrer] = {{ name: fahrer, count: 0, netto: 0, touren: {{}} }};
+      fahrerMap[fahrer].count += 1;
+      fahrerMap[fahrer].netto += r.nettoMin || 0;
+      fahrerMap[fahrer].touren[tour] = true;
+    }});
+
+    function sortedList(map) {{
+      return Object.keys(map).map(function(k) {{ return map[k]; }}).sort(function(a,b) {{
+        return (b.count - a.count) || a.name.localeCompare(b.name, "de");
+      }});
+    }}
+
+    function renderBox(title, sub, headers, rowsHtml) {{
+      return "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;min-width:0;'>"
+        + "<div style='padding:10px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;'>"
+        + "<div style='font-size:13px;font-weight:950;color:#0f172a;'>" + title + "</div>"
+        + "<div style='font-size:10.5px;font-weight:700;color:#64748b;margin-top:2px;'>" + sub + "</div>"
+        + "</div>"
+        + "<div style='max-height:260px;overflow:auto;'>"
+        + "<table style='width:100%;border-collapse:collapse;font-size:11.5px;'>"
+        + "<thead><tr style='background:#f1f5f9;'>" + headers.map(function(h) {{ return "<th style='position:sticky;top:0;background:#f1f5f9;padding:7px 9px;border-bottom:1px solid #cbd5e1;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.35px;color:#475569;font-weight:950;'>" + h + "</th>"; }}).join("") + "</tr></thead>"
+        + "<tbody>" + rowsHtml + "</tbody></table></div></div>";
+    }}
+
+    var tourRows = sortedList(tourMap).map(function(t, i) {{
+      return "<tr style='background:" + (i % 2 ? "#fff" : "#f8fafc") + ";border-bottom:1px solid #e2e8f0;'>"
+        + "<td style='padding:7px 9px;font-weight:900;color:#0f172a;white-space:normal;line-height:1.25;'>" + faEsc(t.name) + "</td>"
+        + "<td style='padding:7px 9px;text-align:right;font-weight:950;color:#be123c;font-variant-numeric:tabular-nums;'>" + t.count + "</td>"
+        + "<td style='padding:7px 9px;text-align:right;font-weight:850;color:#0f172a;font-variant-numeric:tabular-nums;'>" + _faCountKeys(t.fahrer) + "</td>"
+        + "<td style='padding:7px 9px;text-align:right;font-weight:850;color:#0f172a;font-variant-numeric:tabular-nums;'>" + _fmtMin(t.netto) + "</td>"
+        + "</tr>";
+    }}).join("");
+
+    var fahrerRows = sortedList(fahrerMap).map(function(f, i) {{
+      return "<tr style='background:" + (i % 2 ? "#fff" : "#f8fafc") + ";border-bottom:1px solid #e2e8f0;'>"
+        + "<td style='padding:7px 9px;font-weight:900;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + faEsc(f.name) + "</td>"
+        + "<td style='padding:7px 9px;text-align:right;font-weight:950;color:#be123c;font-variant-numeric:tabular-nums;'>" + f.count + "</td>"
+        + "<td style='padding:7px 9px;text-align:right;font-weight:850;color:#0f172a;font-variant-numeric:tabular-nums;'>" + _faCountKeys(f.touren) + "</td>"
+        + "<td style='padding:7px 9px;text-align:right;font-weight:850;color:#0f172a;font-variant-numeric:tabular-nums;'>" + _fmtMin(f.netto) + "</td>"
+        + "</tr>";
+    }}).join("");
+
+    return "<div style='display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;'>"
+      + renderBox("Touren-Häufigkeit", "Welche Tournummer / welcher Tourtext kommt in den 10H-Touren wie oft vor", ["Tournummer", "Anzahl", "Fahrer", "Netto"], tourRows)
+      + renderBox("Fahrer-Häufigkeit", "Welche Fahrer haben wie viele 10H-Touren", ["Fahrer", "Anzahl", "Touren", "Netto"], fahrerRows)
+      + "</div>";
+  }}
+
   function _faRender10hRows(rows) {{
     if (!rows.length) {{
       return "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:40px;text-align:center;color:#94a3b8;font-size:14px;'>Keine 10H Touren in der aktuellen Auswahl.</div>";
     }}
-    var html = "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;'>";
-    html += "<table style='width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;'>";
-    html += "<colgroup><col style='width:190px;'><col style='width:92px;'><col style='width:70px;'><col style='width:70px;'><col style='width:86px;'><col style='width:86px;'><col style='width:135px;'><col style='width:90px;'><col></colgroup>";
+    var html = "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:auto;'>";
+    html += "<table style='width:100%;min-width:1220px;border-collapse:collapse;font-size:12px;table-layout:fixed;'>";
+    html += "<colgroup><col style='width:180px;'><col style='width:96px;'><col style='width:68px;'><col style='width:68px;'><col style='width:82px;'><col style='width:82px;'><col style='width:120px;'><col style='width:230px;'><col style='width:190px;'></colgroup>";
     html += "<thead><tr style='background:#fff1f2;color:#9f1239;'>";
     ["Fahrer","Datum","Beginn","Ende","Schicht","Netto","LKW","Tournummer","Zuordnung"].forEach(function(h) {{
       html += "<th style='padding:8px 9px;border-bottom:1px solid #fecdd3;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.35px;font-weight:900;'>" + h + "</th>";
@@ -7088,7 +7168,7 @@ function samToggle(el) {{
       html += "<td style='padding:7px 9px;text-align:right;color:#1e3a5f;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc(r.schichtdauer) + "</td>";
       html += "<td style='padding:7px 9px;text-align:right;color:#be123c;font-weight:950;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc(r.nettoText) + "</td>";
       html += "<td style='padding:7px 9px;color:#166534;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + faEsc(r.lkw) + "</td>";
-      html += "<td style='padding:7px 9px;font-weight:950;color:" + (found ? "#0f172a" : "#be123c") + ";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + faEsc(r.tour) + "</td>";
+      html += "<td style='padding:7px 9px;font-weight:950;color:" + (found ? "#0f172a" : "#be123c") + ";white-space:normal;overflow:visible;text-overflow:clip;line-height:1.25;'>" + faEsc(r.tour) + "</td>";
       html += "<td style='padding:7px 9px;color:#64748b;font-size:10.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + (found ? ("Excel: " + faEsc((r.planZeit ? r.planZeit + " · " : "") + (r.planLkw || ""))) : "kein passender Excel-Eintrag") + "</td>";
       html += "</tr>";
     }});
@@ -7116,6 +7196,7 @@ function samToggle(el) {{
     html += "<span style='background:#f8fafc;color:#0f172a;border:1px solid #e2e8f0;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:800;'>Σ Netto " + _fmtMin(sumNetto) + "</span>";
     if (tourMissing) html += "<span style='background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:900;'>" + tourMissing + " ohne Tournummer</span>";
     html += "</div></div></div>";
+    html += _faRender10hFrequency(rows);
     html += _faRender10hRows(rows);
     panel.innerHTML = html;
     panel.scrollTop = 0;
