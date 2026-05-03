@@ -21,7 +21,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "blattnamen-robust-2026-04-30-v2"
+APP_CACHE_VERSION = "10h-touren-2026-05-03-v1"
 
 EXCLUDED_DRIVER_NAMES = (
     "Ch.Holtz", "Paasch", "Meyer", "Ihde", "Spedition M+S Express 4", "Spedition M+S Express 3",
@@ -4681,6 +4681,8 @@ iframe.active{{display:block}}
         <button onclick="faSort('name')" id="fa-sort-name"
           style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#1b66b3;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">A–Z</button>
       </div>
+      <button onclick="faShow10hTours()" id="fa-btn-10h" title="Alle Schichten mit mehr als 10:00 Netto-Arbeitszeit anzeigen"
+        style="padding:5px 12px;border:2px solid #be123c;border-radius:5px;background:#fff;color:#be123c;font-size:11px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap;">10H Touren</button>
       <div id="fa-stats" style="font-size:11px;color:#64748b;margin-left:auto;"></div>
     </div>
     <div style="display:flex;flex:1;overflow:hidden;">
@@ -6949,6 +6951,176 @@ function samToggle(el) {{
     return _summarizeShifts(rows);
   }}
 
+  function _faSet10hButton(active) {{
+    var btn = document.getElementById("fa-btn-10h");
+    if (!btn) return;
+    btn.style.background = active ? "#be123c" : "#fff";
+    btn.style.color = active ? "#fff" : "#be123c";
+  }}
+
+  function _faShiftDateKey(s) {{
+    var raw = String((s && s.tag) || "");
+    var m = raw.match(/^(\d{{2}})\.(\d{{2}})\.(\d{{4}})$/);
+    if (!m) return "";
+    return m[3] + "-" + m[2] + "-" + m[1];
+  }}
+
+  function _faDateLabelFromKey(key) {{
+    var m = String(key || "").match(/^(\d{{4}})-(\d{{2}})-(\d{{2}})$/);
+    if (!m) return key || "";
+    return m[3] + "." + m[2] + "." + m[1];
+  }}
+
+  function _faNormLkw(value) {{
+    var s = String(value == null ? "" : value).toLowerCase();
+    try {{ s = s.normalize("NFKD").replace(/[̀-ͯ]/g, ""); }} catch(e) {{}}
+    s = s.replace(/[^a-z0-9]+/g, "");
+    return s;
+  }}
+
+  function _faLkwMatch(a, b) {{
+    var an = _faNormLkw(a), bn = _faNormLkw(b);
+    if (!an || !bn) return false;
+    return an === bn || an.indexOf(bn) >= 0 || bn.indexOf(an) >= 0;
+  }}
+
+  function _faEntryTimeDiffMin(planTime, shiftTime) {{
+    var a = _toMin(planTime), b = _toMin(shiftTime);
+    if (!a || !b) return 99999;
+    return Math.abs(a - b);
+  }}
+
+  function _faPlanEntriesForShift(name, shift) {{
+    var driver = _faPlanDriver(name);
+    if (!driver || !driver.years) return [];
+    var dk = _faShiftDateKey(shift);
+    if (!dk) return [];
+    var years = faYearFilter === "all" ? Object.keys(driver.years || {{}}) : [faYearFilter];
+    var out = [];
+    years.forEach(function(y) {{
+      var data = driver.years[y];
+      if (!data) return;
+      (data.eintraege || []).forEach(function(e) {{
+        if (_faPlanDateKey(e) !== dk) return;
+        var t = String(e.tour || "");
+        if (/krank|urlaub|ausgleich/i.test(t)) return;
+        out.push(e);
+      }});
+    }});
+    return out;
+  }}
+
+  function _faFindPlanEntryForShift(name, shift) {{
+    var candidates = _faPlanEntriesForShift(name, shift);
+    if (!candidates.length) return null;
+    var best = null;
+    var bestScore = 999999;
+    candidates.forEach(function(e) {{
+      var score = 1000;
+      if (_faLkwMatch(e.lkw, shift.lkw)) score -= 600;
+      var diff = _faEntryTimeDiffMin(e.zeit, shift.beginn);
+      if (diff <= 90) score -= (300 - diff);
+      if (String(e.tour || "").trim()) score -= 50;
+      if (score < bestScore) {{ bestScore = score; best = e; }}
+    }});
+    return best;
+  }}
+
+  function _faBuild10hRows() {{
+    var q = (faSearchQuery || "").toLowerCase().trim();
+    var rows = [];
+    Object.keys(TIMEREC_DATA || {{}}).forEach(function(name) {{
+      if (q && name.toLowerCase().indexOf(q) < 0) return;
+      (TIMEREC_DATA[name] || []).forEach(function(s) {{
+        var yrOk = true;
+        if (faYearFilter !== "all") {{
+          var m = (s.tag || "").match(/(\d{{4}})$/);
+          yrOk = !!(m && m[1] === faYearFilter);
+        }}
+        if (!yrOk) return;
+        var netto = _toMin(s.profil);
+        if (netto <= 600) return;
+        var plan = _faFindPlanEntryForShift(name, s);
+        var dk = _faShiftDateKey(s);
+        rows.push({{
+          fahrer: name,
+          dateKey: dk,
+          datum: _faDateLabelFromKey(dk),
+          wochentag: s.wochentag || "",
+          beginn: s.beginn || "",
+          ende: (s.ende || "") + (s.ende_naechster_tag ? " +1" : ""),
+          schichtdauer: s.schichtdauer || "",
+          nettoText: s.profil || _fmtMin(netto),
+          nettoMin: netto,
+          lkw: s.lkw || "",
+          tour: plan && plan.tour ? String(plan.tour).trim() : "nicht gefunden",
+          planLkw: plan && plan.lkw ? String(plan.lkw).trim() : "",
+          planZeit: plan && plan.zeit ? String(plan.zeit).trim() : ""
+        }});
+      }});
+    }});
+    rows.sort(function(a,b) {{
+      return (b.dateKey || "").localeCompare(a.dateKey || "") || a.fahrer.localeCompare(b.fahrer, "de") || (a.beginn || "").localeCompare(b.beginn || "");
+    }});
+    return rows;
+  }}
+
+  function _faRender10hRows(rows) {{
+    if (!rows.length) {{
+      return "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:40px;text-align:center;color:#94a3b8;font-size:14px;'>Keine 10H Touren in der aktuellen Auswahl.</div>";
+    }}
+    var html = "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;'>";
+    html += "<table style='width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;'>";
+    html += "<colgroup><col style='width:190px;'><col style='width:92px;'><col style='width:70px;'><col style='width:70px;'><col style='width:86px;'><col style='width:86px;'><col style='width:135px;'><col style='width:90px;'><col></colgroup>";
+    html += "<thead><tr style='background:#fff1f2;color:#9f1239;'>";
+    ["Fahrer","Datum","Beginn","Ende","Schicht","Netto","LKW","Tournummer","Zuordnung"].forEach(function(h) {{
+      html += "<th style='padding:8px 9px;border-bottom:1px solid #fecdd3;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.35px;font-weight:900;'>" + h + "</th>";
+    }});
+    html += "</tr></thead><tbody>";
+    rows.forEach(function(r, i) {{
+      var bg = i % 2 ? "#fff" : "#fff7f8";
+      var found = r.tour && r.tour !== "nicht gefunden";
+      html += "<tr style='background:" + bg + ";border-bottom:1px solid #f1f5f9;'>";
+      html += "<td style='padding:7px 9px;font-weight:900;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + faEsc(r.fahrer) + "</td>";
+      html += "<td style='padding:7px 9px;font-weight:800;color:#0f172a;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc((r.wochentag ? r.wochentag + " " : "") + r.datum) + "</td>";
+      html += "<td style='padding:7px 9px;color:#475569;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc(r.beginn) + "</td>";
+      html += "<td style='padding:7px 9px;color:#475569;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc(r.ende) + "</td>";
+      html += "<td style='padding:7px 9px;text-align:right;color:#1e3a5f;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc(r.schichtdauer) + "</td>";
+      html += "<td style='padding:7px 9px;text-align:right;color:#be123c;font-weight:950;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc(r.nettoText) + "</td>";
+      html += "<td style='padding:7px 9px;color:#166534;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + faEsc(r.lkw) + "</td>";
+      html += "<td style='padding:7px 9px;font-weight:950;color:" + (found ? "#0f172a" : "#be123c") + ";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + faEsc(r.tour) + "</td>";
+      html += "<td style='padding:7px 9px;color:#64748b;font-size:10.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + (found ? ("Excel: " + faEsc((r.planZeit ? r.planZeit + " · " : "") + (r.planLkw || ""))) : "kein passender Excel-Eintrag") + "</td>";
+      html += "</tr>";
+    }});
+    html += "</tbody></table></div>";
+    return html;
+  }}
+
+  window.faShow10hTours = function() {{
+    var panel = document.getElementById("fa-detail-panel");
+    if (!panel) return;
+    _faSet10hButton(true);
+    faSelectedName = null;
+    var rows = _faBuild10hRows();
+    var sumNetto = rows.reduce(function(s, r) {{ return s + (r.nettoMin || 0); }}, 0);
+    var tourMissing = rows.filter(function(r) {{ return !r.tour || r.tour === "nicht gefunden"; }}).length;
+    var yearLabel = faYearFilter === "all" ? "Alle Jahre" : faYearFilter;
+    var html = "";
+    html += "<div style='background:#fff;border:1.5px solid #fecdd3;border-radius:5px;padding:14px 18px;margin-bottom:12px;'>";
+    html += "<div style='display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;'>";
+    html += "<div><div style='font-size:20px;font-weight:950;color:#9f1239;'>10H Touren</div>";
+    html += "<div style='font-size:11.5px;color:#64748b;font-weight:700;margin-top:3px;'>Alle Schichten mit mehr als 10:00 Netto-Arbeitszeit. Tournummer wird aus den Touren-Excel-Listen über Fahrer, Datum und LKW zugeordnet.</div></div>";
+    html += "<div style='display:flex;gap:8px;flex-wrap:wrap;'>";
+    html += "<span style='background:#fee2e2;color:#991b1b;border:1px solid #fecaca;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:900;'>" + rows.length + " Treffer</span>";
+    html += "<span style='background:#f8fafc;color:#0f172a;border:1px solid #e2e8f0;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:800;'>Auswahl: " + faEsc(yearLabel) + "</span>";
+    html += "<span style='background:#f8fafc;color:#0f172a;border:1px solid #e2e8f0;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:800;'>Σ Netto " + _fmtMin(sumNetto) + "</span>";
+    if (tourMissing) html += "<span style='background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:900;'>" + tourMissing + " ohne Tournummer</span>";
+    html += "</div></div></div>";
+    html += _faRender10hRows(rows);
+    panel.innerHTML = html;
+    panel.scrollTop = 0;
+  }};
+
   window.faGetFiltered = function() {{
     var q = (faSearchQuery || "").toLowerCase().trim();
     var list = _faAllShiftNames().map(function(n) {{
@@ -7060,6 +7232,7 @@ function samToggle(el) {{
 
   window.faShowDetail = function(name) {{
     faSelectedName = name;
+    _faSet10hButton(false);
     faBuildSidebarHighlight(name);
     var panel = document.getElementById("fa-detail-panel");
     if (!panel) return;
