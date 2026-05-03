@@ -4758,7 +4758,7 @@ iframe.active{{display:block}}
         </select>
       <div style="display:flex;gap:4px;">
         <button onclick="faSort('name')" id="fa-sort-name"
-          style="padding:5px 10px;border:2px solid #1b66b3;border-radius:5px;background:#1b66b3;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">A–Z</button>
+          style="padding:5px 12px;border:2px solid #1b66b3;border-radius:5px;background:#1b66b3;color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;">Fahrer Übersicht</button>
       </div>
       <button onclick="faShow10hTours()" id="fa-btn-10h" title="Alle Schichten mit mehr als 10:00 Netto-Arbeitszeit anzeigen"
         style="padding:5px 12px;border:2px solid #be123c;border-radius:5px;background:#fff;color:#be123c;font-size:11px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap;">10H Touren</button>
@@ -6882,6 +6882,14 @@ function samToggle(el) {{
   // Override
   window.faShowDetail = function(name) {{
     faSelectedName = name;
+    if (window.FA_10H_MODE) {{
+      window.FA_10H_SELECTED_DRIVER = name || "";
+      faBuildSidebarHighlight(name);
+      window.faShow10hTours(name);
+      return;
+    }}
+    window.FA_10H_MODE = false;
+    _faSet10hButton(false);
     faBuildSidebarHighlight(name);
     var panel = document.getElementById("fa-detail-panel");
     if (!panel) return;
@@ -7007,7 +7015,11 @@ function samToggle(el) {{
 
   window.faYearChange = function(yr) {{
     faYearFilter = yr || "all";
-    faBuildSidebarHighlight(null);
+    if (window.FA_10H_MODE) {{
+      window.faShow10hTours(window.FA_10H_SELECTED_DRIVER || "");
+    }} else {{
+      faBuildSidebarHighlight(null);
+    }}
   }};
 
   function _faAllShiftNames() {{
@@ -7177,23 +7189,51 @@ function samToggle(el) {{
   }}
 
   function _faFindPlanEntryForShift(name, shift) {{
+    function _candidateIsUsable(e, strictDriver, candidateCount) {{
+      var lkwOk = _faLkwMatch(e && e.lkw, shift && shift.lkw);
+      var diff = _faEntryTimeDiffMin(e && e.zeit, shift && shift.beginn);
+      var hasPlanLkw = !!_faNormLkw(e && e.lkw);
+      var hasShiftLkw = !!_faNormLkw(shift && shift.lkw);
+      var hasPlanTime = !!String((e && e.zeit) || "").trim();
+
+      // Bei exakt gleichem Fahrer + Anfangstag reicht ein einzelner Eintrag aus.
+      // Gibt es mehrere Eintraege am Tag, muss LKW oder Startzeit helfen.
+      if (strictDriver && candidateCount === 1) return true;
+      if (strictDriver && lkwOk) return true;
+      if (strictDriver && hasPlanTime && diff <= 180) return true;
+
+      // Fallback ohne sauberen Fahrernamen nur verwenden, wenn LKW und Zeit stimmig sind.
+      // Reines "gleicher Tag" ist zu unsicher und fuehrte zu falschen Zuordnungen.
+      if (!strictDriver && lkwOk && diff <= 360) return true;
+      if (!strictDriver && lkwOk && !hasPlanTime) return true;
+      if (!strictDriver && !hasShiftLkw && hasPlanTime && diff <= 45) return true;
+      return false;
+    }}
+
     var candidates = _faPlanEntriesForShift(name, shift);
     var best = null;
     var bestScore = 999999;
 
     candidates.forEach(function(e) {{
+      if (!_candidateIsUsable(e, true, candidates.length)) return;
       var score = _faScorePlanCandidate(e, shift, true);
       if (score < bestScore) {{ bestScore = score; best = e; }}
     }});
     if (best) {{
-      best._matchSource = best._matchSource || "Fahrer + Anfangstag";
+      var lkwOkStrict = _faLkwMatch(best.lkw, shift.lkw);
+      var diffStrict = _faEntryTimeDiffMin(best.zeit, shift.beginn);
+      if (lkwOkStrict && diffStrict <= 360) best._matchSource = "Fahrer + Anfangstag + LKW + Startzeit";
+      else if (lkwOkStrict) best._matchSource = "Fahrer + Anfangstag + LKW";
+      else if (diffStrict <= 180) best._matchSource = "Fahrer + Anfangstag + Startzeit";
+      else best._matchSource = "Fahrer + Anfangstag";
       return best;
     }}
 
-    // Fallback: Wenn der Fahrername aus Tachograph und Excel nicht exakt zusammenpasst,
-    // wird am gleichen Anfangstag über LKW und Startzeit gesucht. So bekommt der Fahrer
-    // trotzdem die Tour aus der Touren-Excel, ohne auf den Folgetag zu wechseln.
-    var allCandidates = _faAllPlanEntriesForShift(shift);
+    // Fallback nur noch bei eindeutigen harten Treffern.
+    // Keine Tour wird besser ausgeblendet als falsch angezeigt.
+    var allCandidates = _faAllPlanEntriesForShift(shift).filter(function(e) {{
+      return _candidateIsUsable(e, false, 0);
+    }});
     allCandidates.forEach(function(e) {{
       var score = _faScorePlanCandidate(e, shift, false);
       if (score < bestScore) {{ bestScore = score; best = e; }}
@@ -7203,16 +7243,17 @@ function samToggle(el) {{
       var diff = _faEntryTimeDiffMin(best.zeit, shift.beginn);
       if (lkwOk && diff <= 360) best._matchSource = "Fallback: LKW + Anfangstag + Startzeit";
       else if (lkwOk) best._matchSource = "Fallback: LKW + Anfangstag";
-      else if (diff <= 180) best._matchSource = "Fallback: Anfangstag + Startzeit";
-      else best._matchSource = "Fallback: Anfangstag";
+      else best._matchSource = "Fallback: Anfangstag + Startzeit";
     }}
     return best;
   }}
 
-  function _faBuild10hRows() {{
+  function _faBuild10hRows(driverFilter) {{
     var q = (faSearchQuery || "").toLowerCase().trim();
+    var selectedDriver = String(driverFilter || "").trim();
     var rows = [];
     Object.keys(TIMEREC_DATA || {{}}).forEach(function(name) {{
+      if (selectedDriver && name !== selectedDriver) return;
       if (q && name.toLowerCase().indexOf(q) < 0) return;
       (TIMEREC_DATA[name] || []).forEach(function(s) {{
         var yrOk = true;
@@ -7224,6 +7265,9 @@ function samToggle(el) {{
         var netto = _toMin(s.profil);
         if (netto <= 600) return;
         var plan = _faFindPlanEntryForShift(name, s);
+        var tourText = plan && plan.tour ? String(plan.tour).trim() : "";
+        // Keine unsicheren Platzhalter mehr anzeigen: ohne gefundene Tour wird der Datensatz ausgelassen.
+        if (!tourText) return;
         var dk = _faShiftDateKey(s);
         rows.push({{
           fahrer: name,
@@ -7236,7 +7280,7 @@ function samToggle(el) {{
           nettoText: s.profil || _fmtMin(netto),
           nettoMin: netto,
           lkw: s.lkw || "",
-          tour: plan && plan.tour ? String(plan.tour).trim() : "nicht gefunden",
+          tour: tourText,
           planLkw: plan && plan.lkw ? String(plan.lkw).trim() : "",
           planZeit: plan && plan.zeit ? String(plan.zeit).trim() : "",
           planDatum: plan ? _faDateLabelFromKey(_faPlanDateKey(plan)) : "",
@@ -7259,7 +7303,8 @@ function samToggle(el) {{
     if (!rows.length) return "";
     var tourMap = {{}}, fahrerMap = {{}};
     rows.forEach(function(r) {{
-      var tour = String(r.tour || "nicht gefunden").trim() || "nicht gefunden";
+      var tour = String(r.tour || "").trim();
+      if (!tour) return;
       if (!tourMap[tour]) tourMap[tour] = {{ name: tour, count: 0, netto: 0, fahrer: {{}} }};
       tourMap[tour].count += 1;
       tourMap[tour].netto += r.nettoMin || 0;
@@ -7316,7 +7361,7 @@ function samToggle(el) {{
 
   function _faRender10hRows(rows) {{
     if (!rows.length) {{
-      return "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:40px;text-align:center;color:#94a3b8;font-size:14px;'>Keine 10H Touren in der aktuellen Auswahl.</div>";
+      return "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:40px;text-align:center;color:#94a3b8;font-size:14px;'>Keine 10H Touren mit gefundener Tour in der aktuellen Auswahl.</div>";
     }}
     var html = "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:auto;'>";
     html += "<table style='width:100%;min-width:1380px;border-collapse:collapse;font-size:12px;table-layout:fixed;'>";
@@ -7348,7 +7393,8 @@ function samToggle(el) {{
   function _fa10hAggRows(rows, mode) {{
     var map = {{}};
     (rows || []).forEach(function(r) {{
-      var tour = String(r.tour || "nicht gefunden").trim() || "nicht gefunden";
+      var tour = String(r.tour || "").trim();
+      if (!tour) return;
       var driver = String(r.fahrer || "unbekannt").trim() || "unbekannt";
       if (mode === "tour") {{
         if (!map[tour]) map[tour] = {{ name: tour, count: 0, netto: 0, fahrer: {{}} }};
@@ -7375,9 +7421,9 @@ function samToggle(el) {{
   }}
 
   window.faExport10hPdf = function() {{
-    var rows = (window.FA_LAST_10H_ROWS || []).slice();
-    if (!rows.length) rows = _faBuild10hRows();
-    if (!rows.length) {{ alert("Keine 10H Touren in der aktuellen Auswahl."); return; }}
+    var rows = (window.FA_LAST_10H_ALL_ROWS || window.FA_LAST_10H_ROWS || []).slice();
+    if (!rows.length) rows = _faBuild10hRows("");
+    if (!rows.length) {{ alert("Keine 10H Touren mit gefundener Tour in der aktuellen Auswahl."); return; }}
     if(!window.jspdf || !window.jspdf.jsPDF || typeof window.jspdf.jsPDF !== "function") {{
       alert("PDF-Bibliothek ist noch nicht geladen. Bitte kurz warten und erneut versuchen.");
       return;
@@ -7386,7 +7432,6 @@ function samToggle(el) {{
     var doc = new jsPDF({{ orientation:"portrait", unit:"mm", format:"a4" }});
     var yearLabel = faYearFilter === "all" ? "Alle Jahre" : faYearFilter;
     var sumNetto = rows.reduce(function(s, r) {{ return s + (r.nettoMin || 0); }}, 0);
-    var missing = rows.filter(function(r) {{ return !r.tour || r.tour === "nicht gefunden"; }}).length;
     var title = "10H Touren - Touren-Häufigkeit - " + yearLabel;
 
     doc.setFont("helvetica", "bold");
@@ -7394,7 +7439,7 @@ function samToggle(el) {{
     doc.text(title, 12, 14);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.text("Treffer: " + rows.length + "   Netto gesamt: " + _fmtMin(sumNetto) + "   ohne Tournummer: " + missing + "   Zuordnung nach Anfangstag", 12, 20);
+    doc.text("Treffer: " + rows.length + "   Netto gesamt: " + _fmtMin(sumNetto) + "   Zuordnung nach Anfangstag", 12, 20);
 
     var tourAgg = _fa10hAggRows(rows, "tour").map(function(t) {{
       return [t.name, String(t.count), String(_faCountKeys(t.fahrer)), _fmtMin(t.netto)];
@@ -7418,8 +7463,8 @@ function samToggle(el) {{
   }};
 
   window.faExport10hDriverPdf = function(driverName) {{
-    var rows = (window.FA_LAST_10H_ROWS || []).slice();
-    if (!rows.length) rows = _faBuild10hRows();
+    var rows = (window.FA_LAST_10H_ALL_ROWS || window.FA_LAST_10H_ROWS || []).slice();
+    if (!rows.length) rows = _faBuild10hRows("");
     if (!driverName) {{
       var sel = document.getElementById("fa10hDriverPdfSel");
       driverName = sel ? sel.value : "";
@@ -7436,14 +7481,12 @@ function samToggle(el) {{
     var doc = new jsPDF({{ orientation:"landscape", unit:"mm", format:"a4" }});
     var yearLabel = faYearFilter === "all" ? "Alle Jahre" : faYearFilter;
     var sumNetto = rows.reduce(function(s, r) {{ return s + (r.nettoMin || 0); }}, 0);
-    var missing = rows.filter(function(r) {{ return !r.tour || r.tour === "nicht gefunden"; }}).length;
-
     doc.setFont("helvetica", "bold");
     doc.setFontSize(15);
     doc.text("10H Touren - " + driverName, 10, 14);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.text("Auswahl: " + yearLabel + "   Treffer: " + rows.length + "   Netto gesamt: " + _fmtMin(sumNetto) + "   ohne Tournummer: " + missing + "   Zuordnung nach Anfangstag", 10, 20);
+    doc.text("Auswahl: " + yearLabel + "   Treffer: " + rows.length + "   Netto gesamt: " + _fmtMin(sumNetto) + "   Zuordnung nach Anfangstag", 10, 20);
 
     var tourAgg = _fa10hAggRows(rows, "tour").map(function(t) {{
       return [t.name, String(t.count), _fmtMin(t.netto)];
@@ -7472,8 +7515,8 @@ function samToggle(el) {{
           r.schichtdauer || "",
           r.nettoText || "",
           r.lkw || "",
-          r.tour || "nicht gefunden",
-          found ? ((r.planDatum ? r.planDatum + " · " : "") + (r.planZeit ? r.planZeit + " · " : "") + (r.planLkw ? r.planLkw + " · " : "") + (r.matchSource || "")) : "kein passender Excel-Eintrag"
+          r.tour || "",
+          (r.planDatum ? r.planDatum + " · " : "") + (r.planZeit ? r.planZeit + " · " : "") + (r.planLkw ? r.planLkw + " · " : "") + (r.matchSource || "")
         ];
       }}),
       styles: {{ fontSize: 7.2, cellPadding: 1.5, overflow: "linebreak", valign: "top" }},
@@ -7499,30 +7542,44 @@ function samToggle(el) {{
     doc.save("10H_Touren_" + _faSafePdfName(driverName) + "_" + _faSafePdfName(yearLabel) + ".pdf");
   }};
 
-  window.faShow10hTours = function() {{
+  window.FA_10H_MODE = false;
+  window.FA_10H_SELECTED_DRIVER = "";
+
+  window.faShow10hTours = function(driverFilter) {{
     var panel = document.getElementById("fa-detail-panel");
     if (!panel) return;
     _faSet10hButton(true);
-    faSelectedName = null;
-    var rows = _faBuild10hRows();
+    window.FA_10H_MODE = true;
+    var selectedDriver = String(driverFilter || window.FA_10H_SELECTED_DRIVER || "").trim();
+    window.FA_10H_SELECTED_DRIVER = selectedDriver;
+    if (selectedDriver) {{
+      faSelectedName = selectedDriver;
+      faBuildSidebarHighlight(selectedDriver);
+    }} else {{
+      faSelectedName = null;
+    }}
+
+    var allRows = _faBuild10hRows("");
+    var rows = selectedDriver ? allRows.filter(function(r) {{ return String(r.fahrer || "") === selectedDriver; }}) : allRows;
+    window.FA_LAST_10H_ALL_ROWS = allRows;
     window.FA_LAST_10H_ROWS = rows;
     var sumNetto = rows.reduce(function(s, r) {{ return s + (r.nettoMin || 0); }}, 0);
-    var tourMissing = rows.filter(function(r) {{ return !r.tour || r.tour === "nicht gefunden"; }}).length;
     var yearLabel = faYearFilter === "all" ? "Alle Jahre" : faYearFilter;
     var html = "";
     html += "<div style='background:#fff;border:1.5px solid #fecdd3;border-radius:5px;padding:14px 18px;margin-bottom:12px;'>";
     html += "<div style='display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;'>";
-    html += "<div><div style='font-size:20px;font-weight:950;color:#9f1239;'>10H Touren</div>";
-    html += "<div style='font-size:11.5px;color:#64748b;font-weight:700;margin-top:3px;'>Alle Schichten mit mehr als 10:00 Netto-Arbeitszeit. Tournummer wird aus den Touren-Excel-Listen über Fahrer, Anfangsdatum und LKW zugeordnet. Ende +1 bleibt beim Anfangstag.</div></div>";
+    html += "<div><div style='font-size:20px;font-weight:950;color:#9f1239;'>10H Touren" + (selectedDriver ? " · " + faEsc(selectedDriver) : "") + "</div>";
+    html += "<div style='font-size:11.5px;color:#64748b;font-weight:700;margin-top:3px;'>Alle Schichten mit mehr als 10:00 Netto-Arbeitszeit. Es werden nur Schichten mit gefundener Tour angezeigt. Zuordnung nach Fahrer, Anfangsdatum, LKW und Startzeit.</div></div>";
     html += "<div style='display:flex;gap:8px;flex-wrap:wrap;align-items:center;'>";
-    var driverOptions = Object.keys(rows.reduce(function(o, r) {{ if (r.fahrer) o[r.fahrer] = true; return o; }}, {{}})).sort(function(a,b) {{ return a.localeCompare(b, "de"); }}).map(function(n) {{ return "<option value='" + faEsc(n) + "'>" + faEsc(n) + "</option>"; }}).join("");
+    var driverOptions = Object.keys(allRows.reduce(function(o, r) {{ if (r.fahrer) o[r.fahrer] = true; return o; }}, {{}})).sort(function(a,b) {{ return a.localeCompare(b, "de"); }}).map(function(n) {{
+      return "<option value='" + faEsc(n) + "'" + (n === selectedDriver ? " selected" : "") + ">" + faEsc(n) + "</option>";
+    }}).join("");
     html += "<button type='button' onclick='faExport10hPdf()' style='border:2px solid #be123c;background:#be123c;color:#fff;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:950;cursor:pointer;font-family:inherit;'>PDF Tour-Häufigkeit</button>";
-    html += "<select id='fa10hDriverPdfSel' style='border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:5px;padding:5px 8px;font-size:12px;font-weight:800;font-family:inherit;max-width:240px;'>" + driverOptions + "</select>";
+    html += "<select id='fa10hDriverPdfSel' onchange='window.FA_10H_SELECTED_DRIVER=this.value; faShow10hTours(this.value);' style='border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:5px;padding:5px 8px;font-size:12px;font-weight:800;font-family:inherit;max-width:260px;'><option value=''>Alle Fahrer anzeigen</option>" + driverOptions + "</select>";
     html += "<button type='button' onclick='faExport10hDriverPdf()' style='border:2px solid #1d4ed8;background:#1d4ed8;color:#fff;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:950;cursor:pointer;font-family:inherit;'>PDF Fahrer</button>";
     html += "<span style='background:#fee2e2;color:#991b1b;border:1px solid #fecaca;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:900;'>" + rows.length + " Treffer</span>";
     html += "<span style='background:#f8fafc;color:#0f172a;border:1px solid #e2e8f0;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:800;'>Auswahl: " + faEsc(yearLabel) + "</span>";
     html += "<span style='background:#f8fafc;color:#0f172a;border:1px solid #e2e8f0;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:800;'>Σ Netto " + _fmtMin(sumNetto) + "</span>";
-    if (tourMissing) html += "<span style='background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:900;'>" + tourMissing + " ohne Tournummer</span>";
     html += "</div></div></div>";
     html += _faRender10hFrequency(rows);
     html += _faRender10hRows(rows);
@@ -7641,6 +7698,13 @@ function samToggle(el) {{
 
   window.faShowDetail = function(name) {{
     faSelectedName = name;
+    if (window.FA_10H_MODE) {{
+      window.FA_10H_SELECTED_DRIVER = name || "";
+      faBuildSidebarHighlight(name);
+      window.faShow10hTours(name);
+      return;
+    }}
+    window.FA_10H_MODE = false;
     _faSet10hButton(false);
     faBuildSidebarHighlight(name);
     var panel = document.getElementById("fa-detail-panel");
@@ -7664,7 +7728,8 @@ function samToggle(el) {{
       return;
     }}
     window.faPopulateYears();
-    window.faBuildSidebarHighlight(null);
+    if (window.FA_10H_MODE) window.faShow10hTours(window.FA_10H_SELECTED_DRIVER || "");
+    else window.faBuildSidebarHighlight(null);
   }};
 }})();
 // ── /Schichten-Tab ─────────────────────────────────────────────────────────────
