@@ -3335,7 +3335,8 @@ function fwComputeRanking() {
     if(!name || fwIsExcludedDriverName(name)) return;
     var driverKey = fwDriverNameKey(name);
     if(!driverKey) return;
-    // Nur Fahrer zählen, die auch im Timerecording vorhanden sind.\n    if(!byDriver[driverKey]) return;
+    // Nur Fahrer zählen, die auch im Timerecording vorhanden sind.
+    if(!byDriver[driverKey]) return;
     var fz = (r.fahrzeug || r.fahrzeug_ia || "").trim();
     var dt = (r.datum || "").trim();
     var key = (dt && fz) ? (dt + "||" + fz) : ("__r_" + idx);
