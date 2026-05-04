@@ -23,6 +23,20 @@ st.set_page_config(page_title="NFC Generator", layout="wide")
 
 APP_CACHE_VERSION = "fahrzeugwaesche-match-final-2026-05-04-v2"
 
+
+# =============================================================================
+# EXCEL-ENGINE — calamine ist 5-10x schneller als openpyxl beim Lesen.
+# Wenn 'python-calamine' installiert ist, nutzen wir es; sonst Fallback.
+# Schreiben bleibt openpyxl (calamine kann nur lesen).
+# =============================================================================
+try:
+    import python_calamine  # noqa: F401
+    _HAS_CALAMINE = True
+except ImportError:
+    _HAS_CALAMINE = False
+
+EXCEL_READ_ENGINE = "calamine" if _HAS_CALAMINE else "openpyxl"
+
 EXCLUDED_DRIVER_NAMES = (
     "Ch.Holtz", "Paasch", "Meyer", "Ihde", "Spedition M+S Express 4", "Spedition M+S Express 3",
     "Spedition M+S Express 2", "Spedition M+S Express 1", "Spedition Meyer 1", "Spedition Meyer 2",
@@ -1774,7 +1788,7 @@ def build_winter_map(excel_file_obj) -> dict:
         pass
 
     try:
-        book = pd.ExcelFile(excel_file_obj, engine="openpyxl")
+        book = pd.ExcelFile(excel_file_obj, engine=EXCEL_READ_ENGINE)
         available = list(book.sheet_names)
         sheet = find_existing_sheet_name(
             available,
@@ -1809,11 +1823,31 @@ def build_winter_map(excel_file_obj) -> dict:
     if not (tour_col and lf_col and csb_col):
         return out
 
-    for _, row in dfw.iterrows():
-        kd = normalize_digits_py(row.get(csb_col, ""))
-        tour = normalize_digits_py(row.get(tour_col, ""))
-        lf = format_lf(row.get(lf_col, ""))
-        if kd and tour and lf:
+    # Vektorisiert statt iterrows — pro Zeile fielen sonst 3 Funktionsaufrufe an,
+    # bei 10k+ Zeilen war das mit 200-500ms der teuerste einzelne Schritt.
+    sub = dfw[[csb_col, tour_col, lf_col]]
+
+    def _vec_norm_digits(series: pd.Series) -> pd.Series:
+        s = series.astype(str)
+        s = s.str.replace(r"\.0$", "", regex=True)
+        s = s.str.replace(r"\D", "", regex=True)
+        s = s.str.lstrip("0")
+        s = s.where(s != "", pd.NA)
+        return s
+
+    csb_s  = _vec_norm_digits(sub[csb_col])
+    tour_s = _vec_norm_digits(sub[tour_col])
+
+    valid = csb_s.notna() & tour_s.notna()
+    if not valid.any():
+        return out
+    csb_arr  = csb_s[valid].tolist()
+    tour_arr = tour_s[valid].tolist()
+    lf_raw   = sub.loc[valid, lf_col].tolist()
+
+    for kd, tour, raw in zip(csb_arr, tour_arr, lf_raw):
+        lf = format_lf(raw)
+        if lf:
             out.setdefault(kd, {})[tour] = lf
     return out
 
@@ -1839,9 +1873,9 @@ def cached_winter_map(excel_bytes: bytes) -> dict:
 def cached_key_map(key_bytes: bytes) -> dict:
     if not key_bytes:
         return {}
-    df = pd.read_excel(io.BytesIO(key_bytes), sheet_name=0, header=0)
+    df = pd.read_excel(io.BytesIO(key_bytes), sheet_name=0, header=0, engine=EXCEL_READ_ENGINE)
     if df.shape[1] < 2:
-        df = pd.read_excel(io.BytesIO(key_bytes), sheet_name=0, header=None)
+        df = pd.read_excel(io.BytesIO(key_bytes), sheet_name=0, header=None, engine=EXCEL_READ_ENGINE)
     return build_key_map(df)
 
 
@@ -1849,7 +1883,7 @@ def cached_key_map(key_bytes: bytes) -> dict:
 def cached_berater_map(berater_bytes: bytes) -> dict:
     if not berater_bytes:
         return {}
-    bf = pd.read_excel(io.BytesIO(berater_bytes), sheet_name=0, header=None)
+    bf = pd.read_excel(io.BytesIO(berater_bytes), sheet_name=0, header=None, engine=EXCEL_READ_ENGINE)
     bf = bf.rename(columns={0: "Vorname", 1: "Nachname", 2: "Nummer"}).dropna(how="all")
     return build_berater_map(bf)
 
@@ -1859,9 +1893,9 @@ def cached_berater_csb_map(bcsb_bytes: bytes) -> dict:
     if not bcsb_bytes:
         return {}
     try:
-        bcf = pd.read_excel(io.BytesIO(bcsb_bytes), sheet_name=0, header=0)
+        bcf = pd.read_excel(io.BytesIO(bcsb_bytes), sheet_name=0, header=0, engine=EXCEL_READ_ENGINE)
     except Exception:
-        bcf = pd.read_excel(io.BytesIO(bcsb_bytes), sheet_name=0, header=None)
+        bcf = pd.read_excel(io.BytesIO(bcsb_bytes), sheet_name=0, header=None, engine=EXCEL_READ_ENGINE)
     return build_berater_csb_map(bcf)
 
 
@@ -2012,34 +2046,68 @@ def generate_suche_html(excel_file, key_file, logo_file,
         ]
         field_columns = {field: find_column_index(df.columns, aliases) for field, aliases in SPALTEN_ALIASE.items()}
         csb_idx = field_columns.get("csb_nummer")
+        n_cols = len(df.columns)
+
+        # Lokale Refs sparen Attribut-Lookups in der Hot-Loop
+        _norm_dig = normalize_digits_py
+        _kmap = key_map
+        _bmap = berater_csb_map
+        _setdef = tour_dict.setdefault
+
+        # Felder die normalisiert werden muessen
+        field_items = [(f, i) for f, i in field_columns.items() if i is not None]
 
         for row in df.itertuples(index=False, name=None):
+            # Erst pruefen ob ueberhaupt ein gueltiger Liefertag in der Zeile ist
+            # — vermeidet das Bauen des Entry-Dicts wenn der Kunde "leer" ist.
+            valid_days = []
             for tag, _, day_idx in day_columns:
-                if day_idx is None or day_idx >= len(row):
+                if day_idx is None or day_idx >= n_cols:
                     continue
-                tournr_raw = str(row[day_idx]).strip()
-                if not tournr_raw or not tournr_raw.replace(".", "", 1).isdigit():
+                v = row[day_idx]
+                # Schneller String-Check ohne unnoetige Konversion
+                if v is None or (isinstance(v, float) and v != v):  # NaN
                     continue
+                tournr_raw = str(v).strip()
+                if not tournr_raw:
+                    continue
+                # isdigit nach . entfernen
+                if not tournr_raw.replace(".", "", 1).isdigit():
+                    continue
+                valid_days.append((tag, _norm_dig(tournr_raw)))
 
-                tournr = normalize_digits_py(tournr_raw)
-                entry = {}
-                for field, idx in field_columns.items():
-                    value = row[idx] if idx is not None and idx < len(row) else ""
-                    entry[field] = str(value).strip()
+            if not valid_days:
+                continue
 
-                csb = normalize_digits_py(row[csb_idx] if csb_idx is not None and csb_idx < len(row) else "")
-                entry["csb_nummer"] = csb
-                entry["sap_nummer"] = normalize_digits_py(entry.get("sap_nummer", ""))
-                entry["postleitzahl"] = normalize_digits_py(entry.get("postleitzahl", ""))
-                entry["schluessel"] = key_map.get(csb, "")
+            # Entry EINMAL pro Zeile bauen — vorher 1-3x (pro Liefertag) identisch.
+            base_entry = {}
+            for field, idx in field_items:
+                if idx < n_cols:
+                    v = row[idx]
+                    base_entry[field] = "" if v is None else str(v).strip()
+                else:
+                    base_entry[field] = ""
+
+            csb = _norm_dig(row[csb_idx] if csb_idx is not None and csb_idx < n_cols else "")
+            base_entry["csb_nummer"] = csb
+            base_entry["sap_nummer"] = _norm_dig(base_entry.get("sap_nummer", ""))
+            base_entry["postleitzahl"] = _norm_dig(base_entry.get("postleitzahl", ""))
+            base_entry["schluessel"] = _kmap.get(csb, "")
+
+            if csb:
+                bcsb = _bmap.get(csb)
+                if bcsb and bcsb.get("name"):
+                    base_entry["fachberater"] = bcsb["name"]
+
+            # Pro Liefertag eine flache Kopie + tournummer/liefertag setzen
+            for tag, tournr in valid_days:
+                entry = base_entry.copy()
                 entry["liefertag"] = tag
-                if csb and csb in berater_csb_map and berater_csb_map[csb].get("name"):
-                    entry["fachberater"] = berater_csb_map[csb]["name"]
-                tour_dict.setdefault(tournr, []).append(entry)
+                _setdef(tournr, []).append(entry)
 
     with st.spinner("Verarbeite Kundendatei ..."):
         try:
-            excel_book = pd.ExcelFile(io.BytesIO(excel_bytes), engine="openpyxl")
+            excel_book = pd.ExcelFile(io.BytesIO(excel_bytes), engine=EXCEL_READ_ENGINE)
             alle_blaetter = list(excel_book.sheet_names)
         except Exception:
             excel_book = None
@@ -2077,22 +2145,26 @@ def generate_suche_html(excel_file, key_file, logo_file,
     notizen_map: dict = cached_lieferhinweis_map(read_upload_bytes(lieferhinweis_csv))
     rahmen_map:  dict = cached_rahmentour_map(read_upload_bytes(rahmentour_csv))
 
+    # separators=(",", ":") — spart bei grossen Maps 10-20% Output-Groesse
+    # und ist auch beim json.dumps selbst etwas schneller.
+    _dump = lambda d: json.dumps(d, ensure_ascii=False, separators=(",", ":"))
+
     return (
         get_suche_template()
         .replace("const tourkundenData   = {  }",
-                 f"const tourkundenData   = {json.dumps(sorted_tours, ensure_ascii=False)}")
+                 f"const tourkundenData   = {_dump(sorted_tours)}")
         .replace("const keyIndex         = {  }",
-                 f"const keyIndex         = {json.dumps(key_map, ensure_ascii=False)}")
+                 f"const keyIndex         = {_dump(key_map)}")
         .replace("const beraterIndex     = {  }",
-                 f"const beraterIndex     = {json.dumps(berater_map, ensure_ascii=False)}")
+                 f"const beraterIndex     = {_dump(berater_map)}")
         .replace("const beraterCSBIndex  = {  }",
-                 f"const beraterCSBIndex  = {json.dumps(berater_csb_map, ensure_ascii=False)}")
+                 f"const beraterCSBIndex  = {_dump(berater_csb_map)}")
         .replace("const winterIndex      = {  }",
-                 f"const winterIndex      = {json.dumps(winter_map, ensure_ascii=False)}")
+                 f"const winterIndex      = {_dump(winter_map)}")
         .replace("const kundenNotizen    = {  }",
-                 f"const kundenNotizen    = {json.dumps(notizen_map, ensure_ascii=False)}")
+                 f"const kundenNotizen    = {_dump(notizen_map)}")
         .replace("const rahmentourIndex  = {  }",
-                 f"const rahmentourIndex  = {json.dumps(rahmen_map, ensure_ascii=False)}")
+                 f"const rahmentourIndex  = {_dump(rahmen_map)}")
         .replace("__LOGO_DATA_URL__", logo_data_url)
         .replace("</style>", ".header{display:none !important;} .page{padding-top:0 !important;} .container{margin-top:0 !important;} </style>")
     )
@@ -2125,7 +2197,7 @@ def generate_druck_html(up, logo_up, fcsb_file=None, lieferhinweis_csv=None) -> 
     excel_bytes = read_upload_bytes(up)
     excel_buf = io.BytesIO(excel_bytes)
     try:
-        excel_book = pd.ExcelFile(excel_buf, engine="openpyxl")
+        excel_book = pd.ExcelFile(excel_buf, engine=EXCEL_READ_ENGINE)
         available_sheets = list(excel_book.sheet_names)
     except Exception:
         excel_book = None
@@ -2173,66 +2245,171 @@ def generate_druck_html(up, logo_up, fcsb_file=None, lieferhinweis_csv=None) -> 
         for nt in neue:
             neue_by_day.setdefault(nt["liefertag"], []).append(nt)
 
-        # itertuples ist 5-10x schneller als iterrows; r ist ein dict pro Zeile.
-        for row_tuple in df.itertuples(index=False, name=None):
-            r = dict(zip(cols, row_tuple))
-            knr = norm_val(row_get_first(r, SPALTEN_ALIASE["csb_nummer"]))
+        # Spalten-Indizes EINMAL vor der Schleife berechnen — vorher wurde
+        # pro Zeile ein dict(zip(cols, row_tuple)) und 7x row_get_first() (mit
+        # eigener normalize_header_py-Schleife je Aufruf) ausgefuehrt. Das war
+        # bei 10k+ Zeilen der groesste Hot-Path in generate_druck_html.
+        col_to_idx = {c: i for i, c in enumerate(cols)}
+        col_to_idx_norm = {normalize_header_py(c): i for i, c in enumerate(cols)}
+
+        def _alias_idx(aliases):
+            for a in aliases:
+                if a in col_to_idx:
+                    return col_to_idx[a]
+            for a in aliases:
+                idx = col_to_idx_norm.get(normalize_header_py(a))
+                if idx is not None:
+                    return idx
+            return None
+
+        idx_csb   = _alias_idx(SPALTEN_ALIASE["csb_nummer"])
+        idx_sap   = _alias_idx(SPALTEN_ALIASE["sap_nummer"])
+        idx_name  = _alias_idx(SPALTEN_ALIASE["name"])
+        idx_str   = _alias_idx(SPALTEN_ALIASE["strasse"])
+        idx_plz   = _alias_idx(SPALTEN_ALIASE["postleitzahl"])
+        idx_ort   = _alias_idx(SPALTEN_ALIASE["ort"])
+        idx_fach  = _alias_idx(SPALTEN_ALIASE["fachberater"])
+        idx_tour  = {d: col_to_idx.get(TOUR_COLS[d]) for d in DAYS_DE}
+
+        # Spalten-Indizes fuer Triplet-/B-Spalten vorbauen — sonst wird r.get()
+        # pro Zeile fuer jede Spalte aufgerufen.
+        trip_idx: dict = {}      # {day: [(gt, sort_idx, zeit_idx, tag_idx)]}
+        for d in DAYS_DE:
+            if d in trip:
+                bucket = []
+                for gt, f_cols in trip[d].items():
+                    bucket.append((
+                        gt,
+                        col_to_idx.get(f_cols.get("Sort")),
+                        col_to_idx.get(f_cols.get("Zeit")),
+                        col_to_idx.get(f_cols.get("Tag")),
+                    ))
+                trip_idx[d] = bucket
+
+        neue_idx: dict = {}      # {day: [(sort_idx, zeit_idx, tag_idx)]}
+        for d in DAYS_DE:
+            bucket = []
+            for nt in neue_by_day.get(d, ()):
+                bucket.append((
+                    col_to_idx.get(nt.get("sort_col")) if nt.get("sort_col") else None,
+                    col_to_idx.get(nt.get("zeit_col")) if nt.get("zeit_col") else None,
+                    col_to_idx.get(nt.get("tag_col"))  if nt.get("tag_col")  else None,
+                ))
+            if bucket:
+                neue_idx[d] = bucket
+
+        bmap_idx: dict = {}      # {day: [(sort_idx, zeit_idx, l_idx, fallback_tag)]}
+        for d in DAYS_DE:
+            bucket = []
+            for bk in bmap_by_day.get(d, ()):
+                bf = bmap[bk]
+                bucket.append((
+                    col_to_idx.get(bf.get("sort", "")),
+                    col_to_idx.get(bf.get("zeit", "")),
+                    col_to_idx.get(bf.get("l")) if bf.get("l") else None,
+                    bk[2],
+                ))
+            if bucket:
+                bmap_idx[d] = bucket
+
+        nbmap_idx: dict = {}     # {day: [(sort_idx, zeit_idx, tag_idx)]}
+        for d in DAYS_DE:
+            bucket = []
+            for nbk in nbmap_by_day.get(d, ()):
+                nbf = nbmap[nbk]
+                bucket.append((
+                    col_to_idx.get(nbf.get("sort", "")),
+                    col_to_idx.get(nbf.get("zeit", "")),
+                    col_to_idx.get(nbf.get("tag", "")),
+                ))
+            if bucket:
+                nbmap_idx[d] = bucket
+
+        ds_trip_idx: dict = {}   # {day: [(sort_idx, zeit_idx, tag_idx)]}
+        for d in DAYS_DE:
+            if d in ds_trip:
+                bucket = []
+                for k_ds, f_cols in ds_trip[d].items():
+                    bucket.append((
+                        col_to_idx.get(f_cols.get("Sort")),
+                        col_to_idx.get(f_cols.get("Zeit")),
+                        col_to_idx.get(f_cols.get("Tag")),
+                    ))
+                ds_trip_idx[d] = bucket
+
+        # Lokale Refs sparen Attribute-Lookups in der Hot-Loop
+        _norm_val = norm_val
+        _safe_time = safe_time
+        _canon_group_id = canon_group_id
+        _SORT_PRIO = SORT_PRIO
+
+        def _gv(row, idx):
+            """Sicherer Zugriff auf Tuple-Index, gibt '' zurueck wenn idx None."""
+            if idx is None:
+                return ""
+            try:
+                return row[idx]
+            except IndexError:
+                return ""
+
+        for row in df.itertuples(index=False, name=None):
+            knr = _norm_val(_gv(row, idx_csb))
             if not knr: continue
             bestell: list = []
             for d_de in DAYS_DE:
                 day_items: list = []
-                if d_de in trip:
-                    for gt, f_cols in trip[d_de].items():
-                        s   = norm_val(r.get(f_cols.get("Sort")))
-                        t   = safe_time(r.get(f_cols.get("Zeit")))
-                        tag = norm_val(r.get(f_cols.get("Tag")))
+                if d_de in trip_idx:
+                    for gt, si, zi, ti in trip_idx[d_de]:
+                        s   = _norm_val(_gv(row, si))
+                        t   = _safe_time(_gv(row, zi))
+                        tag = _norm_val(_gv(row, ti))
                         if s or t or tag:
                             day_items.append({
                                 "liefertag": d_de, "sortiment": s,
                                 "bestelltag": tag, "bestellschluss": t,
-                                "prio": SORT_PRIO.get(canon_group_id(s), 50),
+                                "prio": _SORT_PRIO.get(_canon_group_id(s), 50),
                             })
                 # Neues Format: Montag_Zeit / Montag_Sort / Montag_Tag
-                for nt in neue_by_day.get(d_de, ()):
-                    s   = norm_val(r.get(nt["sort_col"]))   if nt.get("sort_col") else ""
-                    t   = safe_time(r.get(nt["zeit_col"]))  if nt.get("zeit_col") else ""
-                    tag = norm_val(r.get(nt["tag_col"]))    if nt.get("tag_col")  else ""
-                    if s or t or tag:
-                        day_items.append({
-                            "liefertag": d_de, "sortiment": s,
-                            "bestelltag": tag, "bestellschluss": t,
-                            "prio": SORT_PRIO.get(canon_group_id(s), 50),
-                        })
-                for bk in bmap_by_day.get(d_de, ()):
-                    bf    = bmap[bk]
-                    s     = norm_val(r.get(bf.get("sort", "")))
-                    z     = safe_time(r.get(bf.get("zeit", "")))
-                    l_col = bf.get("l")
-                    tag   = norm_val(r.get(l_col, "")) if l_col else bk[2]
-                    if not tag: tag = bk[2]
-                    if s or z:
-                        day_items.append({
-                            "liefertag": d_de, "sortiment": s,
-                            "bestelltag": tag, "bestellschluss": z,
-                            "prio": SORT_PRIO.get(canon_group_id(s), 50),
-                        })
+                if d_de in neue_idx:
+                    for si, zi, ti in neue_idx[d_de]:
+                        s   = _norm_val(_gv(row, si)) if si is not None else ""
+                        t   = _safe_time(_gv(row, zi)) if zi is not None else ""
+                        tag = _norm_val(_gv(row, ti)) if ti is not None else ""
+                        if s or t or tag:
+                            day_items.append({
+                                "liefertag": d_de, "sortiment": s,
+                                "bestelltag": tag, "bestellschluss": t,
+                                "prio": _SORT_PRIO.get(_canon_group_id(s), 50),
+                            })
+                if d_de in bmap_idx:
+                    for si, zi, li, fallback_tag in bmap_idx[d_de]:
+                        s = _norm_val(_gv(row, si))
+                        z = _safe_time(_gv(row, zi))
+                        tag = _norm_val(_gv(row, li)) if li is not None else fallback_tag
+                        if not tag: tag = fallback_tag
+                        if s or z:
+                            day_items.append({
+                                "liefertag": d_de, "sortiment": s,
+                                "bestelltag": tag, "bestellschluss": z,
+                                "prio": _SORT_PRIO.get(_canon_group_id(s), 50),
+                            })
                 # Neues B-Format: "Die 1001 B_Zeit" / "Die 1001 B_Sortiment" / "Die 1001 B_Tag"
-                for nbk in nbmap_by_day.get(d_de, ()):
-                    nbf = nbmap[nbk]
-                    s   = norm_val(r.get(nbf.get("sort", "")))
-                    z   = safe_time(r.get(nbf.get("zeit", "")))
-                    tag = norm_val(r.get(nbf.get("tag", "")))
-                    if s or z:
-                        day_items.append({
-                            "liefertag": d_de, "sortiment": s,
-                            "bestelltag": tag, "bestellschluss": z,
-                            "prio": SORT_PRIO.get(canon_group_id(s), 50),
-                        })
-                if d_de in ds_trip:
-                    for k_ds, f_cols in ds_trip[d_de].items():
-                        s   = norm_val(r.get(f_cols.get("Sort")))
-                        t   = safe_time(r.get(f_cols.get("Zeit")))
-                        tag = norm_val(r.get(f_cols.get("Tag")))
+                if d_de in nbmap_idx:
+                    for si, zi, ti in nbmap_idx[d_de]:
+                        s   = _norm_val(_gv(row, si))
+                        z   = _safe_time(_gv(row, zi))
+                        tag = _norm_val(_gv(row, ti))
+                        if s or z:
+                            day_items.append({
+                                "liefertag": d_de, "sortiment": s,
+                                "bestelltag": tag, "bestellschluss": z,
+                                "prio": _SORT_PRIO.get(_canon_group_id(s), 50),
+                            })
+                if d_de in ds_trip_idx:
+                    for si, zi, ti in ds_trip_idx[d_de]:
+                        s   = _norm_val(_gv(row, si))
+                        t   = _safe_time(_gv(row, zi))
+                        tag = _norm_val(_gv(row, ti))
                         if s or t or tag:
                             day_items.append({
                                 "liefertag": d_de, "sortiment": s,
@@ -2246,13 +2423,13 @@ def generate_druck_html(up, logo_up, fcsb_file=None, lieferhinweis_csv=None) -> 
                 "plan_typ":    "",
                 "bereich":     BEREICH,
                 "kunden_nr":   knr,
-                "sap_nummer":  norm_val(row_get_first(r, SPALTEN_ALIASE["sap_nummer"])),
-                "name":        norm_val(row_get_first(r, SPALTEN_ALIASE["name"])),
-                "strasse":     norm_val(row_get_first(r, SPALTEN_ALIASE["strasse"])),
-                "plz":         norm_val(row_get_first(r, SPALTEN_ALIASE["postleitzahl"])),
-                "ort":         norm_val(row_get_first(r, SPALTEN_ALIASE["ort"])),
-                "fachberater": norm_val(row_get_first(r, SPALTEN_ALIASE["fachberater"])),
-                "tours":       {d: norm_val(r.get(TOUR_COLS[d], "")) for d in DAYS_DE},
+                "sap_nummer":  _norm_val(_gv(row, idx_sap)),
+                "name":        _norm_val(_gv(row, idx_name)),
+                "strasse":     _norm_val(_gv(row, idx_str)),
+                "plz":         _norm_val(_gv(row, idx_plz)),
+                "ort":         _norm_val(_gv(row, idx_ort)),
+                "fachberater": _norm_val(_gv(row, idx_fach)),
+                "tours":       {d: _norm_val(_gv(row, idx_tour[d])) for d in DAYS_DE},
                 "bestell":     bestell,
             }
 
@@ -2317,7 +2494,7 @@ def parse_samstag_excel(dateien: list) -> str:
             is_saturday = parsed_date.weekday() == 5  # 5 = Samstag
 
             datei.seek(0)
-            df = pd.read_excel(BytesIO(datei.read()), sheet_name="Touren", header=None, engine="openpyxl")
+            df = pd.read_excel(BytesIO(datei.read()), sheet_name="Touren", header=None, engine=EXCEL_READ_ENGINE)
             df.columns = [f"Spalte_{i}" for i in range(len(df.columns))]
 
             # Collect all drivers from the full Touren sheet (rows 5+)
@@ -8413,17 +8590,19 @@ def parse_telefon_excel(up) -> str:
     """Liest Telefonnummern.xlsx (Sheet 'aktuell') und gibt JSON-String zurück."""
     import json as _json
     try:
-        df = pd.read_excel(up, sheet_name="aktuell", dtype=str)
+        df = pd.read_excel(up, sheet_name="aktuell", dtype=str, engine=EXCEL_READ_ENGINE)
         df.columns = ["name","vorname","vorwahl","nummer","mail","gruppe"]
         df = df.fillna("")
         groups, current_group, current_entries = [], "Eigene Fahrer", []
-        for _, r in df.iterrows():
-            name    = r["name"].strip()
-            vorname = r["vorname"].strip()
-            vorwahl = r["vorwahl"].strip()
-            nummer  = r["nummer"].strip()
-            mail    = r["mail"].strip()
-            gruppe  = r["gruppe"].strip()
+        # itertuples + Positions-Zugriff statt iterrows mit r["..."] —
+        # bei langen Telefonlisten klar schneller, gleiche Logik.
+        for tup in df.itertuples(index=False, name=None):
+            name    = tup[0].strip()
+            vorname = tup[1].strip()
+            vorwahl = tup[2].strip()
+            nummer  = tup[3].strip()
+            mail    = tup[4].strip()
+            gruppe  = tup[5].strip()
             if not name and not vorname and not vorwahl and not nummer:
                 if current_entries:
                     groups.append({"gruppe": current_group, "personen": current_entries})
@@ -8452,7 +8631,7 @@ def parse_telefon_excel(up) -> str:
             })
         if current_entries:
             groups.append({"gruppe": current_group, "personen": current_entries})
-        return _json.dumps(groups, ensure_ascii=False)
+        return _json.dumps(groups, ensure_ascii=False, separators=(",", ":"))
     except Exception as e:
         st.warning(f"Telefonliste konnte nicht gelesen werden: {e}")
         return "[]"
@@ -8987,7 +9166,7 @@ def parse_fahrzeugwaesche_excel(uploaded_files) -> str:
         if not payload:
             continue
         try:
-            xls = pd.ExcelFile(io.BytesIO(payload))
+            xls = pd.ExcelFile(io.BytesIO(payload), engine=EXCEL_READ_ENGINE)
         except Exception:
             continue
 
@@ -9026,19 +9205,39 @@ def parse_fahrzeugwaesche_excel(uploaded_files) -> str:
             if selected.empty:
                 continue
 
-            for _, row in selected.iterrows():
-                datum, date_iso = _parse_date(row.get("datum"))
-                uhrzeit = _parse_time(row.get("uhrzeit"))
-                fahrer = _clean_text(row.get("fahrer"))
-                fahrzeug = _clean_text(row.get("fahrzeug"))
-                fahrzeug_ia = _clean_text(row.get("fahrzeug_ia"))
+            # itertuples statt iterrows — bei tausenden Zeilen ist iterrows
+            # mit Series-Bauen pro Zeile mit Abstand der teuerste Anteil.
+            sel_cols = list(selected.columns)
+            i_datum   = sel_cols.index("datum")              if "datum" in sel_cols else None
+            i_uhrzeit = sel_cols.index("uhrzeit")            if "uhrzeit" in sel_cols else None
+            i_fahrer  = sel_cols.index("fahrer")             if "fahrer" in sel_cols else None
+            i_fzg     = sel_cols.index("fahrzeug")           if "fahrzeug" in sel_cols else None
+            i_fzg_ia  = sel_cols.index("fahrzeug_ia")        if "fahrzeug_ia" in sel_cols else None
+            i_prod    = sel_cols.index("produkt")            if "produkt" in sel_cols else None
+            i_kat     = sel_cols.index("fahrzeug_kategorie") if "fahrzeug_kategorie" in sel_cols else None
+            i_typ     = sel_cols.index("transaktions_typ")   if "transaktions_typ" in sel_cols else None
+            i_zaps    = sel_cols.index("zapfsaeule")         if "zapfsaeule" in sel_cols else None
+
+            quelle_name = getattr(uploaded_file, "name", "")
+
+            def _at(row, idx):
+                if idx is None: return None
+                try: return row[idx]
+                except IndexError: return None
+
+            for row in selected.itertuples(index=False, name=None):
+                datum, date_iso = _parse_date(_at(row, i_datum))
+                uhrzeit = _parse_time(_at(row, i_uhrzeit))
+                fahrer = _clean_text(_at(row, i_fahrer))
+                fahrzeug = _clean_text(_at(row, i_fzg))
+                fahrzeug_ia = _clean_text(_at(row, i_fzg_ia))
                 if not fahrzeug and fahrzeug_ia:
                     fahrzeug = fahrzeug_ia
                 fahrzeug = _normalize_kennzeichen(fahrzeug)
-                produkt = _clean_text(row.get("produkt"))
-                fahrzeug_kategorie = _clean_text(row.get("fahrzeug_kategorie"))
-                transaktions_typ = _clean_text(row.get("transaktions_typ"))
-                zapfsaeule = _clean_text(row.get("zapfsaeule"))
+                produkt = _clean_text(_at(row, i_prod))
+                fahrzeug_kategorie = _clean_text(_at(row, i_kat))
+                transaktions_typ = _clean_text(_at(row, i_typ))
+                zapfsaeule = _clean_text(_at(row, i_zaps))
                 if not any([datum, uhrzeit, fahrer, fahrzeug, fahrzeug_ia, produkt]):
                     continue
                 datetime_iso = (date_iso + " " + (uhrzeit or "00:00:00")).strip() if date_iso else ""
@@ -9054,19 +9253,20 @@ def parse_fahrzeugwaesche_excel(uploaded_files) -> str:
                     "fahrzeug_kategorie": fahrzeug_kategorie,
                     "transaktions_typ": transaktions_typ,
                     "zapfsaeule": zapfsaeule,
-                    "quelle": getattr(uploaded_file, "name", ""),
+                    "quelle": quelle_name,
                 }
-                key = tuple(item.get(k, "") for k in (
-                    "datum", "uhrzeit", "fahrer", "fahrzeug", "fahrzeug_ia",
-                    "produkt", "fahrzeug_kategorie", "transaktions_typ", "zapfsaeule", "quelle"
-                ))
+                key = (
+                    item["datum"], item["uhrzeit"], item["fahrer"], item["fahrzeug"],
+                    item["fahrzeug_ia"], item["produkt"], item["fahrzeug_kategorie"],
+                    item["transaktions_typ"], item["zapfsaeule"], item["quelle"],
+                )
                 if key in seen:
                     continue
                 seen.add(key)
                 rows.append(item)
 
     rows.sort(key=lambda x: (x.get("datetime_iso", ""), x.get("fahrer", ""), x.get("fahrzeug", "")), reverse=True)
-    return json.dumps(rows, ensure_ascii=False)
+    return json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
 
 
 def parse_grosskunden_excel(uploaded_file) -> str:
