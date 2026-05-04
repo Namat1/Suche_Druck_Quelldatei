@@ -3873,6 +3873,258 @@ function fwExportLkwPdf(lkwName) {
   doc.save("Fahrzeugwaeschen_LKW_" + safeName + ".pdf");
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PERFORMANCE-CACHES für Fahrzeugwäsche
+// Vorher: bei 5000 Waschungen × ~100 Fahrer wurde fwResolveKnownDriverProfile
+// für JEDE Zeile einzeln aufgerufen — mit Levenshtein pro Token-Paar.
+// Resultat: Tab-Klick blockierte mehrere Sekunden.
+// Hier wird das einmal berechnet und bis zum Daten-Update wiederverwendet.
+// ─────────────────────────────────────────────────────────────────────────────
+(function(){
+  var _cache = {
+    sig: null,
+    drivers: null,
+    lookup: null,
+    profileByName: null,    // raw fahrer-Name → profile (oder null)
+    keyByName: null,        // raw fahrer-Name → driverKey (oder "")
+    ranking: null,
+    overviewSorted: null,   // sortiertes FAHRZEUGWAESCHE_DATA (für driver==="all")
+    zeroDriverCount: null
+  };
+
+  // Daten-Signatur: invalidiert Cache wenn sich Eingangsdaten ändern
+  function _fwDataSig() {
+    var fw = (typeof FAHRZEUGWAESCHE_DATA !== "undefined" && FAHRZEUGWAESCHE_DATA) ? FAHRZEUGWAESCHE_DATA : [];
+    var tr = (typeof TIMEREC_DATA !== "undefined" && TIMEREC_DATA) ? TIMEREC_DATA : {};
+    return (Array.isArray(fw) ? fw.length : 0) + "|" + Object.keys(tr).length;
+  }
+
+  function _fwEnsure() {
+    var sig = _fwDataSig();
+    if(_cache.sig === sig) return;
+    _cache.sig = sig;
+    _cache.drivers = null;
+    _cache.lookup = null;
+    _cache.profileByName = {};
+    _cache.keyByName = {};
+    _cache.ranking = null;
+    _cache.overviewSorted = null;
+    _cache.zeroDriverCount = null;
+  }
+
+  // Originale referenzieren
+  var _origAllKnown = window.fwAllKnownDrivers;
+  var _origBuildLookup = window.fwBuildKnownDriverLookup;
+  var _origResolve = window.fwResolveKnownDriverProfile;
+  var _origKeyForWash = window.fwKnownDriverKeyForWashName;
+  var _origComputeRanking = window.fwComputeRanking;
+  var _origZeroCount = window.fwZeroDriverCount;
+  var _origGetOverviewRows = window.fwGetOverviewRows;
+
+  // Gecacht: fwAllKnownDrivers (basiert nur auf TIMEREC_DATA)
+  window.fwAllKnownDrivers = function() {
+    _fwEnsure();
+    if(_cache.drivers) return _cache.drivers;
+    _cache.drivers = _origAllKnown.apply(this, arguments);
+    return _cache.drivers;
+  };
+
+  // Gecacht: fwBuildKnownDriverLookup
+  window.fwBuildKnownDriverLookup = function() {
+    _fwEnsure();
+    if(_cache.lookup) return _cache.lookup;
+    _cache.lookup = _origBuildLookup.apply(this, arguments);
+    return _cache.lookup;
+  };
+
+  // Memoize: fwResolveKnownDriverProfile pro raw-fahrer-Name
+  // Das ist DER Hot-Path — ein Fahrer-Name kommt typisch zig-mal vor.
+  window.fwResolveKnownDriverProfile = function(value, lookup) {
+    _fwEnsure();
+    var key = String(value == null ? "" : value);
+    if(key in _cache.profileByName) return _cache.profileByName[key];
+    var p = _origResolve.call(this, value, lookup || window.fwBuildKnownDriverLookup());
+    _cache.profileByName[key] = p || null;
+    return _cache.profileByName[key];
+  };
+
+  // Memoize: fwKnownDriverKeyForWashName
+  window.fwKnownDriverKeyForWashName = function(value, lookup) {
+    _fwEnsure();
+    var key = String(value == null ? "" : value);
+    if(key in _cache.keyByName) return _cache.keyByName[key];
+    var p = window.fwResolveKnownDriverProfile(value, lookup);
+    _cache.keyByName[key] = p ? p.key : "";
+    return _cache.keyByName[key];
+  };
+
+  // Gecacht: fwComputeRanking
+  window.fwComputeRanking = function() {
+    _fwEnsure();
+    if(_cache.ranking) return _cache.ranking;
+    _cache.ranking = _origComputeRanking.apply(this, arguments);
+    return _cache.ranking;
+  };
+
+  // Gecacht: fwZeroDriverCount
+  window.fwZeroDriverCount = function() {
+    _fwEnsure();
+    if(_cache.zeroDriverCount !== null) return _cache.zeroDriverCount;
+    _cache.zeroDriverCount = _origZeroCount.apply(this, arguments);
+    return _cache.zeroDriverCount;
+  };
+
+  // Gecacht: fwGetOverviewRows für driver==="all" (häufigster Fall)
+  // Sortierung passiert hier — nicht jedes Mal neu sortieren.
+  window.fwGetOverviewRows = function() {
+    _fwEnsure();
+    var driverEl = document.getElementById("fw-overview-driver");
+    var driver = driverEl ? driverEl.value : "all";
+    if(!driver || driver === "all") {
+      if(_cache.overviewSorted) return _cache.overviewSorted;
+      var rows = (Array.isArray(FAHRZEUGWAESCHE_DATA) ? FAHRZEUGWAESCHE_DATA : []).slice();
+      rows.sort(function(a,b){
+        var ak = a.datetime_iso || "";
+        var bk = b.datetime_iso || "";
+        if(ak !== bk) return bk.localeCompare(ak);
+        return (a.fahrer || "").localeCompare(b.fahrer || "", "de");
+      });
+      _cache.overviewSorted = rows;
+      return rows;
+    }
+    // Mit Driver-Filter: das Original verwenden (das nutzt schon unsere
+    // gecachten Resolve-/KeyForWash-Funktionen)
+    return _origGetOverviewRows.apply(this, arguments);
+  };
+
+  // Public-API zum manuellen Cache-Reset (z.B. nach Daten-Update durch postMessage)
+  window.fwInvalidateCache = function() {
+    _cache.sig = null;
+  };
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Schneller fwRenderOverview-Replacement
+  // - Pagination: nur erste 200 Zeilen, "Mehr anzeigen"-Button hängt 200 weitere an
+  // - CSS-Hover statt inline onmouseover/onmouseout (spart ~80 Zeichen pro Zeile)
+  // - Stats werden aus Caches gelesen
+  // ───────────────────────────────────────────────────────────────────────────
+  var FW_PAGE_SIZE = 200;
+  var _fwRenderState = { rows: null, shown: 0, wrap: null };
+
+  function _fwBuildHeaderHTML() {
+    var html = "<style>.fw-row{transition:background .1s}.fw-row:hover{background:#eaf3fd!important}</style>";
+    html += "<div style='overflow:auto;max-height:540px;background:#fff;' id='fw-overview-scroll'>";
+    html += "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
+    html += "<thead><tr style='position:sticky;top:0;background:linear-gradient(180deg,#2078c9 0%,#6d28d9 100%);z-index:2;box-shadow:0 2px 4px rgba(0,0,0,.08);'>";
+    ["Datum","Zeit","Fahrer","LKW","Produkt","Kategorie","Quelle"].forEach(function(h){
+      html += "<th style='padding:11px 12px;text-align:left;color:#fff;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;border-right:1px solid rgba(255,255,255,.15);white-space:nowrap;'>" + h + "</th>";
+    });
+    html += "</tr></thead><tbody id='fw-overview-tbody'></tbody></table>";
+    html += "<div id='fw-overview-more' style='padding:10px;text-align:center;'></div>";
+    html += "</div>";
+    return html;
+  }
+
+  function _fwBuildRowsChunk(rows, fromIdx, toIdx) {
+    // Array.join ist schneller als += Konkatenation bei vielen Zeilen
+    var parts = [];
+    for(var i = fromIdx; i < toIdx; i++) {
+      var r = rows[i];
+      var bg = i % 2 === 0 ? "#ffffff" : "#f8fafc";
+      parts.push(
+        "<tr class='fw-row' style='background:" + bg + ";border-bottom:1px solid #eef2f7;'>",
+          "<td style='padding:10px 12px;white-space:nowrap;font-weight:800;color:#0f172a;'>", fwOverviewEsc(r.datum || ""), "</td>",
+          "<td style='padding:10px 12px;white-space:nowrap;color:#64748b;font-variant-numeric:tabular-nums;'>", fwOverviewEsc(r.uhrzeit || ""), "</td>",
+          "<td style='padding:10px 12px;font-weight:700;color:#0f172a;'>", fwOverviewEsc(r.fahrer || ""), "</td>",
+          "<td style='padding:10px 12px;color:#0f172a;font-weight:600;'>", fwOverviewEsc(r.fahrzeug || ""), "</td>",
+          "<td style='padding:10px 12px;color:#166534;font-weight:700;'>", fwOverviewEsc(r.produkt || ""), "</td>",
+          "<td style='padding:10px 12px;color:#475569;'>", fwOverviewEsc(r.fahrzeug_kategorie || ""), "</td>",
+          "<td style='padding:10px 12px;color:#94a3b8;font-size:10.5px;'>", fwOverviewEsc(r.quelle || ""), "</td>",
+        "</tr>"
+      );
+    }
+    return parts.join("");
+  }
+
+  function _fwUpdateMoreButton() {
+    var more = document.getElementById("fw-overview-more");
+    if(!more) return;
+    var st = _fwRenderState;
+    var total = st.rows.length;
+    if(st.shown >= total) {
+      more.innerHTML = "<span style='color:#94a3b8;font-size:11px;'>Alle " + total + " Eintraege geladen.</span>";
+      return;
+    }
+    var rest = total - st.shown;
+    var label = "Weitere " + Math.min(FW_PAGE_SIZE, rest) + " anzeigen (" + st.shown + " / " + total + ")";
+    more.innerHTML = "<button onclick='window._fwLoadMore()' style='padding:6px 14px;border:1px solid #1b66b3;background:#eff6ff;color:#1b66b3;border-radius:4px;cursor:pointer;font-weight:700;font-size:11px;'>" + label + "</button>";
+  }
+
+  window._fwLoadMore = function() {
+    var st = _fwRenderState;
+    if(!st.rows) return;
+    var tbody = document.getElementById("fw-overview-tbody");
+    if(!tbody) return;
+    var nextShown = Math.min(st.shown + FW_PAGE_SIZE, st.rows.length);
+    tbody.insertAdjacentHTML("beforeend", _fwBuildRowsChunk(st.rows, st.shown, nextShown));
+    st.shown = nextShown;
+    _fwUpdateMoreButton();
+  };
+
+  // Override: schneller fwRenderOverview
+  var _origRenderOverview2 = window.fwRenderOverview;
+  window.fwRenderOverview = function() {
+    var wrap = document.getElementById("fw-overview-table");
+    var stats = document.getElementById("fw-overview-stats");
+    if(!wrap) return;
+
+    var allDrivers = window.fwAllKnownDrivers();
+    if(!(typeof FAHRZEUGWAESCHE_DATA !== "undefined" && Array.isArray(FAHRZEUGWAESCHE_DATA) && FAHRZEUGWAESCHE_DATA.length) && !allDrivers.length) {
+      if(stats) stats.textContent = "";
+      wrap.innerHTML = "<div style='padding:24px 16px;color:#94a3b8;text-align:center;font-size:13px;'>Keine Fahrzeugwäsche-Dateien geladen.</div>";
+      return;
+    }
+
+    if(typeof window.fwBuildOverviewFilters === "function") window.fwBuildOverviewFilters();
+    var rows = window.fwGetOverviewRows();
+    var driverCount = allDrivers.length;
+    var zeroDriverCount = window.fwZeroDriverCount();
+
+    // LKW-/Waschungen-Count: einmal in einem Pass
+    var lkwSet = {};
+    var washSet = {};
+    for(var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var fz = ((r.fahrzeug || r.fahrzeug_ia || "") + "").trim();
+      if(fz) lkwSet[fz] = 1;
+      var dt = (r.datum || "").trim();
+      var key = (dt && fz) ? (dt + "||" + fz) : ("__row_" + i);
+      washSet[key] = 1;
+    }
+    var lkwCount = Object.keys(lkwSet).length;
+    var waschungenCount = Object.keys(washSet).length;
+
+    if(stats) {
+      var _pc = "display:inline-flex;align-items:baseline;gap:5px;padding:4px 11px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.2";
+      var _nc = "font-size:13px;font-weight:900;letter-spacing:-.3px";
+      stats.innerHTML = "<span style=\"" + _pc + ";background:#ecf7f1;color:#165532;border:1px solid #c7e5d4\"><span style=\"" + _nc + "\">" + waschungenCount + "</span> Waschungen</span>" + "<span style=\"" + _pc + ";background:#ede9fe;color:#0e4a85;border:1px solid #c5dbef\"><span style=\"" + _nc + "\">" + driverCount + "</span> Fahrer</span>" + "<span style=\"" + _pc + ";background:#fee2e2;color:#991b1b;border:1px solid #fecaca\"><span style=\"" + _nc + "\">" + zeroDriverCount + "</span> ohne Waschung</span>" + "<span style=\"" + _pc + ";background:#fff4e6;color:#9a4e00;border:1px solid #f6d9b3\"><span style=\"" + _nc + "\">" + lkwCount + "</span> LKW</span>";
+    }
+
+    if(!rows.length) {
+      wrap.innerHTML = "<div style='padding:24px 16px;color:#94a3b8;text-align:center;font-size:13px;'>Keine Waschungen für den ausgewählten Fahrer.</div>";
+      return;
+    }
+
+    // Header + erste Page rendern
+    wrap.innerHTML = _fwBuildHeaderHTML();
+    var tbody = document.getElementById("fw-overview-tbody");
+    var initialShow = Math.min(FW_PAGE_SIZE, rows.length);
+    tbody.innerHTML = _fwBuildRowsChunk(rows, 0, initialShow);
+    _fwRenderState = { rows: rows, shown: initialShow, wrap: wrap };
+    _fwUpdateMoreButton();
+  };
+})();
+
 // Hook: nach fwInitOverview / fwRenderOverview auch Ranglisten + Banner rendern
 (function(){
   var _origInit = window.fwInitOverview;
