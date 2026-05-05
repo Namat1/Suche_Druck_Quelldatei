@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "verstossliste-jahresfilter-2026-05-05-v8-fahrzeugwaesche-breiter"
+APP_CACHE_VERSION = "verstossliste-jahresfilter-2026-05-05-v9-grosskunden-lila"
 
 
 # =============================================================================
@@ -5480,19 +5480,19 @@ iframe.active{{display:block}}
   </div>
 
   <!-- ── Großkunden Panel ───────────────────────────────────────────────────── -->
-  <div id="panel-gk" style="display:none;flex:1;overflow:hidden;background:#eef2f7;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
+  <div id="panel-gk" style="display:none;flex:1;overflow:hidden;background:#f5f3ff;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
     <!-- Kopf / Suche -->
-    <div style="flex-shrink:0;background:#fff;border-bottom:1px solid #dde3ea;padding:10px 16px;box-shadow:0 1px 4px rgba(15,23,42,.04);">
+    <div style="flex-shrink:0;background:#ede9fe;border-bottom:1.5px solid #ddd6fe;padding:10px 16px;box-shadow:0 1px 4px rgba(109,40,217,.08);">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-        <div style="font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.45px;color:#0f172a;white-space:nowrap;">Gro&#223;kunden <span id="gk-count" style="font-weight:700;color:#64748b;"></span></div>
+        <div style="font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.45px;color:#6d28d9;white-space:nowrap;">Gro&#223;kunden <span id="gk-count" style="font-weight:700;color:#7c3aed;"></span></div>
         <input id="gk-search" placeholder="Gro&#223;kunden suchen..." oninput="gkFilter(this.value)"
-          style="flex:1;max-width:320px;padding:7px 11px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:12px;font-family:inherit;outline:none;background:#fff;color:#0f172a;">
+          style="flex:1;max-width:320px;padding:7px 11px;border:1.5px solid #7c3aed;border-radius:6px;font-size:12px;font-family:inherit;outline:none;background:#fff;color:#6d28d9;box-shadow:0 1px 3px rgba(109,40,217,.10);">
         <span id="gk-stats" style="margin-left:auto;font-size:11px;font-weight:700;color:#64748b;"></span>
       </div>
       <div id="gk-tiles" style="display:flex;flex-wrap:wrap;gap:6px;max-height:120px;overflow-y:auto;padding-right:4px;"></div>
     </div>
     <!-- Detail unten -->
-    <div id="gk-detail" style="flex:1;overflow-y:auto;padding:16px 18px 28px;">
+    <div id="gk-detail" style="flex:1;overflow-y:auto;padding:16px 18px 28px;background:#f5f3ff;">
       <div style="color:#94a3b8;padding:70px;text-align:center;font-size:14px;">Keine Gro&#223;kundendaten &ndash; bitte Excel in Streamlit hochladen.</div>
     </div>
   </div>
@@ -5973,9 +5973,9 @@ function gkDistributorLinkHtml(emails, label, subject) {{
   emails = gkUniqEmails(emails);
   if (!emails.length) return "";
   return "<a href='" + gkAttr(gkMailto(emails, subject || label)) + "'"
-       + " style='display:inline-flex;align-items:center;gap:7px;background:#166534;color:#fff;"
-       + "border:1px solid #14532d;border-radius:5px;padding:5px 11px;font-size:11.5px;"
-       + "font-weight:800;text-decoration:none;white-space:nowrap;box-shadow:0 1px 3px rgba(22,101,52,.25);'>"
+       + " style='display:inline-flex;align-items:center;gap:7px;background:#7c3aed;color:#fff;"
+       + "border:1px solid #6d28d9;border-radius:5px;padding:5px 11px;font-size:11.5px;"
+       + "font-weight:800;text-decoration:none;white-space:nowrap;box-shadow:0 1px 3px rgba(109,40,217,.25);'>"
        + "&#9993; " + gkEsc(label) + " <span style='font-weight:700;opacity:.8;'>(" + emails.length + ")</span></a>";
 }}
 
@@ -6071,18 +6071,18 @@ function gkBuildTiles(activeIdx) {{
       if (k.entries.length === 1) singleKnr = k.entries[0].kundennummer || "";
       else multiCount = k.entries.length;
     }}
-    var bg      = active ? "linear-gradient(180deg,#f6dc67 0%,#e6be22 100%)" : "#fff";
-    var border  = active ? "#d5ac10" : "#e2e8f0";
-    var txtMain = active ? "#5a4200" : "#0f172a";
-    var txtSub  = active ? "rgba(90,66,0,.65)" : "#94a3b8";
-    var knrBg    = active ? "rgba(90,66,0,.14)" : "#f1f5f9";
-    var knrTxt   = active ? "#5a4200" : "#1e3a5f";
-    var knrLabel = active ? "rgba(90,66,0,.6)" : "#94a3b8";
+    var bg      = active ? "linear-gradient(180deg,#8b5cf6 0%,#6d28d9 100%)" : "#fff";
+    var border  = active ? "#7c3aed" : "#ddd6fe";
+    var txtMain = active ? "#fff" : "#312e81";
+    var txtSub  = active ? "rgba(255,255,255,.78)" : "#7c3aed";
+    var knrBg    = active ? "rgba(255,255,255,.18)" : "#ede9fe";
+    var knrTxt   = active ? "#fff" : "#6d28d9";
+    var knrLabel = active ? "rgba(255,255,255,.72)" : "#8b5cf6";
     html += "<button type='button' onclick='gkShow(" + realIdx + ")'"
           + " style='cursor:pointer;border-radius:6px;padding:8px 11px;text-align:left;font-family:inherit;"
           + "border:1px solid " + border + ";background:" + bg + ";"
           + "transition:all .12s;min-width:118px;max-width:230px;user-select:none;"
-          + (active ? "box-shadow:0 2px 8px rgba(214,172,16,.28);" : "")
+          + (active ? "box-shadow:0 2px 8px rgba(109,40,217,.28);" : "")
           + "'>"
           + "<div style='font-size:12px;font-weight:700;color:" + txtMain + ";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25;'>"
           + gkEsc(k.name) + "</div>";
@@ -6165,7 +6165,7 @@ function gkRenderStructured(customer, detail) {{
 
   // ── Header ───────────────────────────────────────────────────────────────────
   html += "<div style='margin-bottom:14px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;'>"
-        + "<h1 style='font-size:22px;font-weight:800;color:#0f172a;margin:0;letter-spacing:-.4px;line-height:1.1;'>"
+        + "<h1 style='font-size:22px;font-weight:800;color:#6d28d9;margin:0;letter-spacing:-.4px;line-height:1.1;'>"
         + gkEsc(customer.name) + "</h1>"
         + "<span style='font-size:12px;color:#94a3b8;font-weight:600;letter-spacing:.2px;'>" + subline + "</span>"
         + "</div>";
@@ -6191,15 +6191,15 @@ function gkRenderStructured(customer, detail) {{
   // KNr-Badge-Helper: einheitlich leicht (hellgrau, dunkelblauer Text)
   function gkKnrBadge(knr) {{
     if (!knr) return "";
-    return "<span style='display:inline-flex;align-items:baseline;gap:5px;background:#f1f5f9;"
+    return "<span style='display:inline-flex;align-items:baseline;gap:5px;background:#ede9fe;"
          + "border-radius:4px;padding:3px 9px;'>"
          + "<span style='font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.55px;color:#94a3b8;'>KNr</span>"
-         + "<span style='font-size:13px;font-weight:800;color:#1e3a5f;font-variant-numeric:tabular-nums;letter-spacing:.2px;line-height:1;'>"
+         + "<span style='font-size:13px;font-weight:800;color:#6d28d9;font-variant-numeric:tabular-nums;letter-spacing:.2px;line-height:1;'>"
          + gkEsc(knr) + "</span></span>";
   }}
 
-  html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;overflow:hidden;'>";
-  html += "<div style='padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;'>"
+  html += "<div style='background:#fff;border:1px solid #ddd6fe;border-radius:8px;margin-bottom:12px;overflow:hidden;'>";
+  html += "<div style='padding:9px 14px;background:#ede9fe;border-bottom:1px solid #ddd6fe;'>"
         + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#64748b;'>Standorte</span>"
         + "</div>";
 
@@ -6222,7 +6222,7 @@ function gkRenderStructured(customer, detail) {{
     // Kompaktes Chip-Layout (keine Adressen vorhanden)
     html += "<div style='padding:12px 14px;display:flex;flex-wrap:wrap;gap:8px;'>";
     standorte.forEach(function(s) {{
-      html += "<div style='display:inline-flex;align-items:center;gap:9px;padding:7px 11px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;'>"
+      html += "<div style='display:inline-flex;align-items:center;gap:9px;padding:7px 11px;background:#ede9fe;border:1px solid #ddd6fe;border-radius:6px;'>"
             + "<span style='font-size:13px;font-weight:700;color:#0f172a;line-height:1.2;'>" + gkEsc(s.name) + "</span>"
             + gkKnrBadge(s.kundennummer)
             + "</div>";
@@ -6307,8 +6307,8 @@ function gkRenderStructured(customer, detail) {{
   // ── LINKE SPALTE: Kontaktkarte ─────────────────────────────────────────────
   html += "<div style='min-width:0;'>";
   if (hasAnyContact && allContactRows.length) {{
-    html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;'>";
-    html += "<div style='padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
+    html += "<div style='background:#fff;border:1px solid #ddd6fe;border-radius:8px;overflow:hidden;'>";
+    html += "<div style='padding:9px 14px;background:#ede9fe;border-bottom:1px solid #ddd6fe;display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
           + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#64748b;flex:1;'>Kontakte</span>"
           + gkEdekaLagerNmsLink(customer)
           + "</div>";
@@ -6317,8 +6317,8 @@ function gkRenderStructured(customer, detail) {{
       if (cr.isLabel) {{
         var sectionName = cr.text.replace(/:$/, "");
         var sKey = sectionName.toLowerCase().trim();
-        html += "<div style='margin:14px 0 6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-bottom:5px;border-bottom:1px solid #e2e8f0;'>"
-              + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1e3a5f;'>"
+        html += "<div style='margin:14px 0 6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-bottom:5px;border-bottom:1px solid #ddd6fe;'>"
+              + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#6d28d9;'>"
               + gkEsc(sectionName) + "</span>";
         if (sKey === "nfc" && rastingNfcEmails.length) {{
           html += gkDistributorLinkHtml(rastingNfcEmails, "Mail an den Verteiler", "Rasting / NFC");
@@ -6342,7 +6342,7 @@ function gkRenderStructured(customer, detail) {{
             var m = em.match(/^[^\s@]+@[^\s@]+/);
             var isMailAddr = m !== null;
             return isMailAddr
-              ? "<a href='mailto:" + gkEsc(em) + "' style='color:#1b66b3;font-size:12.5px;font-weight:500;text-decoration:none;'>" + gkEsc(em) + "</a>"
+              ? "<a href='mailto:" + gkEsc(em) + "' style='color:#7c3aed;font-size:12.5px;font-weight:500;text-decoration:none;'>" + gkEsc(em) + "</a>"
               : "<span style='font-size:12.5px;color:#334155;'>" + gkEsc(em) + "</span>";
           }}).join(" ");
         }} else if (hasLabelText) {{
@@ -6356,7 +6356,7 @@ function gkRenderStructured(customer, detail) {{
           html += "<span style='display:flex;align-items:center;gap:6px;flex-shrink:0;padding-left:14px;'>"
                 + cr.tels.map(function(t) {{
                     var href = "tel:" + t.replace(/[^\d\+]/g,"");
-                    return "<a href='" + href + "' style='font-size:12.5px;font-weight:600;color:#1e3a5f;"
+                    return "<a href='" + href + "' style='font-size:12.5px;font-weight:600;color:#6d28d9;"
                          + "font-variant-numeric:tabular-nums;white-space:nowrap;text-decoration:none;letter-spacing:.2px;'>"
                          + "<span style='color:#94a3b8;font-weight:400;margin-right:4px;'>&#9742;</span>" + gkEsc(t) + "</a>";
                   }}).join(" ")
@@ -6372,9 +6372,9 @@ function gkRenderStructured(customer, detail) {{
   // ── RECHTE SPALTE: Hinweise ────────────────────────────────────────────────
   html += "<div style='min-width:0;'>";
   if (allHints.length) {{
-    html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;'>";
-    html += "<div style='padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:8px;'>"
-          + "<span style='display:inline-block;width:6px;height:6px;border-radius:50%;background:#d97706;'></span>"
+    html += "<div style='background:#fff;border:1px solid #ddd6fe;border-radius:8px;overflow:hidden;'>";
+    html += "<div style='padding:9px 14px;background:#ede9fe;border-bottom:1px solid #ddd6fe;display:flex;align-items:center;gap:8px;'>"
+          + "<span style='display:inline-block;width:6px;height:6px;border-radius:50%;background:#7c3aed;'></span>"
           + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#64748b;flex:1;'>Hinweise</span>"
           + "<span style='font-size:10.5px;font-weight:700;color:#94a3b8;font-variant-numeric:tabular-nums;'>" + allHints.length + "</span>"
           + "</div>";
@@ -6404,11 +6404,11 @@ function gkRenderFreeform(customer, detail) {{
   var html = "<div style='max-width:760px;'>";
 
   html += "<div style='margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;'>"
-        + "<h1 style='font-size:22px;font-weight:800;color:#0f172a;margin:0;letter-spacing:-.4px;line-height:1.1;'>" + gkEsc(customer.name) + "</h1>"
+        + "<h1 style='font-size:22px;font-weight:800;color:#6d28d9;margin:0;letter-spacing:-.4px;line-height:1.1;'>" + gkEsc(customer.name) + "</h1>"
         + gkEdekaLagerNmsLink(customer)
         + "</div>";
 
-  html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;'>";
+  html += "<div style='background:#fff;border:1px solid #ddd6fe;border-radius:8px;overflow:hidden;'>";
 
   (customer.lines || []).forEach(function(line) {{
     var t = line.trim();
@@ -6421,9 +6421,9 @@ function gkRenderFreeform(customer, detail) {{
     if (isSection) {{
       var sectionName = t.replace(/:$/, "");
       var sectionKey = sectionName.toLowerCase().trim();
-      html += "<div style='padding:10px 14px 8px;background:#f8fafc;border-bottom:1px solid #e2e8f0;"
+      html += "<div style='padding:10px 14px 8px;background:#ede9fe;border-bottom:1px solid #ddd6fe;"
             + "display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
-            + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1e3a5f;'>"
+            + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#6d28d9;'>"
             + gkEsc(sectionName) + "</span>";
       if (sectionKey === "nfc" && rastingNfcEmails.length) {{
         html += gkDistributorLinkHtml(rastingNfcEmails, "Mail an den Verteiler", "Rasting / NFC");
@@ -6431,15 +6431,15 @@ function gkRenderFreeform(customer, detail) {{
       html += "</div>";
     }} else if (isEmail) {{
       html += "<div style='padding:8px 14px;border-bottom:1px solid #f1f5f9;'>"
-            + "<a href='mailto:" + gkEsc(t) + "' style='color:#1b66b3;font-size:12.5px;font-weight:500;text-decoration:none;'>" + gkEsc(t) + "</a>"
+            + "<a href='mailto:" + gkEsc(t) + "' style='color:#7c3aed;font-size:12.5px;font-weight:500;text-decoration:none;'>" + gkEsc(t) + "</a>"
             + "</div>";
     }} else if (hasTelNum) {{
-      html += "<div style='padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:12.5px;font-weight:600;color:#1e3a5f;font-variant-numeric:tabular-nums;letter-spacing:.2px;'>"
+      html += "<div style='padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:12.5px;font-weight:600;color:#6d28d9;font-variant-numeric:tabular-nums;letter-spacing:.2px;'>"
             + "<span style='color:#94a3b8;font-weight:400;margin-right:5px;'>&#9742;</span>" + gkEsc(t) + "</div>";
     }} else if (isLong) {{
       html += "<div style='padding:10px 14px;border-bottom:1px solid #f1f5f9;"
-            + "background:#fffbeb;"
-            + "font-size:12.5px;color:#78350f;line-height:1.6;'>" + gkEsc(t) + "</div>";
+            + "background:#faf5ff;"
+            + "font-size:12.5px;color:#581c87;line-height:1.6;'>" + gkEsc(t) + "</div>";
     }} else {{
       html += "<div style='padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:12.5px;color:#334155;'>" + gkEsc(t) + "</div>";
     }}
