@@ -5443,7 +5443,7 @@ iframe.active{{display:block}}
 
   <!-- ── Verstoßauswertung Panel ───────────────────────────────────── -->
   <div id="panel-verstoss" style="display:none;flex:1;flex-direction:column;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;">
-    <div style="width:94%;max-width:1400px;margin:0 auto;display:flex;flex-direction:column;flex:1;overflow:hidden;">
+    <div style="width:100%;max-width:1728px;margin:0 auto;padding:0 18px;display:flex;flex-direction:column;flex:1;overflow:hidden;">
       <div id="verstoss-toolbar" style="display:flex;align-items:center;gap:10px;padding:16px 0;flex-wrap:wrap;flex-shrink:0;">
         <h2 style="margin:0;font-size:17px;font-weight:900;color:#0f172a;">&#9888;&#65039; Verstoßauswertung</h2>
         <input id="verstoss-search" placeholder="Fahrer suchen..." oninput="verstossFilter(this.value)"
@@ -5466,7 +5466,7 @@ iframe.active{{display:block}}
 
   <!-- ── Verstoßauswertung Graph Panel ───────────────────────────────────── -->
   <div id="panel-verstoss-graph" style="display:none;flex:1;flex-direction:column;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;">
-    <div style="width:94%;max-width:1400px;margin:0 auto;display:flex;flex-direction:column;flex:1;overflow:hidden;">
+    <div style="width:100%;max-width:1728px;margin:0 auto;padding:0 18px;display:flex;flex-direction:column;flex:1;overflow:hidden;">
       <div style="display:flex;align-items:center;gap:10px;padding:16px 0;flex-wrap:wrap;flex-shrink:0;">
         <h2 style="margin:0;font-size:17px;font-weight:900;color:#0f172a;">&#9888;&#65039; Versto&#223;auswertung &ndash; Graph pro Jahr</h2>
         <select id="verstoss-graph-year" onchange="verstossGraphYearChange(this.value)"
