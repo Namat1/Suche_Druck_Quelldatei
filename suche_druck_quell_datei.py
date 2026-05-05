@@ -21,7 +21,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "verstossliste-detail-dunkel-2026-05-05-v5"
+APP_CACHE_VERSION = "verstossliste-detail-dezent-2026-05-05-v6"
 
 
 # =============================================================================
@@ -4711,14 +4711,14 @@ function verstossRender() {
     var lastStart = last ? last.start : "";
     var lastSort  = last ? last.date_sort : "";
     var isRecent = !!(_latestViolationDay && lastSort && lastSort.substring(0, 10) === _latestViolationDay);
-    var rowBg = isOpen ? "#e2e8f0" : (isRecent ? "#fff7f7" : (i % 2 === 0 ? "#ffffff" : "#f8fafc"));
+    var rowBg = isOpen ? "#eef2ff" : (isRecent ? "#fff7f7" : (i % 2 === 0 ? "#ffffff" : "#f8fafc"));
     var countBg = d.count >= 10 ? "#fee2e2" : "#e0f2fe";
     var countColor = d.count >= 10 ? "#991b1b" : "#075985";
 
     html += "<tr onclick='verstossToggleDriver(" + JSON.stringify(d.name) + ")' "
-          + "style='background:" + rowBg + ";cursor:pointer;transition:background .12s,box-shadow .12s;border-left:5px solid " + (isRecent ? "#dc2626" : (isOpen ? "#0f172a" : "transparent")) + ";' "
+          + "style='background:" + rowBg + ";cursor:pointer;transition:background .12s,box-shadow .12s;border-left:5px solid " + (isRecent ? "#dc2626" : (isOpen ? "#1e3a5f" : "transparent")) + ";' "
           + "onmouseover=\"this.style.background='#eef6ff'\" onmouseout=\"this.style.background='" + rowBg + "'\">";
-    html += "<td style='padding:11px 4px 11px 10px;text-align:center;color:" + (isOpen ? "#b45309" : "#94a3b8") + ";font-size:12px;border-bottom:1px solid #eef2f7;'>" + (isOpen ? "&#9660;" : "&#9654;") + "</td>";
+    html += "<td style='padding:11px 4px 11px 10px;text-align:center;color:" + (isOpen ? "#1e3a5f" : "#94a3b8") + ";font-size:12px;border-bottom:1px solid #eef2f7;'>" + (isOpen ? "&#9660;" : "&#9654;") + "</td>";
     html += "<td style='padding:11px 10px;border-bottom:1px solid #eef2f7;'>"
           + "<div style='display:flex;align-items:center;gap:8px;min-width:0;'>"
           + "<span style='width:28px;height:28px;border-radius:999px;background:#f1f5f9;border:1px solid #e2e8f0;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:950;color:#475569;flex:0 0 auto;'>" + verstossEsc((d.name || "?").substring(0,1).toUpperCase()) + "</span>"
@@ -4736,48 +4736,48 @@ function verstossRender() {
     html += "</tr>";
 
     if (isOpen) {
-      html += "<tr style='background:#1e293b;'>";
-      html += "<td colspan='6' style='padding:0 12px 16px 12px;border-bottom:1px solid #0f172a;background:#1e293b;'>";
-      html += "<div style='background:#0f172a;border:1px solid #334155;border-radius:16px;margin-top:12px;overflow:hidden;box-shadow:0 18px 40px rgba(2,6,23,.35), inset 0 1px 0 rgba(255,255,255,.05);'>";
+      html += "<tr style='background:#f1f5f9;'>";
+      html += "<td colspan='6' style='padding:0 12px 14px 12px;border-bottom:1px solid #cbd5e1;background:#f1f5f9;'>";
+      html += "<div style='background:#f8fafc;border:1px solid #cbd5e1;border-radius:14px;margin-top:10px;overflow:hidden;box-shadow:0 8px 22px rgba(15,23,42,.10);'>";
 
       var detailList = (d.verstoesse || []).slice();
       if (_vsTypeFilter) {
         detailList = detailList.filter(function(v) { return String(v.violation || "") === _vsTypeFilter; });
       }
 
-      html += "<div style='display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid #334155;background:linear-gradient(180deg,#1e293b 0%,#0f172a 100%);flex-wrap:wrap;'>";
-      html += "<div style='min-width:0;'><div style='font-size:13px;font-weight:950;color:#f8fafc;'>Einzelverstöße</div>"
-            + "<div style='font-size:11px;font-weight:800;color:#cbd5e1;margin-top:2px;'>" + detailList.length + " von " + d.count + " Verstöße · neueste zuerst" + (_vsTypeFilter ? " · Filter: " + verstossEsc(_vsTypeFilter) : "") + "</div></div>";
+      html += "<div style='display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #cbd5e1;background:linear-gradient(180deg,#eef2ff 0%,#f8fafc 100%);flex-wrap:wrap;'>";
+      html += "<div style='min-width:0;'><div style='font-size:13px;font-weight:950;color:#0f172a;'>Einzelverstöße</div>"
+            + "<div style='font-size:11px;font-weight:800;color:#64748b;margin-top:2px;'>" + detailList.length + " von " + d.count + " Verstöße · neueste zuerst" + (_vsTypeFilter ? " · Filter: " + verstossEsc(_vsTypeFilter) : "") + "</div></div>";
       html += "<button onclick='event.stopPropagation();verstossPdfOne(" + JSON.stringify(d.name) + ")' "
             + "style='margin-left:auto;padding:7px 13px;background:#dc2626;color:#fff;border:none;border-radius:999px;font-weight:950;font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 4px 12px rgba(220,38,38,.25);'>"
             + "&#128196; PDF drucken</button>";
       html += "</div>";
 
       if (d.types && d.types.length) {
-        html += "<div style='display:flex;align-items:center;gap:7px;padding:11px 16px;border-bottom:1px solid #334155;background:#111827;flex-wrap:wrap;'>";
-        html += "<span style='font-size:10px;font-weight:950;color:#cbd5e1;text-transform:uppercase;letter-spacing:.45px;margin-right:2px;'>Arten</span>";
+        html += "<div style='display:flex;align-items:center;gap:7px;padding:10px 16px;border-bottom:1px solid #e2e8f0;background:#ffffff;flex-wrap:wrap;'>";
+        html += "<span style='font-size:10px;font-weight:950;color:#64748b;text-transform:uppercase;letter-spacing:.45px;margin-right:2px;'>Arten</span>";
         html += "<button onclick='event.stopPropagation();verstossResetTypeFilter()' "
-              + "style='background:" + (!_vsTypeFilter ? "#f8fafc" : "#1e293b") + ";border:1px solid " + (!_vsTypeFilter ? "#f8fafc" : "#475569") + ";color:" + (!_vsTypeFilter ? "#0f172a" : "#e2e8f0") + ";border-radius:999px;padding:4px 10px;font-size:10.5px;font-weight:950;cursor:pointer;font-family:inherit;'>Alle</button>";
+              + "style='background:" + (!_vsTypeFilter ? "#1e3a5f" : "#fff") + ";border:1px solid " + (!_vsTypeFilter ? "#1e3a5f" : "#cbd5e1") + ";color:" + (!_vsTypeFilter ? "#fff" : "#475569") + ";border-radius:999px;padding:4px 10px;font-size:10.5px;font-weight:950;cursor:pointer;font-family:inherit;'>Alle</button>";
         d.types.forEach(function(t) {
           var activeType = String(t[0]) === _vsTypeFilter;
           html += "<button onclick='event.stopPropagation();verstossFilterType(" + JSON.stringify(String(t[0])) + ")' "
-                + "style='background:" + (activeType ? "#fee2e2" : "#1e293b") + ";border:1px solid " + (activeType ? "#ef4444" : "#475569") + ";color:" + (activeType ? "#991b1b" : "#e2e8f0") + ";border-radius:999px;padding:4px 10px;font-size:10.5px;font-weight:850;cursor:pointer;font-family:inherit;'>"
+                + "style='background:" + (activeType ? "#fee2e2" : "#fff") + ";border:1px solid " + (activeType ? "#ef4444" : "#cbd5e1") + ";color:" + (activeType ? "#991b1b" : "#475569") + ";border-radius:999px;padding:4px 10px;font-size:10.5px;font-weight:850;cursor:pointer;font-family:inherit;'>"
                 + verstossEsc(t[0]) + " <b style='margin-left:4px;'>" + t[1] + "</b></button>";
         });
         html += "</div>";
       }
 
-      html += "<div style='max-height:460px;overflow:auto;background:#0b1220;'>";
+      html += "<div style='max-height:460px;overflow:auto;background:#ffffff;'>";
       html += "<table style='width:100%;border-collapse:collapse;font-size:11.5px;'>";
-      html += "<thead><tr style='position:sticky;top:0;z-index:2;background:#020617;color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.25);'>";
+      html += "<thead><tr style='position:sticky;top:0;z-index:2;background:#e2e8f0;color:#334155;box-shadow:0 2px 6px rgba(15,23,42,.08);'>";
       ["Start", "Ende", "Verstoß", "Soll", "Ist", "Differenz", "Bußgeld Fahrer", "Bußgeld Firma"].forEach(function(h, idx) {
         var align = ([3,4,5,6,7].indexOf(idx) >= 0) ? "right" : "left";
-        html += "<th style='padding:8px 10px;text-align:" + align + ";font-size:10px;font-weight:950;letter-spacing:.35px;white-space:nowrap;border-right:1px solid rgba(255,255,255,.10);'>" + h + "</th>";
+        html += "<th style='padding:8px 10px;text-align:" + align + ";font-size:10px;font-weight:950;letter-spacing:.35px;white-space:nowrap;border-right:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1;'>" + h + "</th>";
       });
       html += "</tr></thead><tbody>";
 
       if (!detailList.length) {
-        html += "<tr><td colspan='8' style='padding:22px;text-align:center;color:#cbd5e1;font-weight:800;background:#0f172a;'>Keine Verstöße für diesen Filter.</td></tr>";
+        html += "<tr><td colspan='8' style='padding:22px;text-align:center;color:#64748b;font-weight:800;background:#ffffff;'>Keine Verstöße für diesen Filter.</td></tr>";
       }
 
       var currentMonth = "";
@@ -4785,19 +4785,19 @@ function verstossRender() {
         var monthLabel = vsMonthLabel(v);
         if (monthLabel !== currentMonth) {
           currentMonth = monthLabel;
-          html += "<tr style='background:#1e293b;'><td colspan='8' style='padding:8px 12px;color:#f8fafc;font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.55px;border-top:1px solid #475569;border-bottom:1px solid #475569;'>" + verstossEsc(monthLabel) + "</td></tr>";
+          html += "<tr style='background:#e0e7ff;'><td colspan='8' style='padding:8px 12px;color:#1e3a5f;font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.55px;border-top:1px solid #bfdbfe;border-bottom:1px solid #bfdbfe;'>" + verstossEsc(monthLabel) + "</td></tr>";
         }
-        var jbg = j % 2 === 0 ? "#111827" : "#0f172a";
+        var jbg = j % 2 === 0 ? "#ffffff" : "#f8fafc";
         var diffPositive = (Number(v.diff) || 0) > 0;
-        html += "<tr style='background:" + jbg + ";border-bottom:1px solid #273449;'>";
-        html += "<td style='padding:8px 10px;color:#f8fafc;font-weight:850;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + verstossEsc(v.start || "—") + "</td>";
-        html += "<td style='padding:8px 10px;color:#cbd5e1;font-weight:750;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + verstossEsc(v.end || "—") + "</td>";
-        html += "<td style='padding:8px 10px;color:#e2e8f0;min-width:260px;'>"
-              + "<div style='font-weight:850;color:#f8fafc;line-height:1.25;'>" + verstossEsc(v.violation || "—") + "</div>"
-              + (v.law ? "<div style='color:#94a3b8;font-size:10px;font-weight:750;margin-top:2px;'>" + verstossEsc(v.law) + "</div>" : "")
+        html += "<tr style='background:" + jbg + ";border-bottom:1px solid #e2e8f0;'>";
+        html += "<td style='padding:8px 10px;color:#0f172a;font-weight:850;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + verstossEsc(v.start || "—") + "</td>";
+        html += "<td style='padding:8px 10px;color:#475569;font-weight:750;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + verstossEsc(v.end || "—") + "</td>";
+        html += "<td style='padding:8px 10px;color:#334155;min-width:260px;'>"
+              + "<div style='font-weight:850;color:#0f172a;line-height:1.25;'>" + verstossEsc(v.violation || "—") + "</div>"
+              + (v.law ? "<div style='color:#64748b;font-size:10px;font-weight:750;margin-top:2px;'>" + verstossEsc(v.law) + "</div>" : "")
               + "</td>";
-        html += "<td style='padding:8px 10px;text-align:right;color:#cbd5e1;font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + verstossFmtMin(v.target) + "</td>";
-        html += "<td style='padding:8px 10px;text-align:right;color:#cbd5e1;font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + verstossFmtMin(v.ist) + "</td>";
+        html += "<td style='padding:8px 10px;text-align:right;color:#475569;font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + verstossFmtMin(v.target) + "</td>";
+        html += "<td style='padding:8px 10px;text-align:right;color:#475569;font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums;'>" + verstossFmtMin(v.ist) + "</td>";
         html += "<td style='padding:8px 10px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;'>"
               + "<span style='display:inline-flex;min-width:62px;justify-content:flex-end;border-radius:999px;padding:3px 8px;background:" + (diffPositive ? "#fee2e2" : "#f1f5f9") + ";color:" + (diffPositive ? "#991b1b" : "#64748b") + ";font-weight:950;'>" + verstossFmtMin(v.diff) + "</span></td>";
         html += "<td style='padding:8px 10px;text-align:right;white-space:nowrap;'>" + vsPenaltyPill(v.driver_penalty, "#dc2626") + "</td>";
