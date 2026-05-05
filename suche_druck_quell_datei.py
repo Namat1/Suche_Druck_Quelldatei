@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "verstossliste-jahresfilter-2026-05-05-v7"
+APP_CACHE_VERSION = "verstossliste-jahresfilter-2026-05-05-v8-fahrzeugwaesche-breiter"
 
 
 # =============================================================================
@@ -5204,8 +5204,8 @@ iframe.active{{display:block}}
 <div class="frame-wrap">
   <iframe id="frame-suche" class="active" title="Kunden-Suche"></iframe>
   <iframe id="frame-druck" title="Druckbereich" style="display:none!important;width:0;height:0;border:0"></iframe>
-  <div id="panel-vz" style="display:none;flex:1;overflow-y:auto;padding:24px 28px 32px;background:linear-gradient(180deg,#eef2f7 0%,#e6ebf1 100%);font-family:'Segoe UI',Arial,sans-serif">
-    <div style="max-width:1120px;margin:0 auto">
+  <div id="panel-vz" style="display:none;flex:1;overflow-y:auto;padding:18px 18px 28px;background:linear-gradient(180deg,#eef2f7 0%,#e6ebf1 100%);font-family:'Segoe UI',Arial,sans-serif">
+    <div style="width:100%;max-width:1728px;margin:0 auto">
 
       <!-- ── Header-Karte mit Titel + Aktionen ─────────────────────────────── -->
       <div style="background:#fff;border:1px solid #d7dee7;border-radius:12px;padding:18px 22px;box-shadow:0 2px 8px rgba(15,23,42,.06);margin-bottom:18px">
