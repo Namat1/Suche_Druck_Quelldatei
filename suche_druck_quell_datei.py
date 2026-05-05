@@ -21,7 +21,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "verstossliste-detail-dezent-2026-05-05-v6"
+APP_CACHE_VERSION = "verstossliste-jahresfilter-2026-05-05-v7"
 
 
 # =============================================================================
@@ -4152,6 +4152,7 @@ var _vsOpenDriver = null;      // welcher Fahrer ist aufgeklappt
 var _vsSortKey = "letzter";    // name | count | letzter | dp | cp
 var _vsSortDir = "desc";       // asc | desc
 var _vsTypeFilter = "";       // aktive Verstoßart im aufgeklappten Fahrer
+var _vsListYear = "all";      // Jahresfilter in der Liste, Start: alle Jahre
 
 function verstossEsc(v) {
   return String(v == null ? "" : v)
@@ -4295,6 +4296,62 @@ function verstossGetGraphYears() {
   var seen = {};
   verstossGetFlatViolations().forEach(function(r) { if (r.year) seen[r.year] = 1; });
   return Object.keys(seen).sort(function(a, b) { return b.localeCompare(a); });
+}
+
+function verstossPopulateListYears() {
+  var sel = document.getElementById("verstoss-list-year");
+  if (!sel) return;
+  var years = verstossGetGraphYears();
+  var keep = sel.value || _vsListYear || "all";
+  var html = "<option value='all'>Alle Jahre</option>";
+  years.forEach(function(y) { html += "<option value='" + y + "'>" + y + "</option>"; });
+  sel.innerHTML = html;
+  if (keep && (keep === "all" || years.indexOf(keep) >= 0)) {
+    _vsListYear = keep;
+  } else {
+    _vsListYear = "all";
+  }
+  sel.value = _vsListYear;
+}
+
+function verstossListYearChange(y) {
+  _vsListYear = y || "all";
+  _vsOpenDriver = null;
+  _vsTypeFilter = "";
+  verstossRender();
+}
+
+function verstossViolationMatchesListYear(v) {
+  return (_vsListYear === "all") || (verstossYearOf(v) === _vsListYear);
+}
+
+function verstossBuildListDriver(d) {
+  var vv = (d.verstoesse || []).filter(verstossViolationMatchesListYear);
+  if (!vv.length) return null;
+
+  var nd = {};
+  for (var k in d) {
+    if (Object.prototype.hasOwnProperty.call(d, k)) nd[k] = d[k];
+  }
+
+  var typeMap = {};
+  var sumDriver = 0;
+  var sumCompany = 0;
+  vv.forEach(function(v) {
+    var t = String(v.violation || "—");
+    typeMap[t] = (typeMap[t] || 0) + 1;
+    sumDriver += Number(v.driver_penalty || 0);
+    sumCompany += Number(v.company_penalty || 0);
+  });
+
+  nd.verstoesse = vv;
+  nd.count = vv.length;
+  nd.sum_driver_penalty = sumDriver;
+  nd.sum_company_penalty = sumCompany;
+  nd.types = Object.entries(typeMap).sort(function(a, b) {
+    return b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), "de");
+  });
+  return nd;
 }
 
 function verstossPopulateGraphYears() {
@@ -4529,8 +4586,11 @@ function verstossResetSearch() {
   _vsSearchQ = "";
   _vsOpenDriver = null;
   _vsTypeFilter = "";
+  _vsListYear = "all";
   var inp = document.getElementById("verstoss-search");
   if (inp) inp.value = "";
+  var yearSel = document.getElementById("verstoss-list-year");
+  if (yearSel) yearSel.value = "all";
   verstossRender();
 }
 
@@ -4588,7 +4648,12 @@ function verstossApplySort(list) {
 
 function verstossGetDrivers() {
   var data = (VERSTOSS_DATA && Array.isArray(VERSTOSS_DATA.drivers)) ? VERSTOSS_DATA.drivers : [];
-  var list = data.slice();
+  var list = [];
+
+  data.forEach(function(d) {
+    var nd = verstossBuildListDriver(d);
+    if (nd) list.push(nd);
+  });
 
   // Search
   if (_vsSearchQ) {
@@ -4614,6 +4679,7 @@ function verstossRender() {
     return;
   }
 
+  verstossPopulateListYears();
   var drivers = verstossGetDrivers();
   var totV = drivers.reduce(function(s, d) { return s + d.count; }, 0);
   var totDP = drivers.reduce(function(s, d) { return s + (d.sum_driver_penalty || 0); }, 0);
@@ -4621,8 +4687,11 @@ function verstossRender() {
 
   if (stats) {
     var sinceLabel = verstossCsvSinceLabel();
+    var listYearLabel = (_vsListYear === "all") ? "alle Jahre" : _vsListYear;
     stats.innerHTML =
         "<span style='display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #e2e8f0;border-radius:999px;padding:5px 10px;color:#334155;'>"
+      + "Jahr <b style='color:#991b1b;'>" + verstossEsc(listYearLabel) + "</b></span> "
+      + "<span style='display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #e2e8f0;border-radius:999px;padding:5px 10px;color:#334155;'>"
       + "<b style='color:#0f172a;'>" + drivers.length + "</b> Fahrer</span> "
       + "<span style='display:inline-flex;align-items:center;gap:6px;background:#fee2e2;border:1px solid #fecaca;border-radius:999px;padding:5px 10px;color:#991b1b;'>"
       + "<b>" + totV + "</b> Verstöße</span> "
@@ -4631,12 +4700,12 @@ function verstossRender() {
   }
 
   if (!drivers.length) {
-    body.innerHTML = "<div style='color:#64748b;padding:60px;text-align:center;font-size:14px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;'>Kein Fahrer für diese Suche.</div>";
+    body.innerHTML = "<div style='color:#64748b;padding:60px;text-align:center;font-size:14px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;'>Kein Fahrer für diese Suche oder dieses Jahr.</div>";
     return;
   }
 
   var _latestViolationDay = "";
-  data.forEach(function(_d) {
+  drivers.forEach(function(_d) {
     (_d.verstoesse || []).forEach(function(_v) {
       var _day = ((_v.date_sort || "").substring(0, 10));
       if (_day && _day > _latestViolationDay) _latestViolationDay = _day;
@@ -5385,6 +5454,10 @@ iframe.active{{display:block}}
         <input id="verstoss-search" placeholder="Fahrer suchen..." oninput="verstossFilter(this.value)"
           style="flex:1;min-width:160px;max-width:300px;padding:8px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#fff;transition:border .15s;color:#0f172a;"
           onfocus="this.style.borderColor='#dc2626'" onblur="this.style.borderColor='#cbd5e1'">
+        <select id="verstoss-list-year" onchange="verstossListYearChange(this.value)"
+          style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:850;font-family:inherit;outline:none;background:#fff;color:#991b1b;cursor:pointer;min-width:116px;">
+          <option value="all">Alle Jahre</option>
+        </select>
         <button id="verstoss-search-all" onclick="verstossResetSearch()"
           style="padding:8px 12px;border:1.5px solid #1e3a5f;border-radius:8px;background:#1e3a5f;color:#fff;font-size:12px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 1px 2px rgba(15,23,42,.08);">
           Alle anzeigen</button>
