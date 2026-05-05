@@ -4810,8 +4810,9 @@ function verstossRender() {
         detailList = detailList.filter(function(v) { return String(v.violation || "") === _vsTypeFilter; });
       }
 
-      html += "<div style='display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid #e2e8f0;background:#f8fafc;flex-wrap:wrap;'>";
-      html += "<div style='min-width:0;'><div style='font-size:14px;font-weight:900;color:#0f172a;'>" + verstossEsc(d.name) + " — Einzelverstöße</div>"
+      html += "<div onclick='verstossToggleDriver(" + JSON.stringify(d.name) + ")' style='display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid #e2e8f0;background:#f8fafc;flex-wrap:wrap;cursor:pointer;' title='Klicken zum Schließen'>";
+      html += "<div style='color:#1e3a5f;font-size:13px;flex:0 0 auto;'>&#9660;</div>";
+      html += "<div style='min-width:0;flex:1;'><div style='font-size:14px;font-weight:900;color:#0f172a;'>" + verstossEsc(d.name) + " — Einzelverstöße</div>"
             + "<div style='font-size:12px;font-weight:700;color:#64748b;margin-top:3px;'>" + detailList.length + " von " + d.count + " Verstöße" + (_vsTypeFilter ? " · Filter: " + verstossEsc(_vsTypeFilter) : "") + "</div></div>";
       html += "<button onclick='event.stopPropagation();verstossPdfOne(" + JSON.stringify(d.name) + ")' "
             + "style='margin-left:auto;padding:8px 16px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-weight:900;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;'>"
