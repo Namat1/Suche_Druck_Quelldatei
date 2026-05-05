@@ -4479,6 +4479,7 @@ function verstossRenderGraph() {
   }
 
   var html = "";
+  html += "<div style='margin-right:18px;'>";
   html += "<div style='display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:12px;margin-bottom:14px;'>";
   html += verstossGraphKpi("Verstöße", total, "#991b1b", "&#9888;&#65039;");
   html += verstossGraphKpi("Bußgeld Fahrer", verstossFmtEuro(sumDriver), "#dc2626", "&#128179;");
@@ -4510,9 +4511,10 @@ function verstossRenderGraph() {
     html += "</tr>";
   });
   html += "</tbody></table></div>";
+  html += "</div>";
 
   if (!rows.length) {
-    html = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;'>Keine Verstöße für " + verstossEsc(label) + " gefunden.</div>";
+    html = "<div style='margin-right:18px;'><div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;'>Keine Verstöße für " + verstossEsc(label) + " gefunden.</div></div>";
   }
   body.innerHTML = html;
 
@@ -4753,14 +4755,14 @@ function verstossRender() {
   }
 
   var html = "";
-  html += "<div style='display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:14px;margin:0 0 16px 0;'>";
+  html += "<div style='display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:14px;margin:0 18px 16px 0;'>";
   html += verstossMiniCard("Verstöße gesamt", String(totV), drivers.length + " Fahrer betroffen", "#dc2626", "#fef2f2", "&#9888;&#65039;");
   html += verstossMiniCard("Bußgeld Fahrer", verstossFmtEuro(totDP), "Summe aller Fahrer", "#dc2626", "#fff7ed", "&#128179;");
   html += verstossMiniCard("Bußgeld Firma", verstossFmtEuro(totCP), "Summe Unternehmen", "#b45309", "#fffbeb", "&#127970;");
   html += verstossMiniCard("Aktuellster Tag", latestDisplay, topDriver ? ("Top: " + topDriver.name + " (" + topDriver.count + ")") : "Keine Daten", "#1e3a5f", "#f0f4ff", "&#128197;");
   html += "</div>";
 
-  html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;'>";
+  html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-right:18px;'>";
   html += "<table style='width:100%;border-collapse:separate;border-spacing:0;font-size:13px;'>";
   html += "<thead><tr style='position:sticky;top:0;z-index:3;'>";
   html += "<th style='padding:10px 6px;width:32px;background:#f8fafc;border-bottom:2px solid #e2e8f0;'></th>";
@@ -5443,8 +5445,8 @@ iframe.active{{display:block}}
 
   <!-- ── Verstoßauswertung Panel ───────────────────────────────────── -->
   <div id="panel-verstoss" style="display:none;flex:1;flex-direction:column;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;">
-    <div style="width:100%;max-width:1728px;margin:0 auto;padding:0 18px;display:flex;flex-direction:column;flex:1;overflow:hidden;">
-      <div id="verstoss-toolbar" style="display:flex;align-items:center;gap:10px;padding:16px 0;flex-wrap:wrap;flex-shrink:0;">
+    <div style="width:100%;max-width:1728px;margin:0 auto;display:flex;flex-direction:column;flex:1;overflow:hidden;">
+      <div id="verstoss-toolbar" style="display:flex;align-items:center;gap:10px;padding:16px 18px;flex-wrap:wrap;flex-shrink:0;">
         <h2 style="margin:0;font-size:17px;font-weight:900;color:#0f172a;">&#9888;&#65039; Verstoßauswertung</h2>
         <input id="verstoss-search" placeholder="Fahrer suchen..." oninput="verstossFilter(this.value)"
           style="flex:1;min-width:160px;max-width:300px;padding:8px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#fff;transition:border .15s;color:#0f172a;"
@@ -5458,7 +5460,7 @@ iframe.active{{display:block}}
           Alle anzeigen</button>
         <span id="verstoss-stats" style="font-size:12px;font-weight:700;color:#64748b;margin-left:auto;"></span>
       </div>
-      <div id="verstoss-body" style="flex:1;overflow-y:auto;padding:4px 2px 30px 2px;">
+      <div id="verstoss-body" style="flex:1;overflow-y:auto;padding:4px 0 30px 18px;">
         <div style="color:#94a3b8;padding:60px;text-align:center;font-size:14px;">Keine Verstoßdaten &ndash; bitte Verstoß-CSV in Streamlit hochladen.</div>
       </div>
     </div>
@@ -5466,14 +5468,14 @@ iframe.active{{display:block}}
 
   <!-- ── Verstoßauswertung Graph Panel ───────────────────────────────────── -->
   <div id="panel-verstoss-graph" style="display:none;flex:1;flex-direction:column;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;">
-    <div style="width:100%;max-width:1728px;margin:0 auto;padding:0 18px;display:flex;flex-direction:column;flex:1;overflow:hidden;">
-      <div style="display:flex;align-items:center;gap:10px;padding:16px 0;flex-wrap:wrap;flex-shrink:0;">
+    <div style="width:100%;max-width:1728px;margin:0 auto;display:flex;flex-direction:column;flex:1;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:10px;padding:16px 18px;flex-wrap:wrap;flex-shrink:0;">
         <h2 style="margin:0;font-size:17px;font-weight:900;color:#0f172a;">&#9888;&#65039; Versto&#223;auswertung &ndash; Graph pro Jahr</h2>
         <select id="verstoss-graph-year" onchange="verstossGraphYearChange(this.value)"
           style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:800;font-family:inherit;outline:none;background:#fff;color:#991b1b;cursor:pointer;"></select>
         <span id="verstoss-graph-stats" style="font-size:12px;font-weight:700;color:#64748b;margin-left:auto;"></span>
       </div>
-      <div id="verstoss-graph-content" style="flex:1;overflow-y:auto;padding:4px 2px 30px 2px;">
+      <div id="verstoss-graph-content" style="flex:1;overflow-y:auto;padding:4px 0 30px 18px;">
         <div style="color:#94a3b8;padding:60px;text-align:center;font-size:14px;">Keine Versto&#223;daten &ndash; bitte Versto&#223;-CSV in Streamlit hochladen.</div>
       </div>
     </div>
