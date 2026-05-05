@@ -12,7 +12,6 @@ import base64
 import unicodedata
 import re
 import datetime
-from zoneinfo import ZoneInfo
 import hashlib
 import io
 import zlib
@@ -61,10 +60,6 @@ def read_upload_bytes(uploaded_file) -> bytes:
     if isinstance(data, str):
         return data.encode("utf-8")
     return data
-
-
-def to_bytes_buffer(uploaded_file) -> io.BytesIO:
-    return io.BytesIO(read_upload_bytes(uploaded_file))
 
 
 def upload_signature(uploaded_file) -> str:
