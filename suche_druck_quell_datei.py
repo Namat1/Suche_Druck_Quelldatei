@@ -4891,6 +4891,23 @@ function verstossPdfOne(name) {
   }
   if (!d) { alert("Fahrer nicht gefunden."); return; }
 
+  // Jahr-Filter anwenden
+  var vv = (d.verstoesse || []).filter(verstossViolationMatchesListYear);
+  var yearLabel = (_vsListYear === "all") ? "alle Jahre" : _vsListYear;
+  var countFiltered = vv.length;
+  var sumDP = vv.reduce(function(s, v) { return s + (Number(v.driver_penalty) || 0); }, 0);
+  var sumCP = vv.reduce(function(s, v) { return s + (Number(v.company_penalty) || 0); }, 0);
+
+  // Typen neu berechnen für gefiltertes Jahr
+  var typeMap = {};
+  vv.forEach(function(v) {
+    var t = String(v.violation || "Sonstige");
+    typeMap[t] = (typeMap[t] || 0) + 1;
+  });
+  var filteredTypes = Object.entries(typeMap).sort(function(a, b) { return b[1] - a[1]; });
+
+  if (!countFiltered) { alert("Keine Verstöße für " + name + " im Jahr " + yearLabel + "."); return; }
+
   var today = new Date().toLocaleDateString("de-DE", {day:"2-digit",month:"long",year:"numeric"});
 
   var css = "@page{size:A4 portrait;margin:12mm}"
@@ -4919,19 +4936,19 @@ function verstossPdfOne(name) {
   var body = "<div class='head'>"
     + "<h1>&#9888; Verstoßauswertung</h1>"
     + "<div class='name'>" + verstossEsc(d.name) + "</div>"
-    + "<div class='sub'>NordFrischeCenter &middot; Stand: " + today + "</div>"
+    + "<div class='sub'>NordFrischeCenter &middot; Jahr: " + verstossEsc(yearLabel) + " &middot; Stand: " + today + "</div>"
     + "</div>";
 
   body += "<div class='kpi'>"
-    + "<div><div class='num' style='color:#1e3a5f;'>" + d.count + "</div><div class='lbl'>Verstöße gesamt</div></div>"
-    + "<div><div class='num' style='color:#dc2626;'>" + verstossFmtEuro(d.sum_driver_penalty) + "</div><div class='lbl'>Bußgeld Fahrer</div></div>"
-    + "<div><div class='num' style='color:#b45309;'>" + verstossFmtEuro(d.sum_company_penalty) + "</div><div class='lbl'>Bußgeld Firma</div></div>"
+    + "<div><div class='num' style='color:#1e3a5f;'>" + countFiltered + "</div><div class='lbl'>Verstöße " + verstossEsc(yearLabel) + "</div></div>"
+    + "<div><div class='num' style='color:#dc2626;'>" + verstossFmtEuro(sumDP) + "</div><div class='lbl'>Bußgeld Fahrer</div></div>"
+    + "<div><div class='num' style='color:#b45309;'>" + verstossFmtEuro(sumCP) + "</div><div class='lbl'>Bußgeld Firma</div></div>"
     + "</div>";
 
-  if (d.types && d.types.length) {
+  if (filteredTypes.length) {
     body += "<div class='types'>"
       + "<div class='tl'>Verstoßarten</div>";
-    d.types.forEach(function(t) {
+    filteredTypes.forEach(function(t) {
       body += "<span class='tc'>" + verstossEsc(t[0]) + " <b style='color:#dc2626;margin-left:2pt;'>" + t[1] + "</b></span>";
     });
     body += "</div>";
@@ -4942,7 +4959,7 @@ function verstossPdfOne(name) {
     + "<th>Verstoß</th>"
     + "<th style='text-align:right;width:34mm'>Strafe</th>"
     + "</tr></thead><tbody>";
-  d.verstoesse.forEach(function(v) {
+  vv.forEach(function(v) {
     var dateOnly = String(v.start || "").split(" ")[0];
     var dp = v.driver_penalty > 0 ? verstossFmtEuro(v.driver_penalty) : null;
     var cp = v.company_penalty > 0 ? verstossFmtEuro(v.company_penalty) : null;
@@ -4973,7 +4990,7 @@ function verstossPdfOne(name) {
 
   var safeName = String(d.name).replace(/[\\\/:*?"<>|]+/g, "_");
   var w = window.open("", "_blank", "width=900,height=800");
-  w.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Verstoß - " + verstossEsc(d.name) + "</title><style>" + css + "</style></head><body>" + body + "</body></html>");
+  w.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Verstoß " + verstossEsc(yearLabel) + " - " + verstossEsc(d.name) + "</title><style>" + css + "</style></head><body>" + body + "</body></html>");
   w.document.close();
   w.focus();
   setTimeout(function() { w.print(); }, 500);
