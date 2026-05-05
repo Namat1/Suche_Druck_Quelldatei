@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "verstossliste-jahresfilter-2026-05-05-v12-professionell-farbiger"
+APP_CACHE_VERSION = "verstossliste-jahresfilter-2026-05-05-v13-mehr-farbe"
 
 
 # =============================================================================
@@ -3156,7 +3156,7 @@ function spesenShowDetail(name) {
         + "font-weight:800;font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 1px 3px rgba(252,229,49,.32);'>"
         + "&#128196; PDF drucken</button>";
   html += "</div><div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:14px;'>";
-  cards.forEach(function(c){ html += "<div style='background:#f8fbff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;'><div style='font-size:10px;font-weight:900;color:#64748b;text-transform:uppercase;letter-spacing:.35px;'>"+c[0]+"</div><div style='font-size:17px;font-weight:900;color:"+c[2]+";margin-top:3px;'>"+c[1]+"</div></div>"; });
+  cards.forEach(function(c){ html += "<div style='background:#f6fbff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;'><div style='font-size:10px;font-weight:900;color:#64748b;text-transform:uppercase;letter-spacing:.35px;'>"+c[0]+"</div><div style='font-size:17px;font-weight:900;color:"+c[2]+";margin-top:3px;'>"+c[1]+"</div></div>"; });
   html += "</div></div>";
 
   html += "<div style='background:#fff;border:1px solid #d7dee7;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.05);'>";
@@ -3390,7 +3390,7 @@ function spesenShowLateStarts() {
   html += "</div>";
 
   if(!monthKeys.length){
-    html += "<div style='margin-top:12px;padding:32px;text-align:center;color:#94a3b8;font-size:13px;background:#f8fbff;border:1px dashed #cbd5e1;border-radius:8px;'>Keine Spätstarts im gewählten Zeitraum.</div>";
+    html += "<div style='margin-top:12px;padding:32px;text-align:center;color:#94a3b8;font-size:13px;background:#f6fbff;border:1px dashed #cbd5e1;border-radius:8px;'>Keine Spätstarts im gewählten Zeitraum.</div>";
     html += "</div>";
     panel.innerHTML = html;
     panel.scrollTop = 0;
@@ -3420,7 +3420,7 @@ function spesenShowLateStarts() {
   ];
   html += "<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:14px;'>";
   cards.forEach(function(c){
-    html += "<div style='background:#f8fbff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;'>"
+    html += "<div style='background:#f6fbff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;'>"
           + "<div style='font-size:10px;font-weight:900;color:#64748b;text-transform:uppercase;letter-spacing:.35px;'>" + c[0] + "</div>"
           + "<div style='font-size:17px;font-weight:900;color:" + c[2] + ";margin-top:3px;'>" + c[1] + "</div>"
           + "</div>";
@@ -3433,7 +3433,7 @@ function spesenShowLateStarts() {
     var monthDriverCount = Object.keys(mo.drivers).length;
     html += "<div style='background:#fff;border:1px solid #d7dee7;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,.05);margin-bottom:14px;'>";
     // Monats-Header-Streifen
-    html += "<div style='padding:10px 14px;border-bottom:1px solid #f1f5f9;background:#f8fbff;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;'>";
+    html += "<div style='padding:10px 14px;border-bottom:1px solid #f1f5f9;background:#f6fbff;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;'>";
     html += "<div style='font-size:13px;font-weight:900;color:#334155;text-transform:uppercase;letter-spacing:.4px;border-left:3px solid #334155;padding-left:8px;'>" + spEsc(mo.label || k) + "</div>";
     html += "<div style='font-size:11px;color:#64748b;font-weight:700;'>" + mo.entries.length + " Einträge · " + monthDriverCount + " Fahrer · Σ <b style='color:#334155;'>" + spMoney(mo.total) + "</b></div>";
     html += "</div>";
@@ -3490,7 +3490,7 @@ function spesenShowLateStarts() {
     fa_js_code = '\n// ── Fahrerauswertung ──────────────────────────────────────────────────────────\nvar faCurrentSort  = \"name\";\nvar faYearFilter   = String(new Date().getFullYear());\nvar faSelectedName = null;\nvar faSearchQuery  = \"\";\n\nfunction faSort(mode) {\n  faCurrentSort = mode;\n  [\"name\",\"arbeit\"].forEach(function(m) {\n    var btn = document.getElementById(\"fa-sort-\"+m);\n    if(!btn) return;\n    btn.style.background = mode===m ? \"#334155\" : \"#fff\";\n    btn.style.color      = mode===m ? \"#fff\"    : \"#334155\";\n  });\n  faBuildSidebarHighlight(faSelectedName);\n}\n\nfunction faFilter(q) { faSearchQuery = q; faBuildSidebarHighlight(faSelectedName); }\nfunction faYearChange(yr) {\n  faYearFilter = yr;\n  faBuildSidebarHighlight(faSelectedName);\n  if(faSelectedName) faShowDetail(faSelectedName);\n}\n\nfunction faGetStats(driver, yr) {\n  if(!driver.years) return {krank:0,urlaub:0,ausgleich:0,arbeit:0,arbeit_samstag:0,touren:{},lkw:{},eintraege:[]};\n  var years = yr===\"all\" ? Object.keys(driver.years) : [yr];\n  var out = {krank:0,urlaub:0,ausgleich:0,arbeit:0,arbeit_samstag:0,touren:{},lkw:{},eintraege:[]};\n  years.forEach(function(y) {\n    var d = driver.years[y];\n    if(!d) return;\n    out.krank          += d.krank          || 0;\n    out.urlaub         += d.urlaub         || 0;\n    out.ausgleich      += d.ausgleich      || 0;\n    out.arbeit         += d.arbeit         || 0;\n    out.arbeit_samstag += d.arbeit_samstag || 0;\n    Object.keys(d.touren||{}).forEach(function(t){\n      out.touren[t] = (out.touren[t]||0) + d.touren[t];\n    });\n    // Use pre-computed lkw if available, otherwise compute from eintraege\n    var lkwSource = d.lkw && Object.keys(d.lkw).length > 0 ? d.lkw : (function(){\n      var cnt = {};\n      (d.eintraege||[]).forEach(function(e){\n        var lv = (e.lkw||\"\").trim();\n        var tl = (e.tour||\"\").toLowerCase();\n        if(lv && lv!==\"0\" && !/krank|urlaub|ausgleich/i.test(tl)){\n          cnt[lv] = (cnt[lv]||0) + 1;\n        }\n      });\n      return cnt;\n    })();\n    Object.keys(lkwSource).forEach(function(l){\n      out.lkw[l] = (out.lkw[l]||0) + lkwSource[l];\n    });\n    out.eintraege = out.eintraege.concat(d.eintraege||[]);\n  });\n  return out;\n}\n\nfunction faGetFiltered() {\n  var q = faSearchQuery.toLowerCase().trim();\n  var list = FA_DATA.filter(function(d) {\n    if(q && !d.name.toLowerCase().includes(q)) return false;\n    if(faYearFilter !== \"all\" && !d.years[faYearFilter]) return false;\n    return true;\n  });\n  if(faCurrentSort === \"arbeit\") {\n    list.sort(function(a,b){ return faGetStats(b,faYearFilter).arbeit - faGetStats(a,faYearFilter).arbeit; });\n  } else {\n    list.sort(function(a,b){ return a.name.localeCompare(b.name,\"de\"); });\n  }\n  return list;\n}\n\nfunction faRender(q) {\n  faSearchQuery = q || \"\";\n  if(!FA_DATA || !FA_DATA.length) {\n    var c = document.getElementById(\"fa-detail-panel\");\n    if(c) c.innerHTML = \"<div style=\'color:#94a3b8;padding:40px;text-align:center;font-size:14px;\'>Keine Daten vorhanden.<br>Bitte Fahrerauswertungs-Dateien in Streamlit hochladen.</div>\";\n    return;\n  }\n  faPopulateYears();\n  faBuildSidebarHighlight(null);\n}\n\nfunction faPopulateYears() {\n  var allYears = [];\n  FA_DATA.forEach(function(d) {\n    Object.keys(d.years||{}).forEach(function(y){\n      if(y !== \"2024\" && allYears.indexOf(y) === -1) allYears.push(y);\n    });\n  });\n  allYears.sort().reverse();\n  var yrSel = document.getElementById(\"fa-year-sel\");\n  if(!yrSel) return;\n  var current = yrSel.value;\n  var curYr = String(new Date().getFullYear());\n  yrSel.innerHTML = allYears.map(function(y){ return \"<option value=\'\"+y+\"\'>\"+y+\"</option>\"; }).join(\"\");\n  // Default to current year\n  if(current && allYears.indexOf(current) !== -1) yrSel.value = current;\n  else if(allYears.indexOf(curYr) !== -1) yrSel.value = curYr;\n  else if(allYears.length) yrSel.value = allYears[0];\n  faYearFilter = yrSel.value;\n}\n\nfunction faBuildSidebarHighlight(activeName) {\n  var sidebar = document.getElementById(\"fa-sidebar-list\");\n  if(!sidebar) return;\n  var filtered = faGetFiltered();\n\n  var statsEl = document.getElementById(\"fa-stats\");\n  if(statsEl) {\n    var total   = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).arbeit;    },0);\n    var totalK  = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).krank;     },0);\n    var totalU  = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).urlaub;    },0);\n    statsEl.innerHTML =\n      \"<b>\"+filtered.length+\"</b> Fahrer &nbsp;&middot;&nbsp; Σ <b>\"+total+\"</b> Arbeitstage\" +\n      (totalK ? \" &nbsp;&middot;&nbsp; <span style=\'color:#dc2626;\'>Krank Σ <b>\"+totalK+\"</b></span>\" : \"\") +\n      (totalU ? \" &nbsp;&middot;&nbsp; <span style=\'color:#0891b2;\'>Urlaub Σ <b>\"+totalU+\"</b></span>\" : \"\");\n  }\n\n  var html = \"\";\n  filtered.forEach(function(d) {\n    var s = faGetStats(d, faYearFilter);\n    var active = d.name === activeName;\n    var bg = active ? \"#334155\" : \"#fff\";\n    var fg = active ? \"#fff\" : \"#0b1220\";\n    html += \"<div onclick=\'faShowDetail(\\\"\"+d.name.replace(/\"/g,\"&quot;\")+\"\\\")\'\"+\n      \" style=\'padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;background:\"+bg+\";\'>\" +\n      \"<div style=\'font-weight:700;font-size:13px;color:\"+fg+\";\'>\"+d.name+\"</div>\" +\n      \"<div style=\'display:flex;gap:3px;flex-wrap:wrap;margin-top:3px;\'>\" +\n        \"<span style=\'font-size:8px;font-weight:600;padding:0px 3px;border-radius:2px;background:\"+(active?\"rgba(255,255,255,.2)\":\"#f1f5f9\")+\";color:\"+(active?\"#fff\":\"#334155\")+\"\'>\"+s.arbeit+\" T</span>\" +\n        (s.arbeit_samstag ? \"<span style=\'font-size:8px;font-weight:600;padding:0px 3px;border-radius:2px;background:\"+(active?\"rgba(255,255,255,.15)\":\"#f1f5f9\")+\";color:\"+(active?\"#fff\":\"#b45309\")+\"\'>Sa \"+s.arbeit_samstag+\"</span>\" : \"\") +\n        (s.krank ? \"<span style=\'font-size:8px;font-weight:600;padding:0px 3px;border-radius:2px;background:\"+(active?\"rgba(255,255,255,.15)\":\"#fee2e2\")+\";color:\"+(active?\"#fff\":\"#dc2626\")+\"\'>K \"+s.krank+\"</span>\" : \"\") +\n      \"</div></div>\";\n  });\n  sidebar.innerHTML = html || \"<div style=\'padding:20px;color:#94a3b8;font-size:12px;text-align:center;\'>Kein Fahrer gefunden</div>\";\n\n  if(!activeName && filtered.length) { faSelectedName = filtered[0].name; faShowDetail(filtered[0].name); }\n  else if(activeName) faSelectedName = activeName;\n}\n\nfunction faShowDetail(name) {\n  faSelectedName = name;\n  faBuildSidebarHighlight(name);\n  var driver = FA_DATA.find(function(d){ return d.name === name; });\n  var panel = document.getElementById(\"fa-detail-panel\");\n  if(!panel || !driver) return;\n\n  var yr = faYearFilter;\n  var s  = faGetStats(driver, yr);\n  var years = (yr === \"all\" ? Object.keys(driver.years||{}).sort().reverse() : [yr]).filter(function(y){return y!==\"2024\";});\n\n  var lkwEntries = Object.entries(s.lkw||{}).sort(function(a,b){return b[1]-a[1];});\n  var lkwHtml = lkwEntries.length\n    ? lkwEntries.map(function(e){\n        return \"<span style=\'display:inline-block;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;padding:3px 12px;margin:2px;font-size:12px;font-weight:700;color:#166534;\'>\"+e[0]+\" <span style=\'color:#64748b;font-weight:500;\'>\"+e[1]+\"x</span></span>\";\n      }).join(\"\")\n    : \"<span style=\'color:#94a3b8;font-size:12px;\'>Keine LKW-Daten</span>\";\n\n  var html = \"\";\n\n  // Header\n  html += \"<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;padding:16px 20px;margin-bottom:14px;\'>\";\n  html += \"<div style=\'font-size:20px;font-weight:900;color:#0b1220;margin-bottom:10px;\'>\"+driver.name+\"</div>\";\n  html += \"<div style=\'display:flex;flex-wrap:wrap;gap:7px;\'>\";\n  html += \"<span style=\'background:#f1f5f9;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#334155;\'>&#9733; \"+s.arbeit+\" Arbeitstage</span>\";\n  if(s.arbeit_samstag) html += \"<span style=\'background:#f1f5f9;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#b45309;\'>Samstag \"+s.arbeit_samstag+\"</span>\";\n  if(s.krank)          html += \"<span style=\'background:#fee2e2;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#dc2626;\'>Krank \"+s.krank+\"</span>\";\n  if(s.urlaub)         html += \"<span style=\'background:#f1f5f9;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#0891b2;\'>Urlaub \"+s.urlaub+\"</span>\";\n  if(s.ausgleich)      html += \"<span style=\'background:#f0fdf4;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#16a34a;\'>Ausgl. \"+s.ausgleich+\"</span>\";\n  html += \"</div></div>\";\n\n  // LKW Section\n  html += \"<div style=\'background:#fff;border:1.5px solid #bbf7d0;border-radius:5px;padding:12px 16px;margin-bottom:14px;\'>\";\n  html += \"<div style=\'font-size:11px;font-weight:900;text-transform:uppercase;color:#166534;letter-spacing:.4px;margin-bottom:8px;\'>LKW-Einsätze</div>\";\n  html += \"<div>\"+lkwHtml+\"</div>\";\n  html += \"</div>\";\n\n  // Year chips\n  if(yr === \"all\" && years.length > 1) {\n    html += \"<div style=\'display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;\'>\";\n    years.forEach(function(y) {\n      var ys = driver.years[y]; if(!ys) return;\n      html += \"<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:4px;padding:8px 14px;min-width:110px;\'>\";\n      html += \"<div style=\'font-size:12px;font-weight:900;color:#334155;margin-bottom:4px;\'>\"+y+\"</div>\";\n      html += \"<div style=\'font-size:12.5px;font-weight:800;\'>&#9733; \"+ys.arbeit+\"</div>\";\n      if(ys.arbeit_samstag) html += \"<div style=\'font-size:11px;color:#b45309;\'>Sa: \"+ys.arbeit_samstag+\"</div>\";\n      if(ys.krank)  html += \"<div style=\'font-size:11px;color:#dc2626;\'>Krank: \"+ys.krank+\"</div>\";\n      if(ys.urlaub) html += \"<div style=\'font-size:11px;color:#0891b2;\'>Urlaub: \"+ys.urlaub+\"</div>\";\n      html += \"</div>\";\n    });\n    html += \"</div>\";\n  }\n\n  // KW table\n  years.forEach(function(y) {\n    var yd = driver.years[y]; if(!yd) return;\n    var kwMap = {};\n    var dispYr = parseInt(y);\n    (yd.eintraege||[]).forEach(function(e){\n      // Skip entries whose date doesn\'t belong to the displayed year\n      var m = (e.datum||\"\").match(/(\\d{4})$/);\n      if(m && parseInt(m[1]) !== dispYr) return;\n      var k=\"KW \"+e.kw; if(!kwMap[k]) kwMap[k]=[]; kwMap[k].push(e);\n    });\n    var kwKeys = Object.keys(kwMap).sort(function(a,b){return parseInt(a.split(\" \")[1])-parseInt(b.split(\" \")[1]);});\n\n    if(years.length > 1)\n      html += \"<div style=\'font-size:13px;font-weight:900;color:#334155;margin:12px 0 6px;border-left:3px solid #334155;padding-left:8px;\'>\"+y+\"</div>\";\n\n    html += \"<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;overflow:hidden;margin-bottom:12px;\'>\";\n    html += \"<table style=\'width:100%;border-collapse:collapse;font-size:12px;\'>\";\n    html += \"<thead><tr style=\'background:#1e3a5f;color:#fff;\'><th style=\'padding:6px 10px;text-align:left;\'>KW</th><th style=\'padding:6px 10px;text-align:left;\'>Datum</th><th style=\'padding:6px 10px;text-align:left;\'>Tour</th><th style=\'padding:6px 10px;text-align:left;\'>Zeit</th><th style=\'padding:6px 10px;text-align:left;\'>LKW</th></tr></thead><tbody>\";\n    kwKeys.forEach(function(kw) {\n      html += \"<tr style=\'background:#f1f5f9;\'><td colspan=\'5\' style=\'padding:3px 10px;font-weight:800;color:#334155;font-size:11px;\'>\"+kw+\"</td></tr>\";\n      kwMap[kw].forEach(function(e,i) {\n        var bg = e.samstag ? \"#fff7ed\" : (i%2===0?\"#f8fafc\":\"#fff\");\n        var tc = /krank/i.test(e.tour)?\"color:#dc2626;font-weight:700;\":/urlaub/i.test(e.tour)?\"color:#0891b2;font-weight:700;\":/ausgleich/i.test(e.tour)?\"color:#16a34a;font-weight:700;\":\"font-weight:600;\";\n        html += \"<tr style=\'background:\"+bg+\";border-bottom:1px solid #f1f5f9;\'>\";\n        html += \"<td style=\'padding:3px 10px;\'></td>\";\n        html += \"<td style=\'padding:3px 10px;\"+(e.samstag?\"font-weight:700;color:#b45309;\":\"color:#334155;\")+\"\'>\"+e.datum+\"</td>\";\n        html += \"<td style=\'padding:3px 10px;\"+tc+\"\'>\"+e.tour+\"</td>\";\n        html += \"<td style=\'padding:3px 10px;color:#475569;\'>\"+e.zeit+\"</td>\";\n        html += \"<td style=\'padding:3px 10px;font-weight:700;color:#166534;\'>\"+(e.lkw && e.lkw!==\"0\" ? e.lkw : \"\")+\"</td>\";\n        html += \"</tr>\";\n      });\n    });\n    html += \"</tbody></table></div>\";\n  });\n\n  panel.innerHTML = html;\n  panel.scrollTop = 0;\n}\n\nfunction faPDF() {\n  if(!FA_DATA || !FA_DATA.length) { alert(\"Keine Daten vorhanden.\"); return; }\n  // If a driver is selected in sidebar, export only that driver\n  var filtered;\n  if(faSelectedName) {\n    filtered = FA_DATA.filter(function(d){ return d.name === faSelectedName; });\n  } else {\n    filtered = faGetFiltered();\n  }\n  var yr = faYearFilter;\n  var today = new Date().toLocaleDateString(\"de-DE\",{day:\"2-digit\",month:\"long\",year:\"numeric\"});\n  var yrLabel = yr === \"all\" ? \"Alle Jahre\" : yr;\n  var css = \"@page{size:A4 portrait;margin:10mm 9mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:\'Segoe UI\',Arial,sans-serif;color:#1e293b;font-size:7pt}.cover{text-align:center;padding:16mm 0 8mm;border-bottom:3px solid #334155;margin-bottom:8mm}.cover h1{font-size:18pt;color:#334155;font-weight:900;margin-bottom:2mm}.sub{font-size:9pt;color:#64748b}.db{page-break-inside:avoid;margin-bottom:7mm}.dh{background:#334155;color:#fff;padding:2mm 4mm;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:6px}.dn{font-size:10pt;font-weight:900;flex:1}.ds{display:flex;gap:4px;flex-wrap:wrap;font-size:6.5pt}.badge{display:inline-block;border-radius:4px;padding:1px 5px;font-weight:800}.lsec{padding:2mm 4mm;background:#f0fdf4;border:1px solid #bbf7d0}.ys{margin-bottom:3mm}.yl{font-size:8pt;font-weight:900;color:#334155;margin:2mm 0 1mm;border-left:2px solid #334155;padding-left:3px}table{width:100%;border-collapse:collapse}thead tr{background:#1e3a5f;color:#fff}thead th{padding:2px 5px;font-weight:800;font-size:6pt;text-align:left}tbody tr.kr{background:#f1f5f9}tbody tr.kr td{padding:2px 5px;font-weight:800;color:#334155;font-size:5.5pt}tbody tr.dr td{padding:2px 5px;border-bottom:1px solid #f1f5f9}tbody tr.sa{background:#fff7ed!important}.ft{text-align:right;color:#94a3b8;font-size:5.5pt;margin-top:1mm;border-top:1px solid #f1f5f9}\";\n  var body = \"<div class=\'cover\'><div style=\'font-size:24pt;margin-bottom:2mm;\'>&#128101;</div><h1>Fahrerauswertung</h1><div class=\'sub\'>Fuhrpark NFC &middot; \"+yrLabel+\" &middot; \"+today+\"</div><div class=\'sub\'>\"+filtered.length+\" Fahrer</div></div>\";\n  filtered.forEach(function(driver) {\n    var years = (yr===\"all\"?Object.keys(driver.years||{}).sort().reverse():[yr]).filter(function(y){return y!==\"2024\";});\n    var ts = faGetStats(driver,yr);\n    var lkwList = Object.entries(ts.lkw||{}).sort(function(a,b){return b[1]-a[1];});\n    body += \"<div class=\'db\'><div class=\'dh\'><span class=\'dn\'>\"+driver.name+\"</span><div class=\'ds\'>\";\n    body += \"<span class=\'badge\' style=\'background:#f1f5f9;color:#334155;\'>&#9733; \"+ts.arbeit+\"</span>\";\n    if(ts.arbeit_samstag) body += \"<span class=\'badge\' style=\'background:#f1f5f9;color:#b45309;\'>Sa \"+ts.arbeit_samstag+\"</span>\";\n    if(ts.krank)  body += \"<span style=\'background:#fee2e2;color:#dc2626;\'>K \"+ts.krank+\"</span>\";\n    if(ts.urlaub) body += \"<span class=\'badge\' style=\'background:#f1f5f9;color:#0891b2;\'>U \"+ts.urlaub+\"</span>\";\n    if(ts.ausgleich) body += \"<span class=\'badge\' style=\'background:#f0fdf4;color:#16a34a;\'>Az \"+ts.ausgleich+\"</span>\";\n    body += \"</div></div>\";\n    if(lkwList.length){body+=\"<div class=\'lsec\'><b style=\'color:#166534;font-size:6pt;\'>LKW: </b>\";lkwList.forEach(function(e){body+=\"<span style=\'display:inline-block;background:#fff;border:1px solid #bbf7d0;border-radius:2px;padding:0 4px;margin:1px;font-size:6pt;color:#166534;font-weight:700;\'>\"+e[0]+\" \"+e[1]+\"x</span>\";});body+=\"</div>\";}\n    years.forEach(function(y){var yd=driver.years[y];if(!yd)return;var kwMap={};(yd.eintraege||[]).forEach(function(e){var k=\"KW \"+e.kw;if(!kwMap[k])kwMap[k]=[];kwMap[k].push(e);});var kwKeys=Object.keys(kwMap).sort(function(a,b){return parseInt(a.split(\" \")[1])-parseInt(b.split(\" \")[1]);});body+=\"<div class=\'ys\'>\";if(years.length>1)body+=\"<div class=\'yl\'>\"+y+\"</div>\";body+=\"<table><thead><tr><th>KW</th><th>Datum</th><th>Tour</th><th>Zeit</th><th>LKW</th></tr></thead><tbody>\";kwKeys.forEach(function(kw){body+=\"<tr class=\'kr\'><td colspan=\'5\'>\"+kw+\"</td></tr>\";kwMap[kw].forEach(function(e,i){var tc=/krank/i.test(e.tour)?\"color:#dc2626;\":/urlaub/i.test(e.tour)?\"color:#0891b2;\":\"\";body+=\"<tr class=\'dr\"+(e.samstag?\" sa\":\"\")+\"\'><td></td><td style=\'\"+(e.samstag?\"color:#b45309;font-weight:700;\":\"\")+\"\'>\"+e.datum+\"</td><td style=\'font-weight:700;\"+tc+\"\'>\"+e.tour+\"</td><td>\"+e.zeit+\"</td><td style=\'color:#166534;font-weight:700;\'>\"+e.lkw+\"</td></tr>\";});});body+=\"</tbody></table></div>\";});\n    body+=\"<div class=\'ft\'>NordFrischeCenter &middot; Fahrerauswertung &middot; \"+driver.name+\"</div></div>\";\n  });\n  var w=window.open(\"\",\"_blank\",\"width=900,height=800\");\n  w.document.write(\"<!DOCTYPE html><html><head><meta charset=\'utf-8\'><title>Fahrerauswertung</title><style>\"+css+\"</style></head><body>\"+body+\"</body></html>\");\n  w.document.close();w.focus();setTimeout(function(){w.print();},600);\n}\n'
     zulage_js_code = '\n// ── ZULAGEN ──────────────────────────────────────────────────────────────\nvar _zTab = "sonder";\n\nfunction zulagenInit() { zulagenBuildMonthSel(); zulagenRender(); }\n\nfunction zulagenTab(tab) {\n  _zTab = tab;\n  ["sonder","fuengers","drittkunden"].forEach(function(t) {\n    var btn = document.getElementById("ztab-"+t);\n    if(btn){ btn.style.background=tab===t?"#334155":"#fff"; btn.style.color=tab===t?"#fff":"#334155"; }\n  });\n  zulagenBuildMonthSel(); zulagenRender();\n}\n\nfunction zulagenBuildMonthSel() {\n  var sel = document.getElementById("zulage-month-sel");\n  if(!sel) return;\n  var arr = _zTab==="drittkunden"\n    ? (Array.isArray(DRITTKUNDEN_DATA) ? DRITTKUNDEN_DATA : [])\n    : (_zTab==="sonder" ? (ZULAGE_DATA.sonder||[]) : (ZULAGE_DATA.fuengers||[]));\n  var cur = sel ? sel.value : "all";\n  sel.innerHTML = "<option value=\'all\'>Alle Monate</option>" +\n    arr.map(function(m){ return "<option value=\'"+m.monat+"\'"+(m.monat===cur?" selected":"")+">" + m.monat + "</option>"; }).join("");\n}\n\nfunction zulagenRender() {\n  var el = document.getElementById("zulage-content");\n  var stats = document.getElementById("zulage-stats");\n  if(!el) return;\n  if(_zTab==="drittkunden") {\n    if(!DRITTKUNDEN_DATA || !Array.isArray(DRITTKUNDEN_DATA) || !DRITTKUNDEN_DATA.length) {\n      el.innerHTML = "<div style=\'color:#94a3b8;padding:60px;text-align:center;font-size:14px;\'>Keine Drittkunden-Daten \\u2013 bitte Touren-Excel hochladen.</div>";\n      if(stats) stats.innerHTML = ""; return;\n    }\n  } else if(!ZULAGE_DATA || typeof ZULAGE_DATA !== "object" || (!ZULAGE_DATA.sonder && !ZULAGE_DATA.fuengers)) {\n    el.innerHTML = "<div style=\'color:#94a3b8;padding:60px;text-align:center;font-size:14px;\'>Keine Zulage-Daten \\u2013 bitte Touren-Excel hochladen.</div>";\n    if(stats) stats.innerHTML = ""; return;\n  }\n  var arr = _zTab==="drittkunden" ? (Array.isArray(DRITTKUNDEN_DATA) ? DRITTKUNDEN_DATA : []) : (_zTab==="sonder" ? (ZULAGE_DATA.sonder||[]) : (ZULAGE_DATA.fuengers||[]));\n  if(!arr.length) {\n    el.innerHTML = "<div style=\'color:#94a3b8;padding:60px;text-align:center;\'>Keine Daten f\\u00fcr diesen Tab.</div>";\n    if(stats) stats.innerHTML = ""; return;\n  }\n  var sel = document.getElementById("zulage-month-sel");\n  var filterM = sel ? sel.value : "all";\n  var data = filterM!=="all" ? arr.filter(function(m){return m.monat===filterM;}) : arr;\n  var totalAll = 0, html = "";\n  var isSonder = _zTab === "sonder";\n\n  data.forEach(function(monat) {\n    var mSum = monat.fahrer.reduce(function(s,f){return s+f.gesamt;},0);\n    totalAll += mSum;\n\n    // Month section header – same style as rest of app\n    html += "<div style=\'display:flex;align-items:center;gap:10px;margin-bottom:10px;\'>";\n    html += "<h3 style=\'margin:0;font-size:12px;font-weight:700;color:#334155;white-space:nowrap;\'>" + monat.monat + "</h3>";\n    html += "<span style=\'flex:1;height:1px;background:#e2e8f0;display:block;\'></span>";\n    html += "<span style=\'font-size:11px;font-weight:700;color:#334155;\'>\\u03a3 " + mSum.toFixed(2) + " \\u20ac</span>";\n    html += "</div>";\n\n    // 3-col card grid – same as samRender\n    html += "<div style=\'display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:stretch;margin-bottom:28px;\'>";\n\n    monat.fahrer.forEach(function(f) {\n\n      // Entry chips\n      var chipsHtml = f.tage.map(function(t) {\n        var isDK = (_zTab==="drittkunden");\n        var verdienst = isDK ? (t.zulage||0) : (t.verdienst||0);\n        var datumStr = isDK\n          ? t.datum + " <span style=\'color:#94a3b8;font-size:10px;\'>(" + (t.kw||"") + ")</span>"\n          : t.datum;\n        var rightHtml = "";\n        if(isDK) {\n          var dkLabel = (t.lkw||"") + (t.info ? " \\u00b7 " + t.info : "");\n          rightHtml = "<span style=\'color:#475569;font-weight:600;\'>" + dkLabel + "</span>";\n        } else if(isSonder) {\n          var tour = t.tour && t.tour!=="zbv" && t.tour!=="" ? t.tour : "z.b.v.";\n          var ac = t.art==="Gigaliner" ? "background:#fef3c7;color:#92400e;"\n                 : t.art==="Tandem"    ? "background:#dbeafe;color:#1e40af;"\n                 :                       "background:#dcfce7;color:#166534;";\n          rightHtml = "<span style=\'color:#475569;font-weight:600;\'>" + tour + " \\u00b7 " + t.lkw + "</span>"\n                    + "<span style=\'" + ac + "padding:1px 7px;border-radius:5px;font-size:10px;font-weight:700;\'>" + t.art + "</span>";\n        } else {\n          rightHtml = "<span style=\'color:#475569;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\'>" + (t.kommentar||"") + "</span>";\n        }\n        return "<div style=\'display:flex;align-items:center;justify-content:space-between;"\n               +"background:#edf0f5;border-radius:4px;padding:5px 8px;margin-bottom:4px;font-size:11px;\'>"\n               +"<span style=\'color:#64748b;\'>" + datumStr + "</span>"\n               +"<span style=\'display:flex;align-items:center;gap:5px;\'>"\n               + rightHtml\n               +"<span style=\'font-weight:700;color:#15803d;margin-left:4px;\'>" + verdienst.toFixed(2) + " \\u20ac</span>"\n               +"</span>"\n               +"</div>";\n      }).join("");\n\n      // Card – same shell as samRender: border:2px solid, border-radius:5px, padding:14px 16px\n      html += "<div style=\'background:#fff;border:2px solid #334155;border-radius:5px;"\n             +"padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.06);\'>";\n\n      // Header row – mirroring samRender header\n      html += "<div style=\'display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px;\'>";\n      html += "<div style=\'flex:1;min-width:0;\'>";\n      html += "<div style=\'font-weight:900;font-size:14px;color:#0b1220;white-space:nowrap;"\n             +"overflow:hidden;text-overflow:ellipsis;\'>" + f.name + "</div>";\n      html += "<div style=\'margin-top:3px;font-size:10px;color:#94a3b8;\'>" + (f.persnr||"") + "</div>";\n      html += "</div>";\n      // Big total number – same style as the einsaetze count in samRender\n      html += "<div style=\'text-align:right;flex-shrink:0;\'>";\n      html += "<div style=\'font-size:24px;font-weight:900;color:#334155;line-height:1;\'>" + f.gesamt.toFixed(2) + "</div>";\n      html += "<div style=\'font-size:9px;color:#94a3b8;font-weight:600;\'>" + (_zTab==="drittkunden" ? "\\u20ac Zulage" : "\\u20ac Verdienst") + "</div>";\n      html += "</div>";\n      html += "</div>";\n\n      // Chips\n      html += "<div style=\'flex:1;\'>"+chipsHtml+"</div>";\n\n      // Footer: count badge\n      html += "<div style=\'margin-top:8px;border-top:1px solid #e2e8f0;padding-top:8px;"\n             +"display:flex;align-items:center;gap:6px;\'>";\n      html += "<span style=\'background:#eff6ff;color:#334155;border-radius:4px;padding:2px 8px;"\n             +"font-size:10px;font-weight:700;\'>" + f.tage.length + " Eintr\\u00e4ge</span>";\n      html += "</div>";\n\n      html += "</div>"; // end card\n    });\n\n    html += "</div>"; // end grid\n  });\n\n  el.innerHTML = html || "<div style=\'color:#94a3b8;padding:40px;text-align:center;\'>Keine Daten.</div>";\n  if(stats) stats.innerHTML = totalAll>0 ? "\\u03a3 <b>"+totalAll.toFixed(2)+" \\u20ac</b>" : "";\n}\n\n\n\nfunction zulagenExportExcel() {\n  var b64 = _zTab==="sonder" ? ZULAGE_XLSX_SONDER : _zTab==="fuengers" ? ZULAGE_XLSX_FUENGERS : ZULAGE_XLSX_DRITTKUNDEN;\n  if(!b64) { alert("Keine Excel-Daten.\\nBitte Touren-Dateien in Streamlit hochladen und App neu generieren."); return; }\n  var bc = atob(b64), bytes = new Uint8Array(bc.length);\n  for(var i=0;i<bc.length;i++) bytes[i]=bc.charCodeAt(i);\n  var blob = new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});\n  var url = URL.createObjectURL(blob);\n  var a = document.createElement("a"); a.href=url;\n  a.download = "Zulagen_"+(_zTab==="sonder"?"Sonderfahrzeuge":_zTab==="fuengers"?"Fuengers":"Drittkunden")+".xlsx";\n  a.click(); URL.revokeObjectURL(url);\n}\n'
 
-    wash_js_code = '\n// ── Fahrzeugwäsche Übersicht ───────────────────────────────────────────────\nfunction fwOverviewEsc(v) {\n  return String(v == null ? "" : v)\n    .replace(/&/g, "&amp;")\n    .replace(/</g, "&lt;")\n    .replace(/>/g, "&gt;");\n}\n\nfunction fwOverviewData() {\n  return Array.isArray(FAHRZEUGWAESCHE_DATA) ? FAHRZEUGWAESCHE_DATA : [];\n}\n\nvar FW_EXCLUDED_DRIVER_NAMES = ["Ch.Holtz", "Paasch", "Meyer", "Ihde", "Spedition M+S Express 4", "Spedition M+S Express 3", "Spedition M+S Express 2", "Spedition M+S Express 1", "Spedition Meyer 1", "Spedition Meyer 2", "Spedition Meyer 3", "Spedition Meyer 4", "Spedition Meyer 5", "Spedition Meyer 6", "Spedition Meyer 7 (36er)", "Spedition Meyer 8", "Spedition Meyer Sz.", "Paasch & Reinke 1", "Paasch & Reinke 2", "Paasch & Reinke 3", "deVries", "Spedition Ihde", "Insellogistik 1", "Insellogistik 2", "Zippel Logistik T1", "Zippel Logistik T2", "Zippel Logistik T3", "Ch. Holtz T1", "Ch. Holtz T2", "Ch. Holtz T3", "T&D Spedition", "Kudex 1", "Kudex 2", "FP Fleischwerk"];\n\nfunction fwNameClean(value) {\n  var s = String(value == null ? "" : value).toLowerCase();\n  // Deutsche Schreibweisen zuerst angleichen: Müller/Mueller/Muller, Jörg/Joerg usw.\n  s = s.replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss");\n  s = s.replace(/æ/g, "ae").replace(/œ/g, "oe");\n  try { s = s.normalize("NFKD").replace(/[\\u0300-\\u036f]/g, ""); } catch(e) {}\n  s = s.replace(/&[a-z]+;/g, " ");\n  s = s.replace(/\\([^)]*\\)/g, " ");\n  s = s.replace(/[_.\\/,;:|]+/g, " ");\n  s = s.replace(/[-–—]+/g, " ");\n  s = s.replace(/\\s+/g, " ").trim();\n  return s;\n}\n\nfunction fwNameTokens(value) {\n  var ignore = {\n    "fahrer":1, "fahrerin":1, "herr":1, "frau":1, "dr":1, "lkw":1,\n    "spedition":1, "firma":1, "team":1, "nfc":1, "fp":1, "fleischwerk":1\n  };\n  var seen = {};\n  return fwNameClean(value).split(" ").filter(function(t){\n    if(!t || ignore[t] || /^\\d+$/.test(t)) return false;\n    if(seen[t]) return false;\n    seen[t] = 1;\n    return true;\n  });\n}\n\nfunction fwDriverNameKey(value) {\n  var tokens = fwNameTokens(value).filter(function(t){ return t.length > 1; });\n  return tokens.sort().join(" ");\n}\n\nfunction fwTokenDistance(a, b) {\n  a = String(a || "");\n  b = String(b || "");\n  if(a === b) return 0;\n  if(!a.length) return b.length;\n  if(!b.length) return a.length;\n  var prev = [];\n  for(var j = 0; j <= b.length; j++) prev[j] = j;\n  for(var i = 1; i <= a.length; i++) {\n    var cur = [i];\n    var rowMin = cur[0];\n    for(var jj = 1; jj <= b.length; jj++) {\n      var cost = a.charAt(i - 1) === b.charAt(jj - 1) ? 0 : 1;\n      var val = Math.min(prev[jj] + 1, cur[jj - 1] + 1, prev[jj - 1] + cost);\n      cur[jj] = val;\n      if(val < rowMin) rowMin = val;\n    }\n    prev = cur;\n  }\n  return prev[b.length];\n}\n\nfunction fwTokenVariants(t) {\n  t = String(t || "");\n  var out = [t];\n  var simpleUmlaut = t.replace(/ae/g, "a").replace(/oe/g, "o").replace(/ue/g, "u");\n  out.push(simpleUmlaut);\n  out.push(t.replace(/c/g, "k"));\n  if(t === "jacob") out.push("jakub");\n  if(t === "jakub") out.push("jacob");\n  var seen = {};\n  return out.filter(function(v){ if(!v || seen[v]) return false; seen[v]=1; return true; });\n}\n\nfunction fwTokenSimilarity(a, b) {\n  a = String(a || "");\n  b = String(b || "");\n  if(!a || !b) return 0;\n  if(a === b) return 1;\n  var av = fwTokenVariants(a);\n  var bv = fwTokenVariants(b);\n  for(var ai = 0; ai < av.length; ai++) {\n    for(var bi = 0; bi < bv.length; bi++) {\n      if(av[ai] && av[ai] === bv[bi]) return 0.98;\n    }\n  }\n  // Initialen: M. Lange gegen Michael Lange.\n  if(a.length === 1 && b.length >= 2 && b.charAt(0) === a) return 0.78;\n  if(b.length === 1 && a.length >= 2 && a.charAt(0) === b) return 0.78;\n  // Abgekürzte oder zusammengesetzte Vornamen / Drittnamen.\n  if(a.length >= 3 && b.length >= 3 && (a.indexOf(b) === 0 || b.indexOf(a) === 0)) return 0.88;\n  var best = 0;\n  av.forEach(function(aa){\n    bv.forEach(function(bb){\n      var minLen = Math.min(aa.length, bb.length);\n      var d = fwTokenDistance(aa, bb);\n      var sc = 0;\n      if(minLen >= 5 && d <= 1) sc = 0.88;\n      else if(minLen >= 5 && d <= 2) sc = 0.76;\n      else if(minLen >= 4 && d <= 1) sc = 0.80;\n      if(sc > best) best = sc;\n    });\n  });\n  return best;\n}\n\nfunction fwTokenQueryMatchSummary(aTokens, bTokens) {\n  if(!aTokens || !bTokens || !aTokens.length || !bTokens.length) return { score: 0, matched: 0 };\n  var used = {};\n  var sum = 0;\n  var matched = 0;\n  aTokens.forEach(function(a){\n    var bestIdx = -1;\n    var bestScore = 0;\n    bTokens.forEach(function(b, idx){\n      if(used[idx]) return;\n      var sc = fwTokenSimilarity(a, b);\n      if(sc > bestScore) { bestScore = sc; bestIdx = idx; }\n    });\n    if(bestIdx >= 0 && bestScore >= 0.72) {\n      used[bestIdx] = 1;\n      sum += bestScore;\n      matched += 1;\n    }\n  });\n  return { score: sum / aTokens.length, matched: matched };\n}\n\nfunction fwTokenOverlapScore(aTokens, bTokens) {\n  if(!aTokens || !bTokens || !aTokens.length || !bTokens.length) return 0;\n  var used = {};\n  var sum = 0;\n  aTokens.forEach(function(a){\n    var bestIdx = -1;\n    var bestScore = 0;\n    bTokens.forEach(function(b, idx){\n      if(used[idx]) return;\n      var sc = fwTokenSimilarity(a, b);\n      if(sc > bestScore) { bestScore = sc; bestIdx = idx; }\n    });\n    if(bestIdx >= 0 && bestScore >= 0.72) {\n      used[bestIdx] = 1;\n      sum += bestScore;\n    }\n  });\n  return sum / Math.max(aTokens.length, bTokens.length);\n}\n\nfunction fwBuildKnownDriverLookup() {\n  var profiles = [];\n  var byKey = {};\n  var tokenOwners = {};\n  fwAllKnownDrivers().forEach(function(name){\n    var tokens = fwNameTokens(name);\n    var key = fwDriverNameKey(name);\n    if(!key || byKey[key]) return;\n    var profile = { name: name, key: key, tokens: tokens };\n    profiles.push(profile);\n    byKey[key] = profile;\n    tokens.forEach(function(t){\n      if(t.length < 3) return;\n      if(!tokenOwners[t]) tokenOwners[t] = {};\n      tokenOwners[t][key] = 1;\n    });\n  });\n  return { profiles: profiles, byKey: byKey, tokenOwners: tokenOwners };\n}\n\nfunction fwResolveKnownDriverProfile(value, lookup) {\n  lookup = lookup || fwBuildKnownDriverLookup();\n  var raw = String(value == null ? "" : value).trim();\n  if(!raw) return null;\n  var key = fwDriverNameKey(raw);\n  if(key && lookup.byKey[key]) return lookup.byKey[key];\n\n  var tokens = fwNameTokens(raw);\n  if(!tokens.length) return null;\n\n  // Nur ein Name in der Waschdatei: nur zuordnen, wenn dieser Name im Timerecording eindeutig ist.\n  if(tokens.length === 1 && tokens[0].length >= 3) {\n    var owners = lookup.tokenOwners[tokens[0]] || {};\n    var ownerKeys = Object.keys(owners);\n    if(ownerKeys.length === 1) return lookup.byKey[ownerKeys[0]];\n  }\n\n  var best = null;\n  var secondScore = 0;\n  lookup.profiles.forEach(function(p){\n    var fullScore = fwTokenOverlapScore(tokens, p.tokens);\n    var queryMatch = fwTokenQueryMatchSummary(tokens, p.tokens);\n    var score = Math.max(fullScore, queryMatch.score);\n    if(!best || score > best.score) {\n      secondScore = best ? best.score : 0;\n      best = { profile: p, score: score, matched: queryMatch.matched };\n    } else if(score > secondScore) {\n      secondScore = score;\n    }\n  });\n\n  if(!best || best.score <= 0) return null;\n  // Waschlisten enthalten oft nur Nachname + Rufname, Timerecording aber mehrere Vornamen.\n  // Deshalb zählt hier der Treffer auf Basis der Waschlisten-Tokens, aber mindestens 2 Tokens müssen passen.\n  if(best.score >= 0.72 && best.matched >= Math.min(2, tokens.length)) return best.profile;\n  if(best.score >= 0.60 && best.matched >= Math.min(2, tokens.length) && (best.score - secondScore) >= 0.14) return best.profile;\n  return null;\n}\n\nfunction fwKnownDriverKeyForWashName(value, lookup) {\n  var p = fwResolveKnownDriverProfile(value, lookup);\n  return p ? p.key : "";\n}\n\nfunction fwIsExcludedDriverName(name) {\n  var s = String(name == null ? "" : name);\n  return FW_EXCLUDED_DRIVER_NAMES.some(function(ex){ return ex && s.indexOf(ex) !== -1; });\n}\n\nfunction fwAddKnownDriver(bucket, value) {\n  var name = String(value == null ? "" : value).trim();\n  if(!name || fwIsExcludedDriverName(name)) return;\n  var key = fwDriverNameKey(name);\n  if(!key) return;\n  if(!bucket[key]) bucket[key] = name;\n}\n\nfunction fwAllKnownDrivers() {\n  var bucket = {};\n  // Fahrerbasis für Fahrzeugwäsche: nur Timerecording / Tachograph.\n  // Dadurch werden Kollegen mit 0 Waschungen sauber aus der Schichten-CSV ergänzt.\n  var trData = (typeof TIMEREC_DATA !== "undefined" && TIMEREC_DATA) ? TIMEREC_DATA : {};\n  Object.keys(trData || {}).forEach(function(name){ fwAddKnownDriver(bucket, name); });\n  return Object.keys(bucket).map(function(k){ return bucket[k]; }).sort(function(a,b){ return a.localeCompare(b, "de"); });\n}\n\nfunction fwZeroDriverCount() {\n  return fwComputeRanking().filter(function(d){ return (d.waschungen || 0) === 0; }).length;\n}\n\nfunction fwBuildOverviewFilters() {\n  var driverSel = document.getElementById("fw-overview-driver");\n  if(!driverSel) return;\n\n  var curDriver = driverSel.value || "all";\n  var drivers = fwAllKnownDrivers();\n\n  driverSel.innerHTML = "<option value=\'all\'>Alle Fahrer</option>" + drivers.map(function(v){\n    return "<option value=\'" + fwOverviewEsc(v) + "\'>" + fwOverviewEsc(v) + "</option>";\n  }).join("");\n\n  driverSel.value = drivers.indexOf(curDriver) !== -1 ? curDriver : "all";\n}\n\nfunction fwGetOverviewRows() {\n  var rows = fwOverviewData().slice();\n  var driverEl = document.getElementById("fw-overview-driver");\n  var driver = driverEl ? driverEl.value : "all";\n\n  if(driver && driver !== "all") {\n    var lookup = fwBuildKnownDriverLookup();\n    var selectedProfile = fwResolveKnownDriverProfile(driver, lookup);\n    var selectedKey = selectedProfile ? selectedProfile.key : fwDriverNameKey(driver);\n    rows = rows.filter(function(r){ return fwKnownDriverKeyForWashName(r && r.fahrer, lookup) === selectedKey; });\n  }\n\n  rows.sort(function(a,b){\n    var ak = a.datetime_iso || "";\n    var bk = b.datetime_iso || "";\n    if(ak !== bk) return bk.localeCompare(ak);\n    return (a.fahrer || "").localeCompare(b.fahrer || "", "de");\n  });\n  return rows;\n}\n\nfunction fwRenderOverview() {\n  var wrap = document.getElementById("fw-overview-table");\n  var stats = document.getElementById("fw-overview-stats");\n  if(!wrap) return;\n\n  var allDrivers = fwAllKnownDrivers();\n  if(!fwOverviewData().length && !allDrivers.length) {\n    if(stats) stats.textContent = "";\n    wrap.innerHTML = "<div style=\'padding:24px 16px;color:#94a3b8;text-align:center;font-size:13px;\'>Keine Fahrzeugwäsche-Dateien geladen.</div>";\n    return;\n  }\n\n  fwBuildOverviewFilters();\n  var rows = fwGetOverviewRows();\n  var driverCount = allDrivers.length;\n  var zeroDriverCount = fwZeroDriverCount();\n  var lkwCount = new Set(rows.map(function(r){ return ((r.fahrzeug || r.fahrzeug_ia || "").trim()); }).filter(Boolean)).size;\n  var waschungenCount = new Set(rows.map(function(r, idx){\n    var fz = (r.fahrzeug || r.fahrzeug_ia || "").trim();\n    var dt = (r.datum || "").trim();\n    return (dt && fz) ? (dt + "||" + fz) : ("__row_" + idx);\n  })).size;\n  if(stats) {\n    var _pc = "display:inline-flex;align-items:baseline;gap:5px;padding:4px 11px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.2";\n    var _nc = "font-size:13px;font-weight:900;letter-spacing:-.3px";\n    stats.innerHTML = "<span style=\\"" + _pc + ";background:#ecf7f1;color:#165532;border:1px solid #c7e5d4\\"><span style=\\"" + _nc + "\\">" + waschungenCount + "</span> Waschungen</span>" + "<span style=\\"" + _pc + ";background:#e8f2fb;color:#1e6091;border:1px solid #bdd0e7\\"><span style=\\"" + _nc + "\\">" + driverCount + "</span> Fahrer</span>" + "<span style=\\"" + _pc + ";background:#fee2e2;color:#991b1b;border:1px solid #fecaca\\"><span style=\\"" + _nc + "\\">" + zeroDriverCount + "</span> ohne Waschung</span>" + "<span style=\\"" + _pc + ";background:#fff7e6;color:#9a5b00;border:1px solid #f6d9b3\\"><span style=\\"" + _nc + "\\">" + lkwCount + "</span> LKW</span>";\n  }\n\n  if(!rows.length) {\n    wrap.innerHTML = "<div style=\'padding:24px 16px;color:#94a3b8;text-align:center;font-size:13px;\'>Keine Waschungen für den ausgewählten Fahrer.</div>";\n    return;\n  }\n\n  var html = "<div style=\'overflow:auto;max-height:540px;background:#fff;\'><table style=\'width:100%;border-collapse:collapse;font-size:12px;\'>";\n  html += "<thead><tr style=\'position:sticky;top:0;background:linear-gradient(180deg,#2f80b7 0%,#1e6091 100%);z-index:2;box-shadow:0 2px 4px rgba(0,0,0,.08);\'>";\n  ["Datum","Zeit","Fahrer","LKW","Produkt","Kategorie","Quelle"].forEach(function(h){\n    html += "<th style=\'padding:11px 12px;text-align:left;color:#fff;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;border-right:1px solid rgba(255,255,255,.15);white-space:nowrap;\'>" + h + "</th>";\n  });\n  html += "</tr></thead><tbody>";\n\n  rows.forEach(function(r, i){\n    var bg = i % 2 === 0 ? "#ffffff" : "#f8fafc";\n    html += "<tr onmouseover=\\"this.style.background=\'#eaf3fb\'\\" onmouseout=\\"this.style.background=\'" + bg + "\'\\" style=\'background:" + bg + ";border-bottom:1px solid #eef2f7;transition:background .1s;\'>";\n    html += "<td style=\'padding:10px 12px;white-space:nowrap;font-weight:800;color:#0f172a;\'>" + fwOverviewEsc(r.datum || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;white-space:nowrap;color:#64748b;font-variant-numeric:tabular-nums;\'>" + fwOverviewEsc(r.uhrzeit || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;font-weight:700;color:#0f172a;\'>" + fwOverviewEsc(r.fahrer || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;color:#0f172a;font-weight:600;\'>" + fwOverviewEsc(r.fahrzeug || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;color:#166534;font-weight:700;\'>" + fwOverviewEsc(r.produkt || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;color:#475569;\'>" + fwOverviewEsc(r.fahrzeug_kategorie || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;color:#94a3b8;font-size:10.5px;\'>" + fwOverviewEsc(r.quelle || "") + "</td>";\n    html += "</tr>";\n  });\n\n  html += "</tbody></table></div>";\n  wrap.innerHTML = html;\n}\n\nfunction fwInitOverview() {\n  fwBuildOverviewFilters();\n  fwRenderOverview();\n}\n'
+    wash_js_code = '\n// ── Fahrzeugwäsche Übersicht ───────────────────────────────────────────────\nfunction fwOverviewEsc(v) {\n  return String(v == null ? "" : v)\n    .replace(/&/g, "&amp;")\n    .replace(/</g, "&lt;")\n    .replace(/>/g, "&gt;");\n}\n\nfunction fwOverviewData() {\n  return Array.isArray(FAHRZEUGWAESCHE_DATA) ? FAHRZEUGWAESCHE_DATA : [];\n}\n\nvar FW_EXCLUDED_DRIVER_NAMES = ["Ch.Holtz", "Paasch", "Meyer", "Ihde", "Spedition M+S Express 4", "Spedition M+S Express 3", "Spedition M+S Express 2", "Spedition M+S Express 1", "Spedition Meyer 1", "Spedition Meyer 2", "Spedition Meyer 3", "Spedition Meyer 4", "Spedition Meyer 5", "Spedition Meyer 6", "Spedition Meyer 7 (36er)", "Spedition Meyer 8", "Spedition Meyer Sz.", "Paasch & Reinke 1", "Paasch & Reinke 2", "Paasch & Reinke 3", "deVries", "Spedition Ihde", "Insellogistik 1", "Insellogistik 2", "Zippel Logistik T1", "Zippel Logistik T2", "Zippel Logistik T3", "Ch. Holtz T1", "Ch. Holtz T2", "Ch. Holtz T3", "T&D Spedition", "Kudex 1", "Kudex 2", "FP Fleischwerk"];\n\nfunction fwNameClean(value) {\n  var s = String(value == null ? "" : value).toLowerCase();\n  // Deutsche Schreibweisen zuerst angleichen: Müller/Mueller/Muller, Jörg/Joerg usw.\n  s = s.replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss");\n  s = s.replace(/æ/g, "ae").replace(/œ/g, "oe");\n  try { s = s.normalize("NFKD").replace(/[\\u0300-\\u036f]/g, ""); } catch(e) {}\n  s = s.replace(/&[a-z]+;/g, " ");\n  s = s.replace(/\\([^)]*\\)/g, " ");\n  s = s.replace(/[_.\\/,;:|]+/g, " ");\n  s = s.replace(/[-–—]+/g, " ");\n  s = s.replace(/\\s+/g, " ").trim();\n  return s;\n}\n\nfunction fwNameTokens(value) {\n  var ignore = {\n    "fahrer":1, "fahrerin":1, "herr":1, "frau":1, "dr":1, "lkw":1,\n    "spedition":1, "firma":1, "team":1, "nfc":1, "fp":1, "fleischwerk":1\n  };\n  var seen = {};\n  return fwNameClean(value).split(" ").filter(function(t){\n    if(!t || ignore[t] || /^\\d+$/.test(t)) return false;\n    if(seen[t]) return false;\n    seen[t] = 1;\n    return true;\n  });\n}\n\nfunction fwDriverNameKey(value) {\n  var tokens = fwNameTokens(value).filter(function(t){ return t.length > 1; });\n  return tokens.sort().join(" ");\n}\n\nfunction fwTokenDistance(a, b) {\n  a = String(a || "");\n  b = String(b || "");\n  if(a === b) return 0;\n  if(!a.length) return b.length;\n  if(!b.length) return a.length;\n  var prev = [];\n  for(var j = 0; j <= b.length; j++) prev[j] = j;\n  for(var i = 1; i <= a.length; i++) {\n    var cur = [i];\n    var rowMin = cur[0];\n    for(var jj = 1; jj <= b.length; jj++) {\n      var cost = a.charAt(i - 1) === b.charAt(jj - 1) ? 0 : 1;\n      var val = Math.min(prev[jj] + 1, cur[jj - 1] + 1, prev[jj - 1] + cost);\n      cur[jj] = val;\n      if(val < rowMin) rowMin = val;\n    }\n    prev = cur;\n  }\n  return prev[b.length];\n}\n\nfunction fwTokenVariants(t) {\n  t = String(t || "");\n  var out = [t];\n  var simpleUmlaut = t.replace(/ae/g, "a").replace(/oe/g, "o").replace(/ue/g, "u");\n  out.push(simpleUmlaut);\n  out.push(t.replace(/c/g, "k"));\n  if(t === "jacob") out.push("jakub");\n  if(t === "jakub") out.push("jacob");\n  var seen = {};\n  return out.filter(function(v){ if(!v || seen[v]) return false; seen[v]=1; return true; });\n}\n\nfunction fwTokenSimilarity(a, b) {\n  a = String(a || "");\n  b = String(b || "");\n  if(!a || !b) return 0;\n  if(a === b) return 1;\n  var av = fwTokenVariants(a);\n  var bv = fwTokenVariants(b);\n  for(var ai = 0; ai < av.length; ai++) {\n    for(var bi = 0; bi < bv.length; bi++) {\n      if(av[ai] && av[ai] === bv[bi]) return 0.98;\n    }\n  }\n  // Initialen: M. Lange gegen Michael Lange.\n  if(a.length === 1 && b.length >= 2 && b.charAt(0) === a) return 0.78;\n  if(b.length === 1 && a.length >= 2 && a.charAt(0) === b) return 0.78;\n  // Abgekürzte oder zusammengesetzte Vornamen / Drittnamen.\n  if(a.length >= 3 && b.length >= 3 && (a.indexOf(b) === 0 || b.indexOf(a) === 0)) return 0.88;\n  var best = 0;\n  av.forEach(function(aa){\n    bv.forEach(function(bb){\n      var minLen = Math.min(aa.length, bb.length);\n      var d = fwTokenDistance(aa, bb);\n      var sc = 0;\n      if(minLen >= 5 && d <= 1) sc = 0.88;\n      else if(minLen >= 5 && d <= 2) sc = 0.76;\n      else if(minLen >= 4 && d <= 1) sc = 0.80;\n      if(sc > best) best = sc;\n    });\n  });\n  return best;\n}\n\nfunction fwTokenQueryMatchSummary(aTokens, bTokens) {\n  if(!aTokens || !bTokens || !aTokens.length || !bTokens.length) return { score: 0, matched: 0 };\n  var used = {};\n  var sum = 0;\n  var matched = 0;\n  aTokens.forEach(function(a){\n    var bestIdx = -1;\n    var bestScore = 0;\n    bTokens.forEach(function(b, idx){\n      if(used[idx]) return;\n      var sc = fwTokenSimilarity(a, b);\n      if(sc > bestScore) { bestScore = sc; bestIdx = idx; }\n    });\n    if(bestIdx >= 0 && bestScore >= 0.72) {\n      used[bestIdx] = 1;\n      sum += bestScore;\n      matched += 1;\n    }\n  });\n  return { score: sum / aTokens.length, matched: matched };\n}\n\nfunction fwTokenOverlapScore(aTokens, bTokens) {\n  if(!aTokens || !bTokens || !aTokens.length || !bTokens.length) return 0;\n  var used = {};\n  var sum = 0;\n  aTokens.forEach(function(a){\n    var bestIdx = -1;\n    var bestScore = 0;\n    bTokens.forEach(function(b, idx){\n      if(used[idx]) return;\n      var sc = fwTokenSimilarity(a, b);\n      if(sc > bestScore) { bestScore = sc; bestIdx = idx; }\n    });\n    if(bestIdx >= 0 && bestScore >= 0.72) {\n      used[bestIdx] = 1;\n      sum += bestScore;\n    }\n  });\n  return sum / Math.max(aTokens.length, bTokens.length);\n}\n\nfunction fwBuildKnownDriverLookup() {\n  var profiles = [];\n  var byKey = {};\n  var tokenOwners = {};\n  fwAllKnownDrivers().forEach(function(name){\n    var tokens = fwNameTokens(name);\n    var key = fwDriverNameKey(name);\n    if(!key || byKey[key]) return;\n    var profile = { name: name, key: key, tokens: tokens };\n    profiles.push(profile);\n    byKey[key] = profile;\n    tokens.forEach(function(t){\n      if(t.length < 3) return;\n      if(!tokenOwners[t]) tokenOwners[t] = {};\n      tokenOwners[t][key] = 1;\n    });\n  });\n  return { profiles: profiles, byKey: byKey, tokenOwners: tokenOwners };\n}\n\nfunction fwResolveKnownDriverProfile(value, lookup) {\n  lookup = lookup || fwBuildKnownDriverLookup();\n  var raw = String(value == null ? "" : value).trim();\n  if(!raw) return null;\n  var key = fwDriverNameKey(raw);\n  if(key && lookup.byKey[key]) return lookup.byKey[key];\n\n  var tokens = fwNameTokens(raw);\n  if(!tokens.length) return null;\n\n  // Nur ein Name in der Waschdatei: nur zuordnen, wenn dieser Name im Timerecording eindeutig ist.\n  if(tokens.length === 1 && tokens[0].length >= 3) {\n    var owners = lookup.tokenOwners[tokens[0]] || {};\n    var ownerKeys = Object.keys(owners);\n    if(ownerKeys.length === 1) return lookup.byKey[ownerKeys[0]];\n  }\n\n  var best = null;\n  var secondScore = 0;\n  lookup.profiles.forEach(function(p){\n    var fullScore = fwTokenOverlapScore(tokens, p.tokens);\n    var queryMatch = fwTokenQueryMatchSummary(tokens, p.tokens);\n    var score = Math.max(fullScore, queryMatch.score);\n    if(!best || score > best.score) {\n      secondScore = best ? best.score : 0;\n      best = { profile: p, score: score, matched: queryMatch.matched };\n    } else if(score > secondScore) {\n      secondScore = score;\n    }\n  });\n\n  if(!best || best.score <= 0) return null;\n  // Waschlisten enthalten oft nur Nachname + Rufname, Timerecording aber mehrere Vornamen.\n  // Deshalb zählt hier der Treffer auf Basis der Waschlisten-Tokens, aber mindestens 2 Tokens müssen passen.\n  if(best.score >= 0.72 && best.matched >= Math.min(2, tokens.length)) return best.profile;\n  if(best.score >= 0.60 && best.matched >= Math.min(2, tokens.length) && (best.score - secondScore) >= 0.14) return best.profile;\n  return null;\n}\n\nfunction fwKnownDriverKeyForWashName(value, lookup) {\n  var p = fwResolveKnownDriverProfile(value, lookup);\n  return p ? p.key : "";\n}\n\nfunction fwIsExcludedDriverName(name) {\n  var s = String(name == null ? "" : name);\n  return FW_EXCLUDED_DRIVER_NAMES.some(function(ex){ return ex && s.indexOf(ex) !== -1; });\n}\n\nfunction fwAddKnownDriver(bucket, value) {\n  var name = String(value == null ? "" : value).trim();\n  if(!name || fwIsExcludedDriverName(name)) return;\n  var key = fwDriverNameKey(name);\n  if(!key) return;\n  if(!bucket[key]) bucket[key] = name;\n}\n\nfunction fwAllKnownDrivers() {\n  var bucket = {};\n  // Fahrerbasis für Fahrzeugwäsche: nur Timerecording / Tachograph.\n  // Dadurch werden Kollegen mit 0 Waschungen sauber aus der Schichten-CSV ergänzt.\n  var trData = (typeof TIMEREC_DATA !== "undefined" && TIMEREC_DATA) ? TIMEREC_DATA : {};\n  Object.keys(trData || {}).forEach(function(name){ fwAddKnownDriver(bucket, name); });\n  return Object.keys(bucket).map(function(k){ return bucket[k]; }).sort(function(a,b){ return a.localeCompare(b, "de"); });\n}\n\nfunction fwZeroDriverCount() {\n  return fwComputeRanking().filter(function(d){ return (d.waschungen || 0) === 0; }).length;\n}\n\nfunction fwBuildOverviewFilters() {\n  var driverSel = document.getElementById("fw-overview-driver");\n  if(!driverSel) return;\n\n  var curDriver = driverSel.value || "all";\n  var drivers = fwAllKnownDrivers();\n\n  driverSel.innerHTML = "<option value=\'all\'>Alle Fahrer</option>" + drivers.map(function(v){\n    return "<option value=\'" + fwOverviewEsc(v) + "\'>" + fwOverviewEsc(v) + "</option>";\n  }).join("");\n\n  driverSel.value = drivers.indexOf(curDriver) !== -1 ? curDriver : "all";\n}\n\nfunction fwGetOverviewRows() {\n  var rows = fwOverviewData().slice();\n  var driverEl = document.getElementById("fw-overview-driver");\n  var driver = driverEl ? driverEl.value : "all";\n\n  if(driver && driver !== "all") {\n    var lookup = fwBuildKnownDriverLookup();\n    var selectedProfile = fwResolveKnownDriverProfile(driver, lookup);\n    var selectedKey = selectedProfile ? selectedProfile.key : fwDriverNameKey(driver);\n    rows = rows.filter(function(r){ return fwKnownDriverKeyForWashName(r && r.fahrer, lookup) === selectedKey; });\n  }\n\n  rows.sort(function(a,b){\n    var ak = a.datetime_iso || "";\n    var bk = b.datetime_iso || "";\n    if(ak !== bk) return bk.localeCompare(ak);\n    return (a.fahrer || "").localeCompare(b.fahrer || "", "de");\n  });\n  return rows;\n}\n\nfunction fwRenderOverview() {\n  var wrap = document.getElementById("fw-overview-table");\n  var stats = document.getElementById("fw-overview-stats");\n  if(!wrap) return;\n\n  var allDrivers = fwAllKnownDrivers();\n  if(!fwOverviewData().length && !allDrivers.length) {\n    if(stats) stats.textContent = "";\n    wrap.innerHTML = "<div style=\'padding:24px 16px;color:#94a3b8;text-align:center;font-size:13px;\'>Keine Fahrzeugwäsche-Dateien geladen.</div>";\n    return;\n  }\n\n  fwBuildOverviewFilters();\n  var rows = fwGetOverviewRows();\n  var driverCount = allDrivers.length;\n  var zeroDriverCount = fwZeroDriverCount();\n  var lkwCount = new Set(rows.map(function(r){ return ((r.fahrzeug || r.fahrzeug_ia || "").trim()); }).filter(Boolean)).size;\n  var waschungenCount = new Set(rows.map(function(r, idx){\n    var fz = (r.fahrzeug || r.fahrzeug_ia || "").trim();\n    var dt = (r.datum || "").trim();\n    return (dt && fz) ? (dt + "||" + fz) : ("__row_" + idx);\n  })).size;\n  if(stats) {\n    var _pc = "display:inline-flex;align-items:baseline;gap:5px;padding:4px 11px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.2";\n    var _nc = "font-size:13px;font-weight:900;letter-spacing:-.3px";\n    stats.innerHTML = "<span style=\\"" + _pc + ";background:#ecf7f1;color:#165532;border:1px solid #c7e5d4\\"><span style=\\"" + _nc + "\\">" + waschungenCount + "</span> Waschungen</span>" + "<span style=\\"" + _pc + ";background:#e8f2fb;color:#2563eb;border:1px solid #bdd0e7\\"><span style=\\"" + _nc + "\\">" + driverCount + "</span> Fahrer</span>" + "<span style=\\"" + _pc + ";background:#fee2e2;color:#991b1b;border:1px solid #fecaca\\"><span style=\\"" + _nc + "\\">" + zeroDriverCount + "</span> ohne Waschung</span>" + "<span style=\\"" + _pc + ";background:#fff7e6;color:#9a5b00;border:1px solid #f6d9b3\\"><span style=\\"" + _nc + "\\">" + lkwCount + "</span> LKW</span>";\n  }\n\n  if(!rows.length) {\n    wrap.innerHTML = "<div style=\'padding:24px 16px;color:#94a3b8;text-align:center;font-size:13px;\'>Keine Waschungen für den ausgewählten Fahrer.</div>";\n    return;\n  }\n\n  var html = "<div style=\'overflow:auto;max-height:540px;background:#fff;\'><table style=\'width:100%;border-collapse:collapse;font-size:12px;\'>";\n  html += "<thead><tr style=\'position:sticky;top:0;background:linear-gradient(135deg,#2563eb 0%,#0ea5e9 55%,#14b8a6 100%);z-index:2;box-shadow:0 2px 4px rgba(0,0,0,.08);\'>";\n  ["Datum","Zeit","Fahrer","LKW","Produkt","Kategorie","Quelle"].forEach(function(h){\n    html += "<th style=\'padding:11px 12px;text-align:left;color:#fff;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;border-right:1px solid rgba(255,255,255,.15);white-space:nowrap;\'>" + h + "</th>";\n  });\n  html += "</tr></thead><tbody>";\n\n  rows.forEach(function(r, i){\n    var bg = i % 2 === 0 ? "#ffffff" : "#f8fafc";\n    html += "<tr onmouseover=\\"this.style.background=\'#eaf3fb\'\\" onmouseout=\\"this.style.background=\'" + bg + "\'\\" style=\'background:" + bg + ";border-bottom:1px solid #eef2f7;transition:background .1s;\'>";\n    html += "<td style=\'padding:10px 12px;white-space:nowrap;font-weight:800;color:#0f172a;\'>" + fwOverviewEsc(r.datum || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;white-space:nowrap;color:#64748b;font-variant-numeric:tabular-nums;\'>" + fwOverviewEsc(r.uhrzeit || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;font-weight:700;color:#0f172a;\'>" + fwOverviewEsc(r.fahrer || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;color:#0f172a;font-weight:600;\'>" + fwOverviewEsc(r.fahrzeug || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;color:#166534;font-weight:700;\'>" + fwOverviewEsc(r.produkt || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;color:#475569;\'>" + fwOverviewEsc(r.fahrzeug_kategorie || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;color:#94a3b8;font-size:10.5px;\'>" + fwOverviewEsc(r.quelle || "") + "</td>";\n    html += "</tr>";\n  });\n\n  html += "</tbody></table></div>";\n  wrap.innerHTML = html;\n}\n\nfunction fwInitOverview() {\n  fwBuildOverviewFilters();\n  fwRenderOverview();\n}\n'
 
     # Rangliste + PDF pro Fahrer (separate Variable, Triple-Quote → keine Escape-Hölle)
     wash_ranking_js_code = r"""
@@ -3542,7 +3542,7 @@ function fwRenderRanking() {
     return;
   }
   var html = "<div style='overflow:auto;max-height:340px;background:#fff;'><table style='width:100%;border-collapse:collapse;font-size:12px;'>";
-  html += "<thead><tr style='position:sticky;top:0;background:linear-gradient(180deg,#1b66b3 0%,#155193 100%);z-index:2;box-shadow:0 2px 4px rgba(0,0,0,.08);'>";
+  html += "<thead><tr style='position:sticky;top:0;background:linear-gradient(180deg,#2563eb 0%,#155193 100%);z-index:2;box-shadow:0 2px 4px rgba(0,0,0,.08);'>";
   var cols = [["#","center","56px"],["Fahrer","left",""],["Waschungen","center","110px"],["Fahrzeuge","center","100px"],["Aktion","center","110px"]];
   cols.forEach(function(c){
     var w = c[2] ? ";width:" + c[2] : "";
@@ -3684,7 +3684,7 @@ function fwRenderTotalBanner() {
   var lkwCount = Object.keys(lkwSet).length;
 
   wrap.innerHTML =
-    "<div style=\"background:linear-gradient(135deg,#1b66b3 0%,#2078c9 55%,#1d6f42 100%);border-radius:14px;padding:22px 28px;color:#fff;box-shadow:0 6px 20px rgba(15,23,42,.15);display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;\">" +
+    "<div style=\"background:linear-gradient(135deg,#2563eb 0%,#0ea5e9 45%,#14b8a6 72%,#16a34a 100%);border-radius:14px;padding:22px 28px;color:#fff;box-shadow:0 6px 20px rgba(15,23,42,.15);display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;\">" +
       "<div style=\"display:flex;align-items:center;gap:18px;flex-wrap:wrap;\">" +
         "<div style=\"width:54px;height:54px;border-radius:12px;background:rgba(17,24,39,.08);display:flex;align-items:center;justify-content:center;font-size:28px;backdrop-filter:blur(6px);\">🚿</div>" +
         "<div>" +
@@ -3755,7 +3755,7 @@ function fwRenderLkwRanking() {
     return;
   }
   var html = "<div style='overflow:auto;max-height:340px;background:#fff;'><table style='width:100%;border-collapse:collapse;font-size:12px;'>";
-  html += "<thead><tr style='position:sticky;top:0;background:linear-gradient(180deg,#1b66b3 0%,#155193 100%);z-index:2;box-shadow:0 2px 4px rgba(0,0,0,.08);'>";
+  html += "<thead><tr style='position:sticky;top:0;background:linear-gradient(180deg,#2563eb 0%,#155193 100%);z-index:2;box-shadow:0 2px 4px rgba(0,0,0,.08);'>";
   var cols = [["#","center","56px"],["LKW","left",""],["Kategorie","left",""],["Waschungen","center","110px"],["Fahrer","center","90px"],["Aktion","center","110px"]];
   cols.forEach(function(c){
     var w = c[2] ? ";width:" + c[2] : "";
@@ -4010,7 +4010,7 @@ function fwExportLkwPdf(lkwName) {
     var html = "<style>.fw-row{transition:background .1s}.fw-row:hover{background:#eaf3fb!important}</style>";
     html += "<div style='overflow:auto;max-height:540px;background:#fff;' id='fw-overview-scroll'>";
     html += "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
-    html += "<thead><tr style='position:sticky;top:0;background:linear-gradient(180deg,#2f80b7 0%,#1e6091 100%);z-index:2;box-shadow:0 2px 4px rgba(0,0,0,.08);'>";
+    html += "<thead><tr style='position:sticky;top:0;background:linear-gradient(135deg,#2563eb 0%,#0ea5e9 55%,#14b8a6 100%);z-index:2;box-shadow:0 2px 4px rgba(0,0,0,.08);'>";
     ["Datum","Zeit","Fahrer","LKW","Produkt","Kategorie","Quelle"].forEach(function(h){
       html += "<th style='padding:11px 12px;text-align:left;color:#fff;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;border-right:1px solid rgba(255,255,255,.15);white-space:nowrap;'>" + h + "</th>";
     });
@@ -4052,7 +4052,7 @@ function fwExportLkwPdf(lkwName) {
     }
     var rest = total - st.shown;
     var label = "Weitere " + Math.min(FW_PAGE_SIZE, rest) + " anzeigen (" + st.shown + " / " + total + ")";
-    more.innerHTML = "<button onclick='window._fwLoadMore()' style='padding:6px 14px;border:1px solid #1b66b3;background:#eff6ff;color:#1b66b3;border-radius:4px;cursor:pointer;font-weight:700;font-size:11px;'>" + label + "</button>";
+    more.innerHTML = "<button onclick='window._fwLoadMore()' style='padding:6px 14px;border:1px solid #2563eb;background:#eff6ff;color:#2563eb;border-radius:4px;cursor:pointer;font-weight:700;font-size:11px;'>" + label + "</button>";
   }
 
   window._fwLoadMore = function() {
@@ -4102,7 +4102,7 @@ function fwExportLkwPdf(lkwName) {
     if(stats) {
       var _pc = "display:inline-flex;align-items:baseline;gap:5px;padding:4px 11px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.2";
       var _nc = "font-size:13px;font-weight:900;letter-spacing:-.3px";
-      stats.innerHTML = "<span style=\"" + _pc + ";background:#ecf7f1;color:#165532;border:1px solid #c7e5d4\"><span style=\"" + _nc + "\">" + waschungenCount + "</span> Waschungen</span>" + "<span style=\"" + _pc + ";background:#e8f2fb;color:#1e6091;border:1px solid #bdd0e7\"><span style=\"" + _nc + "\">" + driverCount + "</span> Fahrer</span>" + "<span style=\"" + _pc + ";background:#fee2e2;color:#991b1b;border:1px solid #fecaca\"><span style=\"" + _nc + "\">" + zeroDriverCount + "</span> ohne Waschung</span>" + "<span style=\"" + _pc + ";background:#fff7e6;color:#9a5b00;border:1px solid #f6d9b3\"><span style=\"" + _nc + "\">" + lkwCount + "</span> LKW</span>";
+      stats.innerHTML = "<span style=\"" + _pc + ";background:#ecf7f1;color:#165532;border:1px solid #c7e5d4\"><span style=\"" + _nc + "\">" + waschungenCount + "</span> Waschungen</span>" + "<span style=\"" + _pc + ";background:#e8f2fb;color:#2563eb;border:1px solid #bdd0e7\"><span style=\"" + _nc + "\">" + driverCount + "</span> Fahrer</span>" + "<span style=\"" + _pc + ";background:#fee2e2;color:#991b1b;border:1px solid #fecaca\"><span style=\"" + _nc + "\">" + zeroDriverCount + "</span> ohne Waschung</span>" + "<span style=\"" + _pc + ";background:#fff7e6;color:#9a5b00;border:1px solid #f6d9b3\"><span style=\"" + _nc + "\">" + lkwCount + "</span> LKW</span>";
     }
 
     if(!rows.length) {
@@ -4691,7 +4691,7 @@ function verstossRender() {
       + "<span style='display:inline-flex;align-items:center;gap:6px;background:#fee2e2;border:1px solid #fecaca;border-radius:999px;padding:5px 10px;color:#991b1b;'>"
       + "<b>" + totV + "</b> Verstöße</span> "
       + "<span style='display:inline-flex;align-items:center;gap:6px;background:#fff7ed;border:1px solid #fed7aa;border-radius:999px;padding:5px 10px;color:#9a3412;'>Firma <b>" + verstossFmtEuro(totCP) + "</b></span>"
-      + (sinceLabel ? " <span style='display:inline-flex;align-items:center;gap:6px;background:#f8fbff;border:1px solid #e2e8f0;border-radius:999px;padding:5px 10px;color:#475569;'>seit <b>" + verstossEsc(sinceLabel) + "</b></span>" : "");
+      + (sinceLabel ? " <span style='display:inline-flex;align-items:center;gap:6px;background:#f6fbff;border:1px solid #e2e8f0;border-radius:999px;padding:5px 10px;color:#475569;'>seit <b>" + verstossEsc(sinceLabel) + "</b></span>" : "");
   }
 
   if (!drivers.length) {
@@ -4761,7 +4761,7 @@ function verstossRender() {
   html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;box-shadow:0 10px 28px rgba(15,23,42,.07);'>";
   html += "<table style='width:100%;border-collapse:separate;border-spacing:0;font-size:12px;'>";
   html += "<thead><tr style='position:sticky;top:0;z-index:3;box-shadow:0 2px 6px rgba(15,23,42,.06);'>";
-  html += "<th style='padding:9px 6px;width:34px;background:#f8fbff;border-bottom:1px solid #e2e8f0;'></th>";
+  html += "<th style='padding:9px 6px;width:34px;background:#f6fbff;border-bottom:1px solid #e2e8f0;'></th>";
   html += sortableTh("name",    "Fahrer",          "left");
   html += sortableTh("count",   "Verstöße",        "right");
   html += sortableTh("letzter", "Letzter Verstoß", "left");
@@ -4802,7 +4802,7 @@ function verstossRender() {
     if (isOpen) {
       html += "<tr style='background:#f1f5f9;'>";
       html += "<td colspan='6' style='padding:0 12px 14px 12px;border-bottom:1px solid #cbd5e1;background:#f1f5f9;'>";
-      html += "<div style='background:#f8fbff;border:1px solid #cbd5e1;border-radius:14px;margin-top:10px;overflow:hidden;box-shadow:0 8px 22px rgba(15,23,42,.10);'>";
+      html += "<div style='background:#f6fbff;border:1px solid #cbd5e1;border-radius:14px;margin-top:10px;overflow:hidden;box-shadow:0 8px 22px rgba(15,23,42,.10);'>";
 
       var detailList = (d.verstoesse || []).slice();
       if (_vsTypeFilter) {
@@ -4900,7 +4900,7 @@ function verstossPdfOne(name) {
     + ".kpi>div{flex:1;min-width:32mm;border:1px solid #e2e8f0;border-radius:2mm;padding:3mm 4mm;background:#f8fafc}"
     + ".kpi .num{font-size:14pt;font-weight:900}"
     + ".kpi .lbl{font-size:7pt;color:#64748b;text-transform:uppercase;letter-spacing:.3px;margin-top:1mm}"
-    + ".types{margin:4mm 0;padding:3mm 4mm;background:#f8fbff;border:1px solid #e2e8f0;border-radius:2mm}"
+    + ".types{margin:4mm 0;padding:3mm 4mm;background:#f6fbff;border:1px solid #e2e8f0;border-radius:2mm}"
     + ".types .tl{font-size:7pt;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2mm}"
     + ".types .tc{display:inline-block;background:#fff;border:1px solid #e2e8f0;border-radius:1mm;padding:0.8mm 2mm;margin:0.8mm 0.8mm 0 0;font-size:8pt}"
     + "table{width:100%;border-collapse:collapse;font-size:9.5pt;margin-top:2mm}"
@@ -5116,7 +5116,7 @@ html,body{{height:100%;font-family:'Segoe UI',Arial,sans-serif}}
   box-shadow:0 1px 2px rgba(15,23,42,.05);
 }}
 .nav-btn:hover:not(.active){{background:linear-gradient(180deg,#ffffff 0%,#eef3f8 100%);border-color:#aeb9c8}}
-.nav-btn.active{{background:linear-gradient(180deg,#4f87e8 0%,#3d72d4 100%);border-color:#3f73cf;color:#fff;box-shadow:0 3px 10px rgba(61,114,212,.25)}}
+.nav-btn.active{{background:linear-gradient(135deg,#2563eb 0%,#0ea5e9 55%,#14b8a6 100%);border-color:#0ea5e9;color:#fff;box-shadow:0 3px 10px rgba(14,165,233,.28)}}
 .inst-btn{{border-color:#c5cfda;color:#5b6b80}}
 .inst-btn:hover:not(.active){{background:linear-gradient(180deg,#ffffff 0%,#eef3f8 100%)}}
 .inst-btn.active{{background:linear-gradient(180deg,#6b7f99 0%,#55677f 100%);border-color:#55677f;color:#fff}}
@@ -5131,7 +5131,7 @@ html,body{{height:100%;font-family:'Segoe UI',Arial,sans-serif}}
   box-shadow:0 1px 2px rgba(15,23,42,.05);
 }}
 .nav-dd-btn:hover{{background:linear-gradient(180deg,#ffffff 0%,#eef3f8 100%);border-color:#aeb9c8}}
-.nav-dd-btn.active{{background:linear-gradient(180deg,#4f87e8 0%,#3d72d4 100%);border-color:#3f73cf;color:#fff;box-shadow:0 3px 10px rgba(61,114,212,.25)}}
+.nav-dd-btn.active{{background:linear-gradient(135deg,#2563eb 0%,#0ea5e9 55%,#14b8a6 100%);border-color:#0ea5e9;color:#fff;box-shadow:0 3px 10px rgba(14,165,233,.28)}}
 #btn-suche.active{{background:linear-gradient(180deg,#f6dc67 0%,#e6be22 100%);border-color:#d5ac10;color:#334155;box-shadow:0 3px 10px rgba(214,172,16,.28)}}
 #btn-suche.active .dd-arrow{{filter:none;opacity:.9}}
 .dd-arrow{{font-size:9px;opacity:.75;transition:transform .15s}}
@@ -5153,7 +5153,7 @@ html,body{{height:100%;font-family:'Segoe UI',Arial,sans-serif}}
 }}
 .dd-item:last-child{{border-bottom:none}}
 .dd-item:hover{{background:#eaf3fb}}
-.dd-item.active{{background:linear-gradient(180deg,#2f80b7 0%,#1e6091 100%);color:#fff}}
+.dd-item.active{{background:linear-gradient(135deg,#2563eb 0%,#0ea5e9 55%,#14b8a6 100%);color:#fff}}
 .topnav-stamp{{
   margin-left:auto;font-size:11px;font-weight:800;
   color:#5b6b80;white-space:nowrap;padding-left:10px;
@@ -5161,9 +5161,9 @@ html,body{{height:100%;font-family:'Segoe UI',Arial,sans-serif}}
 .frame-wrap{{height:calc(100vh - 56px);display:flex;flex-direction:column}}
 iframe{{flex:1;width:100%;border:none;display:none}}
 iframe.active{{display:block}}
-.vz-day-btn{{padding:7px 14px;border:1.5px solid #9db9d5;background:#fff;color:#1e6091;border-radius:7px;cursor:pointer;font-weight:800;font-size:12px;font-family:'Segoe UI',Arial,sans-serif;transition:all .15s;letter-spacing:.1px}}
-.vz-day-btn:hover{{background:#eaf3fb;border-color:#1e6091}}
-.vz-day-btn.active{{background:linear-gradient(180deg,#2f80b7 0%,#1e6091 100%);color:#fff;border-color:#164e75;box-shadow:0 2px 7px rgba(30,96,145,.28)}}
+.vz-day-btn{{padding:7px 14px;border:1.5px solid #93c5fd;background:#fff;color:#2563eb;border-radius:7px;cursor:pointer;font-weight:800;font-size:12px;font-family:'Segoe UI',Arial,sans-serif;transition:all .15s;letter-spacing:.1px}}
+.vz-day-btn:hover{{background:#eaf3fb;border-color:#2563eb}}
+.vz-day-btn.active{{background:linear-gradient(135deg,#2563eb 0%,#0ea5e9 55%,#14b8a6 100%);color:#fff;border-color:#1d4ed8;box-shadow:0 2px 7px rgba(14,165,233,.32)}}
 </style>
 </head>
 <body>
@@ -5204,14 +5204,14 @@ iframe.active{{display:block}}
 <div class="frame-wrap">
   <iframe id="frame-suche" class="active" title="Kunden-Suche"></iframe>
   <iframe id="frame-druck" title="Druckbereich" style="display:none!important;width:0;height:0;border:0"></iframe>
-  <div id="panel-vz" style="display:none;flex:1;overflow-y:auto;padding:18px 18px 28px;background:linear-gradient(180deg,#f3f7fb 0%,#e8f0f7 100%);font-family:'Segoe UI',Arial,sans-serif">
+  <div id="panel-vz" style="display:none;flex:1;overflow-y:auto;padding:18px 18px 28px;background:linear-gradient(135deg,#eff6ff 0%,#ecfeff 52%,#f0fdf4 100%);font-family:'Segoe UI',Arial,sans-serif">
     <div style="width:100%;max-width:1728px;margin:0 auto">
 
       <!-- ── Header-Karte mit Titel + Aktionen ─────────────────────────────── -->
-      <div style="background:#fff;border:1px solid #cad7e8;border-radius:12px;padding:18px 22px;box-shadow:0 2px 10px rgba(30,96,145,.08);margin-bottom:18px">
+      <div style="background:linear-gradient(180deg,#ffffff 0%,#f0f9ff 100%);border:1px solid #93c5fd;border-radius:12px;padding:18px 22px;box-shadow:0 3px 14px rgba(14,165,233,.16);margin-bottom:18px">
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px">
           <div style="display:flex;align-items:center;gap:12px;min-width:0;flex:1">
-            <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#1e6091 0%,#2f80b7 100%);display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 2px 7px rgba(30,96,145,.25);flex-shrink:0">&#128703;</div>
+            <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#2563eb 0%,#0ea5e9 58%,#14b8a6 100%);display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 2px 7px rgba(14,165,233,.30);flex-shrink:0">&#128703;</div>
             <div style="min-width:0">
               <h2 style="color:#0f172a;font-size:18px;font-weight:900;margin:0;letter-spacing:-.2px">Fahrzeugw&#228;sche</h2>
               <p style="color:#64748b;font-size:12px;margin:2px 0 0 0;font-weight:500">Tag und Datum ausw&#228;hlen, dann PDF exportieren</p>
@@ -5224,7 +5224,7 @@ iframe.active{{display:block}}
 
         <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;padding-top:14px;border-top:1px solid #eef2f7">
           <div style="flex:1;min-width:280px">
-            <div style="font-size:11px;font-weight:800;color:#1e6091;margin-bottom:8px;letter-spacing:.4px;text-transform:uppercase">Tag</div>
+            <div style="font-size:11px;font-weight:800;color:#2563eb;margin-bottom:8px;letter-spacing:.4px;text-transform:uppercase">Tag</div>
             <div style="display:flex;flex-wrap:wrap;gap:6px" id="fw-day-btns">
               <button class="vz-day-btn" onclick="fwSelectDay('Montag')">Montag</button>
               <button class="vz-day-btn" onclick="fwSelectDay('Dienstag')">Dienstag</button>
@@ -5235,9 +5235,9 @@ iframe.active{{display:block}}
             </div>
           </div>
           <div style="flex-shrink:0">
-            <div style="font-size:11px;font-weight:800;color:#1e6091;margin-bottom:8px;letter-spacing:.4px;text-transform:uppercase">Datum</div>
+            <div style="font-size:11px;font-weight:800;color:#2563eb;margin-bottom:8px;letter-spacing:.4px;text-transform:uppercase">Datum</div>
             <input id="fw-date-picker" type="date" onchange="fwSetDate(this.value)"
-              style="padding:9px 12px;border:1.5px solid #9db9d5;border-radius:7px;font-size:13px;font-weight:700;font-family:inherit;outline:none;background:#fff;color:#0b1220;min-width:180px;box-shadow:inset 0 1px 2px rgba(15,23,42,.04)">
+              style="padding:9px 12px;border:1.5px solid #93c5fd;border-radius:7px;font-size:13px;font-weight:700;font-family:inherit;outline:none;background:#fff;color:#0b1220;min-width:180px;box-shadow:inset 0 1px 2px rgba(15,23,42,.04)">
           </div>
         </div>
       </div>
@@ -5246,11 +5246,11 @@ iframe.active{{display:block}}
       <div id="fw-total-banner" style="margin-bottom:14px"></div>
 
       <!-- ── Übersicht-Karte ───────────────────────────────────────────────── -->
-      <div style="background:#fff;border:1px solid #cad7e8;border-radius:12px;box-shadow:0 2px 10px rgba(30,96,145,.07);overflow:hidden;margin-bottom:14px">
+      <div style="background:#fff;border:1px solid #93c5fd;border-radius:12px;box-shadow:0 3px 14px rgba(14,165,233,.14);overflow:hidden;margin-bottom:14px">
 
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 20px;border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#f8fbff 0%,#ffffff 100%)">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 20px;border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#f6fbff 0%,#ffffff 100%)">
           <div style="display:flex;align-items:center;gap:10px">
-            <div style="width:32px;height:32px;border-radius:8px;background:#e7f1fb;color:#1e6091;display:flex;align-items:center;justify-content:center;font-size:15px">&#128203;</div>
+            <div style="width:32px;height:32px;border-radius:8px;background:#e7f1fb;color:#2563eb;display:flex;align-items:center;justify-content:center;font-size:15px">&#128203;</div>
             <div>
               <div style="font-size:13px;font-weight:900;color:#0f172a;letter-spacing:-.1px">&#220;bersicht Fahrzeugw&#228;sche</div>
               <div style="font-size:11px;color:#64748b;margin-top:1px">Wer hat wann welchen LKW gewaschen</div>
@@ -5262,15 +5262,15 @@ iframe.active{{display:block}}
         <div style="padding:14px 20px;border-bottom:1px solid #eef2f7;background:#fbfcfd">
           <select id="fw-overview-driver" onchange="fwRenderOverview()"
             style="min-width:260px;padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:12px;font-weight:600;font-family:inherit;background:#fff;color:#0f172a;outline:none;cursor:pointer;box-shadow:inset 0 1px 2px rgba(15,23,42,.03);transition:border-color .15s"
-            onfocus="this.style.borderColor='#1e6091'" onblur="this.style.borderColor='#b9cce3'"></select>
+            onfocus="this.style.borderColor='#2563eb'" onblur="this.style.borderColor='#93c5fd'"></select>
         </div>
 
         <div id="fw-overview-table"></div>
       </div>
 
       <!-- ── Rangliste ───────────────────────────────────────────────────── -->
-      <div style="background:#fff;border:1px solid #cad7e8;border-radius:12px;box-shadow:0 2px 10px rgba(30,96,145,.07);overflow:hidden">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 20px;border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#f8fbff 0%,#ffffff 100%)">
+      <div style="background:#fff;border:1px solid #bfdbfe;border-radius:12px;box-shadow:0 2px 10px rgba(14,165,233,.12);overflow:hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 20px;border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#f6fbff 0%,#ffffff 100%)">
           <div style="display:flex;align-items:center;gap:10px">
             <div style="width:32px;height:32px;border-radius:8px;background:#fff7e6;color:#9a5b00;display:flex;align-items:center;justify-content:center;font-size:17px">&#127942;</div>
             <div>
@@ -5283,10 +5283,10 @@ iframe.active{{display:block}}
       </div>
 
       <!-- ── LKW-Rangliste ───────────────────────────────────────────────── -->
-      <div style="background:#fff;border:1px solid #cad7e8;border-radius:12px;box-shadow:0 2px 10px rgba(30,96,145,.07);overflow:hidden;margin-top:14px">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 20px;border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#f8fbff 0%,#ffffff 100%)">
+      <div style="background:#fff;border:1px solid #bfdbfe;border-radius:12px;box-shadow:0 2px 10px rgba(14,165,233,.12);overflow:hidden;margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 20px;border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#f6fbff 0%,#ffffff 100%)">
           <div style="display:flex;align-items:center;gap:10px">
-            <div style="width:32px;height:32px;border-radius:8px;background:#e7f1fb;color:#1e6091;display:flex;align-items:center;justify-content:center;font-size:17px">&#128666;</div>
+            <div style="width:32px;height:32px;border-radius:8px;background:#e7f1fb;color:#2563eb;display:flex;align-items:center;justify-content:center;font-size:17px">&#128666;</div>
             <div>
               <div style="font-size:13px;font-weight:900;color:#0f172a;letter-spacing:-.1px">Rangliste LKW</div>
               <div style="font-size:11px;color:#64748b;margin-top:1px">Welche Fahrzeuge am meisten gewaschen wurden &ndash; PDF-Export pro LKW</div>
@@ -5300,10 +5300,10 @@ iframe.active{{display:block}}
   </div>
   <div id="panel-tel" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#e8ecf1;font-family:'Segoe UI',Arial,sans-serif">
     <div style="max-width:900px;margin:0 auto">
-      <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128222; Telefonliste</h2>
+      <h2 style="color:#2563eb;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128222; Telefonliste</h2>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
         <input id="tel-search" placeholder="Name suchen..." oninput="telFilter(this.value)"
-          style="flex:1;min-width:200px;max-width:400px;padding:8px 14px;border:2px solid #1b66b3;
+          style="flex:1;min-width:200px;max-width:400px;padding:8px 14px;border:2px solid #2563eb;
                  border-radius:5px;font-size:13px;font-family:inherit;outline:none">
         <button onclick="telPDF()"
           style="padding:8px 18px;background:#dc2626;border:none;color:#fff;border-radius:5px;
@@ -5317,27 +5317,27 @@ iframe.active{{display:block}}
 
   <div id="panel-sam" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#e8ecf1;font-family:Segoe UI,Arial,sans-serif">
     <div style="max-width:1000px;margin:0 auto">
-      <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128664; Sa + So Einsätze</h2>
+      <h2 style="color:#2563eb;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128664; Sa + So Einsätze</h2>
       <div style="display:inline-flex;align-items:center;gap:6px;margin-bottom:8px;background:#fffbeb;border:1px solid #e2e8f0;border-radius:4px;padding:5px 12px;font-size:12px;color:#92400e;">&#9888;&#65039; Ein Sonntagseinsatz wird nur als dieser gewertet bei einer Anfangszeit bis 15&nbsp;Uhr.</div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <input id="sam-search" placeholder="Fahrer suchen..." oninput="samFilter(this.value)"
-          style="flex:1;min-width:180px;max-width:280px;padding:7px 14px;border:2px solid #1b66b3;
+          style="flex:1;min-width:180px;max-width:280px;padding:7px 14px;border:2px solid #2563eb;
                  border-radius:5px;font-size:13px;font-family:inherit;outline:none">
         <select id="sam-year-sel" onchange="samYearChange(this.value)"
-          style="padding:7px 12px;border:2px solid #1b66b3;border-radius:5px;font-size:12px;font-weight:700;
-                 color:#1b66b3;cursor:pointer;font-family:inherit;outline:none;background:#fff;">
+          style="padding:7px 12px;border:2px solid #2563eb;border-radius:5px;font-size:12px;font-weight:700;
+                 color:#2563eb;cursor:pointer;font-family:inherit;outline:none;background:#fff;">
           </select>
         <div style="display:flex;gap:5px;">
           <button onclick="samSort('status')" id="sam-sort-status"
-            style="padding:6px 12px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
+            style="padding:6px 12px;border:2px solid #2563eb;border-radius:5px;background:#fff;color:#2563eb;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
             Status &#8593;
           </button>
           <button onclick="samSort('name')" id="sam-sort-name"
-            style="padding:6px 12px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
+            style="padding:6px 12px;border:2px solid #2563eb;border-radius:5px;background:#fff;color:#2563eb;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
             Name
           </button>
           <button onclick="samSort('count')" id="sam-sort-count"
-            style="padding:6px 12px;border:2px solid #1b66b3;border-radius:5px;background:#1b66b3;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
+            style="padding:6px 12px;border:2px solid #2563eb;border-radius:5px;background:#2563eb;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
             Eins&#228;tze &#8595;
           </button>
         </div>
@@ -5375,7 +5375,7 @@ iframe.active{{display:block}}
     #fa-stats, #fa-stats * {{ color:#1f2937 !important; }}
   </style>
   <!-- ── Fahrerauswertung Panel ───────────────────────────────────── -->
-  <div id="panel-fa" style="display:none;flex:1;overflow:hidden;background:#f8fbff;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
+  <div id="panel-fa" style="display:none;flex:1;overflow:hidden;background:#f6fbff;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
     <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:#f1f5f9;border-bottom:1.5px solid #cbd5e1;flex-wrap:wrap;flex-shrink:0;">
       <h2 style="color:#334155;font-size:16px;font-weight:900;margin:0;">&#128101; Schichten / Tachograph</h2>
       <input id="fa-search" placeholder="Fahrer suchen..." oninput="faRender(this.value);"
@@ -5395,19 +5395,19 @@ iframe.active{{display:block}}
       <div style="width:220px;flex-shrink:0;border-right:1.5px solid #cbd5e1;overflow-y:auto;background:#f1f5f9;">
         <div id="fa-sidebar-list"></div>
       </div>
-      <div id="fa-detail-panel" style="flex:1;overflow-y:auto;padding:20px 24px;background:#f8fbff;"></div>
+      <div id="fa-detail-panel" style="flex:1;overflow-y:auto;padding:20px 24px;background:#f6fbff;"></div>
     </div>
   </div>
 
   <div id="panel-zulage" style="display:none;flex:1;flex-direction:column;background:#e8ecf1;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;">
     <div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:#f0f2f6;border-bottom:1.5px solid #c8cfd9;flex-wrap:wrap;flex-shrink:0;">
-      <h2 style="margin:0;font-size:16px;font-weight:900;color:#1b66b3;">&#128176; Zulagen</h2>
+      <h2 style="margin:0;font-size:16px;font-weight:900;color:#2563eb;">&#128176; Zulagen</h2>
       <div style="display:flex;gap:4px;">
-        <button id="ztab-sonder" onclick="zulagenTab('sonder')" style="padding:3px 9px;border-radius:3px;border:1.5px solid #1b66b3;cursor:pointer;font-weight:700;font-size:12px;background:#1b66b3;color:#fff;">Sonderfahrzeuge</button>
-        <button id="ztab-fuengers" onclick="zulagenTab('fuengers')" style="padding:3px 9px;border-radius:3px;border:1.5px solid #1b66b3;cursor:pointer;font-weight:700;font-size:12px;background:#fff;color:#1b66b3;">F&#252;ngers</button>
-        <button id="ztab-drittkunden" onclick="zulagenTab('drittkunden')" style="padding:3px 9px;border-radius:3px;border:1.5px solid #1b66b3;cursor:pointer;font-weight:700;font-size:12px;background:#fff;color:#1b66b3;">Drittkunden</button>
+        <button id="ztab-sonder" onclick="zulagenTab('sonder')" style="padding:3px 9px;border-radius:3px;border:1.5px solid #2563eb;cursor:pointer;font-weight:700;font-size:12px;background:#2563eb;color:#fff;">Sonderfahrzeuge</button>
+        <button id="ztab-fuengers" onclick="zulagenTab('fuengers')" style="padding:3px 9px;border-radius:3px;border:1.5px solid #2563eb;cursor:pointer;font-weight:700;font-size:12px;background:#fff;color:#2563eb;">F&#252;ngers</button>
+        <button id="ztab-drittkunden" onclick="zulagenTab('drittkunden')" style="padding:3px 9px;border-radius:3px;border:1.5px solid #2563eb;cursor:pointer;font-weight:700;font-size:12px;background:#fff;color:#2563eb;">Drittkunden</button>
       </div>
-      <select id="zulage-month-sel" onchange="zulagenRender()" style="padding:5px 12px;border:2px solid #1b66b3;border-radius:5px;font-size:12px;outline:none;cursor:pointer;"></select>
+      <select id="zulage-month-sel" onchange="zulagenRender()" style="padding:5px 12px;border:2px solid #2563eb;border-radius:5px;font-size:12px;outline:none;cursor:pointer;"></select>
       <button onclick="zulagenExportExcel()" style="padding:5px 12px;background:#1d6f42;color:#fff;border:none;border-radius:5px;font-weight:700;font-size:12px;cursor:pointer;">&#128196; Excel</button>
       <span id="zulage-stats" style="font-size:12px;color:#64748b;margin-left:auto;font-weight:600;"></span>
     </div>
@@ -5418,7 +5418,7 @@ iframe.active{{display:block}}
 
 
   <!-- ── Spesen Panel ───────────────────────────────────── -->
-  <div id="panel-spesen" style="display:none;flex:1;overflow:hidden;background:#f8fbff;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
+  <div id="panel-spesen" style="display:none;flex:1;overflow:hidden;background:#f6fbff;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
     <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:#f1f5f9;border-bottom:1.5px solid #cbd5e1;flex-wrap:wrap;flex-shrink:0;">
       <h2 style="color:#334155;font-size:16px;font-weight:900;margin:0;">&#128181; Spesen</h2>
       <input id="spesen-search" placeholder="Fahrer suchen..." oninput="spesenFilter(this.value)"
@@ -5431,10 +5431,10 @@ iframe.active{{display:block}}
       <div id="spesen-stats" style="font-size:11px;color:#64748b;margin-left:auto;font-weight:700;"></div>
     </div>
     <div style="display:flex;flex:1;overflow:hidden;">
-      <div style="width:240px;flex-shrink:0;border-right:1.5px solid #cbd5e1;overflow-y:auto;background:#f8fbff;">
+      <div style="width:240px;flex-shrink:0;border-right:1.5px solid #cbd5e1;overflow-y:auto;background:#f6fbff;">
         <div id="spesen-sidebar-list"></div>
       </div>
-      <div id="spesen-detail-panel" style="flex:1;overflow-y:auto;padding:20px 24px;background:#f8fbff;">
+      <div id="spesen-detail-panel" style="flex:1;overflow-y:auto;padding:20px 24px;background:#f6fbff;">
         <div style="color:#94a3b8;padding:60px;text-align:center;font-size:14px;">Keine Spesendaten &ndash; bitte Reisekosten-CSV in Streamlit hochladen.</div>
       </div>
     </div>
@@ -5447,7 +5447,7 @@ iframe.active{{display:block}}
         <h2 style="margin:0;font-size:17px;font-weight:900;color:#991b1b;">&#9888;&#65039; Verstoßauswertung</h2>
         <input id="verstoss-search" placeholder="Fahrer suchen..." oninput="verstossFilter(this.value)"
           style="flex:1;min-width:160px;max-width:300px;padding:8px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#fff;transition:border .15s;color:#0f172a;"
-          onfocus="this.style.borderColor='#dc2626'" onblur="this.style.borderColor='#b9cce3'">
+          onfocus="this.style.borderColor='#dc2626'" onblur="this.style.borderColor='#93c5fd'">
         <select id="verstoss-list-year" onchange="verstossListYearChange(this.value)"
           style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:850;font-family:inherit;outline:none;background:#fff;color:#991b1b;cursor:pointer;min-width:116px;">
           <option value="all">Alle Jahre</option>
@@ -5479,19 +5479,19 @@ iframe.active{{display:block}}
   </div>
 
   <!-- ── Großkunden Panel ───────────────────────────────────────────────────── -->
-  <div id="panel-gk" style="display:none;flex:1;overflow:hidden;background:#f3f7fb;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
+  <div id="panel-gk" style="display:none;flex:1;overflow:hidden;background:linear-gradient(135deg,#eff6ff 0%,#ecfeff 52%,#f0fdf4 100%);font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
     <!-- Kopf / Suche -->
-    <div style="flex-shrink:0;background:linear-gradient(180deg,#f8fbff 0%,#edf4fb 100%);border-bottom:1.5px solid #c6d6e8;padding:10px 16px;box-shadow:0 1px 5px rgba(30,96,145,.08);">
+    <div style="flex-shrink:0;background:linear-gradient(135deg,#ffffff 0%,#e0f2fe 58%,#dcfce7 100%);border-bottom:1.5px solid #93c5fd;padding:10px 16px;box-shadow:0 2px 10px rgba(14,165,233,.16);">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-        <div style="font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.45px;color:#1e6091;white-space:nowrap;">Gro&#223;kunden <span id="gk-count" style="font-weight:700;color:#4f708f;"></span></div>
+        <div style="font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.45px;color:#2563eb;white-space:nowrap;">Gro&#223;kunden <span id="gk-count" style="font-weight:700;color:#0f766e;"></span></div>
         <input id="gk-search" placeholder="Gro&#223;kunden suchen..." oninput="gkFilter(this.value)"
-          style="flex:1;max-width:340px;padding:7px 11px;border:1.5px solid #b9cce3;border-radius:6px;font-size:12px;font-family:inherit;outline:none;background:#fff;color:#1f3347;box-shadow:0 1px 3px rgba(30,96,145,.07);">
+          style="flex:1;max-width:340px;padding:7px 11px;border:1.5px solid #93c5fd;border-radius:6px;font-size:12px;font-family:inherit;outline:none;background:#fff;color:#1f3347;box-shadow:0 1px 3px rgba(14,165,233,.12);">
         <span id="gk-stats" style="margin-left:auto;font-size:11px;font-weight:700;color:#64748b;"></span>
       </div>
       <div id="gk-tiles" style="display:flex;flex-wrap:wrap;gap:6px;max-height:120px;overflow-y:auto;padding-right:4px;"></div>
     </div>
     <!-- Detail unten -->
-    <div id="gk-detail" style="flex:1;overflow-y:auto;padding:16px 18px 28px;background:#f3f7fb;">
+    <div id="gk-detail" style="flex:1;overflow-y:auto;padding:16px 18px 28px;background:linear-gradient(135deg,#eff6ff 0%,#f0fdfa 100%);">
       <div style="color:#94a3b8;padding:70px;text-align:center;font-size:14px;">Keine Gro&#223;kundendaten &ndash; bitte Excel in Streamlit hochladen.</div>
     </div>
   </div>
@@ -5972,8 +5972,8 @@ function gkDistributorLinkHtml(emails, label, subject) {{
   emails = gkUniqEmails(emails);
   if (!emails.length) return "";
   return "<a href='" + gkAttr(gkMailto(emails, subject || label)) + "'"
-       + " style='display:inline-flex;align-items:center;gap:7px;background:#e8f2fb;color:#1e6091;"
-       + "border:1px solid #9db9d5;border-radius:5px;padding:5px 11px;font-size:11.5px;"
+       + " style='display:inline-flex;align-items:center;gap:7px;background:#e8f2fb;color:#2563eb;"
+       + "border:1px solid #93c5fd;border-radius:5px;padding:5px 11px;font-size:11.5px;"
        + "font-weight:800;text-decoration:none;white-space:nowrap;box-shadow:0 1px 3px rgba(15,23,42,.08);'>"
        + "&#9993; " + gkEsc(label) + " <span style='font-weight:700;opacity:.8;'>(" + emails.length + ")</span></a>";
 }}
@@ -6070,18 +6070,18 @@ function gkBuildTiles(activeIdx) {{
       if (k.entries.length === 1) singleKnr = k.entries[0].kundennummer || "";
       else multiCount = k.entries.length;
     }}
-    var bg      = active ? "linear-gradient(180deg,#f8fbff 0%,#dbeaf7 100%)" : "#fff";
-    var border  = active ? "#9db9d5" : "#cbd5e1";
+    var bg      = active ? "linear-gradient(135deg,#dbeafe 0%,#cffafe 55%,#dcfce7 100%)" : "#fff";
+    var border  = active ? "#38bdf8" : "#cbd5e1";
     var txtMain = active ? "#16324f" : "#334155";
     var txtSub  = active ? "rgba(22,50,79,.72)" : "#334155";
-    var knrBg    = active ? "rgba(30,96,145,.10)" : "#eef4fb";
+    var knrBg    = active ? "rgba(37,99,235,.12)" : "#e0f2fe";
     var knrTxt   = active ? "#16324f" : "#334155";
-    var knrLabel = active ? "rgba(30,96,145,.72)" : "#1e6091";
+    var knrLabel = active ? "rgba(30,96,145,.72)" : "#2563eb";
     html += "<button type='button' onclick='gkShow(" + realIdx + ")'"
           + " style='cursor:pointer;border-radius:6px;padding:8px 11px;text-align:left;font-family:inherit;"
           + "border:1px solid " + border + ";background:" + bg + ";"
           + "transition:all .12s;min-width:118px;max-width:230px;user-select:none;"
-          + (active ? "box-shadow:0 2px 9px rgba(30,96,145,.18);" : "")
+          + (active ? "box-shadow:0 2px 9px rgba(14,165,233,.24);" : "")
           + "'>"
           + "<div style='font-size:12px;font-weight:700;color:" + txtMain + ";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25;'>"
           + gkEsc(k.name) + "</div>";
@@ -6190,16 +6190,16 @@ function gkRenderStructured(customer, detail) {{
   // KNr-Badge-Helper: einheitlich leicht (hellgrau, dunkelblauer Text)
   function gkKnrBadge(knr) {{
     if (!knr) return "";
-    return "<span style='display:inline-flex;align-items:baseline;gap:5px;background:#eef4fb;"
+    return "<span style='display:inline-flex;align-items:baseline;gap:5px;background:#e0f2fe;"
          + "border-radius:4px;padding:3px 9px;'>"
-         + "<span style='font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.55px;color:#1e6091;'>KNr</span>"
+         + "<span style='font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.55px;color:#2563eb;'>KNr</span>"
          + "<span style='font-size:13px;font-weight:800;color:#16324f;font-variant-numeric:tabular-nums;letter-spacing:.2px;line-height:1;'>"
          + gkEsc(knr) + "</span></span>";
   }}
 
-  html += "<div style='background:#fff;border:1px solid #cad7e8;border-radius:8px;margin-bottom:12px;overflow:hidden;box-shadow:0 1px 4px rgba(30,96,145,.04);'>";
-  html += "<div style='padding:9px 14px;background:#eef4fb;border-bottom:1px solid #cad7e8;'>"
-        + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#1e6091;'>Standorte</span>"
+  html += "<div style='background:#fff;border:1px solid #bfdbfe;border-radius:8px;margin-bottom:12px;overflow:hidden;box-shadow:0 1px 4px rgba(14,165,233,.08);'>";
+  html += "<div style='padding:9px 14px;background:linear-gradient(135deg,#dbeafe 0%,#ccfbf1 100%);border-bottom:1px solid #93c5fd;'>"
+        + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#2563eb;'>Standorte</span>"
         + "</div>";
 
   if (anyHasAddr) {{
@@ -6221,7 +6221,7 @@ function gkRenderStructured(customer, detail) {{
     // Kompaktes Chip-Layout (keine Adressen vorhanden)
     html += "<div style='padding:12px 14px;display:flex;flex-wrap:wrap;gap:8px;'>";
     standorte.forEach(function(s) {{
-      html += "<div style='display:inline-flex;align-items:center;gap:9px;padding:7px 11px;background:#f8fbff;border:1px solid #cad7e8;border-radius:6px;'>"
+      html += "<div style='display:inline-flex;align-items:center;gap:9px;padding:7px 11px;background:#f6fbff;border:1px solid #bfdbfe;border-radius:6px;'>"
             + "<span style='font-size:13px;font-weight:700;color:#0f172a;line-height:1.2;'>" + gkEsc(s.name) + "</span>"
             + gkKnrBadge(s.kundennummer)
             + "</div>";
@@ -6306,9 +6306,9 @@ function gkRenderStructured(customer, detail) {{
   // ── LINKE SPALTE: Kontaktkarte ─────────────────────────────────────────────
   html += "<div style='min-width:0;'>";
   if (hasAnyContact && allContactRows.length) {{
-    html += "<div style='background:#fff;border:1px solid #cad7e8;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(30,96,145,.04);'>";
-    html += "<div style='padding:9px 14px;background:#eef4fb;border-bottom:1px solid #cad7e8;display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
-          + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#1e6091;flex:1;'>Kontakte</span>"
+    html += "<div style='background:#fff;border:1px solid #bfdbfe;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(14,165,233,.08);'>";
+    html += "<div style='padding:9px 14px;background:linear-gradient(135deg,#dbeafe 0%,#ccfbf1 100%);border-bottom:1px solid #93c5fd;display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
+          + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#2563eb;flex:1;'>Kontakte</span>"
           + gkEdekaLagerNmsLink(customer)
           + "</div>";
     html += "<div style='padding:4px 14px 12px;'>";
@@ -6316,8 +6316,8 @@ function gkRenderStructured(customer, detail) {{
       if (cr.isLabel) {{
         var sectionName = cr.text.replace(/:$/, "");
         var sKey = sectionName.toLowerCase().trim();
-        html += "<div style='margin:14px 0 6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-bottom:5px;border-bottom:1px solid #cad7e8;'>"
-              + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1e6091;'>"
+        html += "<div style='margin:14px 0 6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-bottom:5px;border-bottom:1px solid #bfdbfe;'>"
+              + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#2563eb;'>"
               + gkEsc(sectionName) + "</span>";
         if (sKey === "nfc" && rastingNfcEmails.length) {{
           html += gkDistributorLinkHtml(rastingNfcEmails, "Mail an den Verteiler", "Rasting / NFC");
@@ -6341,11 +6341,11 @@ function gkRenderStructured(customer, detail) {{
             var m = em.match(/^[^\s@]+@[^\s@]+/);
             var isMailAddr = m !== null;
             return isMailAddr
-              ? "<a href='mailto:" + gkEsc(em) + "' style='color:#1e6091;font-size:12.5px;font-weight:600;text-decoration:none;'>" + gkEsc(em) + "</a>"
+              ? "<a href='mailto:" + gkEsc(em) + "' style='color:#2563eb;font-size:12.5px;font-weight:600;text-decoration:none;'>" + gkEsc(em) + "</a>"
               : "<span style='font-size:12.5px;color:#334155;'>" + gkEsc(em) + "</span>";
           }}).join(" ");
         }} else if (hasLabelText) {{
-          html += "<span style='font-size:12.5px;font-weight:600;color:#1e6091;'>" + gkEsc(cr.labelText) + "</span>";
+          html += "<span style='font-size:12.5px;font-weight:600;color:#2563eb;'>" + gkEsc(cr.labelText) + "</span>";
         }} else {{
           html += "<span style='color:#cbd5e1;font-size:12px;'>&ndash;</span>";
         }}
@@ -6355,9 +6355,9 @@ function gkRenderStructured(customer, detail) {{
           html += "<span style='display:flex;align-items:center;gap:6px;flex-shrink:0;padding-left:14px;'>"
                 + cr.tels.map(function(t) {{
                     var href = "tel:" + t.replace(/[^\d\+]/g,"");
-                    return "<a href='" + href + "' style='font-size:12.5px;font-weight:600;color:#1e6091;"
+                    return "<a href='" + href + "' style='font-size:12.5px;font-weight:600;color:#2563eb;"
                          + "font-variant-numeric:tabular-nums;white-space:nowrap;text-decoration:none;letter-spacing:.2px;'>"
-                         + "<span style='color:#7aa0c4;font-weight:400;margin-right:4px;'>&#9742;</span>" + gkEsc(t) + "</a>";
+                         + "<span style='color:#0ea5e9;font-weight:400;margin-right:4px;'>&#9742;</span>" + gkEsc(t) + "</a>";
                   }}).join(" ")
                 + "</span>";
         }}
@@ -6371,10 +6371,10 @@ function gkRenderStructured(customer, detail) {{
   // ── RECHTE SPALTE: Hinweise ────────────────────────────────────────────────
   html += "<div style='min-width:0;'>";
   if (allHints.length) {{
-    html += "<div style='background:#fff;border:1px solid #cad7e8;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(30,96,145,.04);'>";
-    html += "<div style='padding:9px 14px;background:#eef4fb;border-bottom:1px solid #cad7e8;display:flex;align-items:center;gap:8px;'>"
-          + "<span style='display:inline-block;width:6px;height:6px;border-radius:50%;background:#1e6091;'></span>"
-          + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#1e6091;flex:1;'>Hinweise</span>"
+    html += "<div style='background:#fff;border:1px solid #bfdbfe;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(14,165,233,.08);'>";
+    html += "<div style='padding:9px 14px;background:linear-gradient(135deg,#dbeafe 0%,#ccfbf1 100%);border-bottom:1px solid #93c5fd;display:flex;align-items:center;gap:8px;'>"
+          + "<span style='display:inline-block;width:6px;height:6px;border-radius:50%;background:#2563eb;'></span>"
+          + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#2563eb;flex:1;'>Hinweise</span>"
           + "<span style='font-size:10.5px;font-weight:700;color:#94a3b8;font-variant-numeric:tabular-nums;'>" + allHints.length + "</span>"
           + "</div>";
     html += "<div>";
@@ -6407,7 +6407,7 @@ function gkRenderFreeform(customer, detail) {{
         + gkEdekaLagerNmsLink(customer)
         + "</div>";
 
-  html += "<div style='background:#fff;border:1px solid #cad7e8;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(30,96,145,.04);'>";
+  html += "<div style='background:#fff;border:1px solid #bfdbfe;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(14,165,233,.08);'>";
 
   (customer.lines || []).forEach(function(line) {{
     var t = line.trim();
@@ -6420,9 +6420,9 @@ function gkRenderFreeform(customer, detail) {{
     if (isSection) {{
       var sectionName = t.replace(/:$/, "");
       var sectionKey = sectionName.toLowerCase().trim();
-      html += "<div style='padding:10px 14px 8px;background:#eef4fb;border-bottom:1px solid #cad7e8;"
+      html += "<div style='padding:10px 14px 8px;background:linear-gradient(135deg,#dbeafe 0%,#ccfbf1 100%);border-bottom:1px solid #93c5fd;"
             + "display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
-            + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1e6091;'>"
+            + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#2563eb;'>"
             + gkEsc(sectionName) + "</span>";
       if (sectionKey === "nfc" && rastingNfcEmails.length) {{
         html += gkDistributorLinkHtml(rastingNfcEmails, "Mail an den Verteiler", "Rasting / NFC");
@@ -6430,14 +6430,14 @@ function gkRenderFreeform(customer, detail) {{
       html += "</div>";
     }} else if (isEmail) {{
       html += "<div style='padding:8px 14px;border-bottom:1px solid #f1f5f9;'>"
-            + "<a href='mailto:" + gkEsc(t) + "' style='color:#1e6091;font-size:12.5px;font-weight:600;text-decoration:none;'>" + gkEsc(t) + "</a>"
+            + "<a href='mailto:" + gkEsc(t) + "' style='color:#2563eb;font-size:12.5px;font-weight:600;text-decoration:none;'>" + gkEsc(t) + "</a>"
             + "</div>";
     }} else if (hasTelNum) {{
       html += "<div style='padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:12.5px;font-weight:600;color:#334155;font-variant-numeric:tabular-nums;letter-spacing:.2px;'>"
-            + "<span style='color:#7aa0c4;font-weight:400;margin-right:5px;'>&#9742;</span>" + gkEsc(t) + "</div>";
+            + "<span style='color:#0ea5e9;font-weight:400;margin-right:5px;'>&#9742;</span>" + gkEsc(t) + "</div>";
     }} else if (isLong) {{
       html += "<div style='padding:10px 14px;border-bottom:1px solid #f1f5f9;"
-            + "background:#f8fbff;"
+            + "background:#f6fbff;"
             + "font-size:12.5px;color:#334155;line-height:1.6;'>" + gkEsc(t) + "</div>";
     }} else {{
       html += "<div style='padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:12.5px;color:#334155;'>" + gkEsc(t) + "</div>";
@@ -6453,12 +6453,12 @@ function telPDF() {{
   var w = window.open("","_blank","width=900,height=700");
   var css = [
     "body{{font-family:'Segoe UI',Arial,sans-serif;font-size:8pt;margin:10mm;color:#000}}",
-    "h1{{font-size:13pt;color:#1b66b3;margin:0 0 4mm 0;border-bottom:2px solid #1b66b3;padding-bottom:2mm}}",
-    ".gruppe{{font-size:8pt;font-weight:900;text-transform:uppercase;color:#1b66b3;margin:4mm 0 1.5mm 0;letter-spacing:.3px;border-bottom:1px solid #1b66b3;padding-bottom:0.5mm}}",
+    "h1{{font-size:13pt;color:#2563eb;margin:0 0 4mm 0;border-bottom:2px solid #2563eb;padding-bottom:2mm}}",
+    ".gruppe{{font-size:8pt;font-weight:900;text-transform:uppercase;color:#2563eb;margin:4mm 0 1.5mm 0;letter-spacing:.3px;border-bottom:1px solid #2563eb;padding-bottom:0.5mm}}",
     ".grid{{display:grid;grid-template-columns:repeat(5,1fr);gap:1mm 3mm}}",
     ".item{{padding:0.8mm 0;border-bottom:1px solid #eee;line-height:1.3}}",
     ".iname{{font-weight:800;font-size:7.5pt}}",
-    ".itel{{color:#1b66b3;font-size:7.5pt}}",
+    ".itel{{color:#2563eb;font-size:7.5pt}}",
     ".imail{{color:#888;font-size:6.5pt;font-style:italic}}",
     ".irole{{font-size:6.5pt;color:#dc2626;font-weight:700}}",
     "@media print{{@page{{size:A4 portrait;margin:10mm}}body{{margin:0}}}}"
@@ -6510,8 +6510,8 @@ function telRender(q) {{
     if(!hits.length) return;
     html += "<div style='margin-bottom:18px'>";
     html += "<div style='font-size:11px;font-weight:900;text-transform:uppercase;"
-          + "letter-spacing:.5px;color:#1b66b3;padding:4px 0;"
-          + "border-bottom:2px solid #1b66b3;margin-bottom:6px'>";
+          + "letter-spacing:.5px;color:#2563eb;padding:4px 0;"
+          + "border-bottom:2px solid #2563eb;margin-bottom:6px'>";
     html += g.gruppe + " <span style='font-weight:500;color:#94a3b8'>(" + hits.length + ")</span></div>";
     html += "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:6px'>";
     hits.forEach(function(p) {{
@@ -6522,7 +6522,7 @@ function telRender(q) {{
       html += "<div style='font-weight:800;font-size:13px;color:#0b1220'>" + p.name + "</div>";
       var telClean = p.tel.replace(/[^\d+]/g,'');
       html += "<a href='tel:" + telClean + "' onclick='event.stopPropagation()'" + " title='ProCall: " + safetel + "'"
-            + " style='display:block;font-size:13px;color:#1b66b3;font-weight:700;margin-top:2px;text-decoration:none;'>&#128222; " + p.tel + "</a>";
+            + " style='display:block;font-size:13px;color:#2563eb;font-weight:700;margin-top:2px;text-decoration:none;'>&#128222; " + p.tel + "</a>";
       if(p.mail) {{
         var isRole = (p.mail==="Disponent"||p.mail==="Chef");
         html += isRole
@@ -6546,8 +6546,8 @@ function samSort(mode) {{
   ["name","count","status"].forEach(function(m) {{
     var btn = document.getElementById("sam-sort-"+m);
     if(!btn) return;
-    btn.style.background = mode===m ? "#1b66b3" : "#fff";
-    btn.style.color      = mode===m ? "#fff"    : "#1b66b3";
+    btn.style.background = mode===m ? "#2563eb" : "#fff";
+    btn.style.color      = mode===m ? "#fff"    : "#2563eb";
   }});
   samRender(document.getElementById("sam-search").value);
 }}
@@ -6727,10 +6727,10 @@ function samRender(q) {{
     "<div style='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;font-size:11px;'>" +
     samStatBtn("all", baseFiltered.length+" Fahrer", "#eef2f7", "#64748b", "Alle Fahrer anzeigen") +
     samStatBtn("done", "&#10003; Ziel erreicht: "+nDone, "#dcfce7", "#16a34a", "Nur Fahrer mit erreichtem Jahresziel anzeigen") +
-    samStatBtn("ok", "&#8679; Im Soll: "+nOk, "#dbeafe", "#1b66b3", "Nur Fahrer im Soll anzeigen") +
+    samStatBtn("ok", "&#8679; Im Soll: "+nOk, "#dbeafe", "#2563eb", "Nur Fahrer im Soll anzeigen") +
     samStatBtn("warn", "&#9888; Leicht hinter: "+nWarn, "#f1f5f9", "#d97706", "Nur Fahrer leicht hinter Soll anzeigen") +
     samStatBtn("crit", "&#8679;&#8595; Rückstand: "+nCrit, "#fee2e2", "#dc2626", "Nur Fahrer mit Rückstand anzeigen") +
-    "<span style='margin-left:auto;color:#94a3b8;font-size:10px;'>Soll heute: <b style='color:#1b66b3;'>"+soll+"</b> / "+ZIEL+" &nbsp;("+satElapsed+" von "+satTotal+" Samstagen)</span>" +
+    "<span style='margin-left:auto;color:#94a3b8;font-size:10px;'>Soll heute: <b style='color:#2563eb;'>"+soll+"</b> / "+ZIEL+" &nbsp;("+satElapsed+" von "+satTotal+" Samstagen)</span>" +
     "</div>";
   document.getElementById("sam-stats").innerHTML = statsHtml;
 
@@ -6739,7 +6739,7 @@ function samRender(q) {{
 
   var statusCfg = {{
     done: {{ border:"#16a34a", bg:"#f0fdf4", badge:"#16a34a", soft:"#dcfce7", icon:"✓", label:"Jahresziel erreicht" }},
-    ok:   {{ border:"#1b66b3", bg:"#eff6ff", badge:"#1b66b3", soft:"#dbeafe", icon:"↑", label:"Im Soll" }},
+    ok:   {{ border:"#2563eb", bg:"#eff6ff", badge:"#2563eb", soft:"#dbeafe", icon:"↑", label:"Im Soll" }},
     warn: {{ border:"#d97706", bg:"#fffbeb", badge:"#d97706", soft:"#fef3c7", icon:"⚠", label:"Leicht hinter Soll" }},
     crit: {{ border:"#dc2626", bg:"#fff1f2", badge:"#dc2626", soft:"#fee2e2", icon:"↓", label:"Rückstand" }}
   }};
@@ -6762,7 +6762,7 @@ function samRender(q) {{
       var tourTxt = e.tour && e.tour !== "zbv" ? e.tour : "z.b.v.";
       return "<span style='display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid #d8dee8;border-radius:5px;padding:4px 8px;margin:3px;font-size:10.5px;color:#334155;'>" +
         "<b style='color:"+cfg.badge+";'>" + samEsc(e.tag||"Sa") + "</b> " + samEsc(e.datum||"") +
-        " <b style='color:#1b66b3;'>" + samEsc(tourTxt) + "</b></span>";
+        " <b style='color:#2563eb;'>" + samEsc(tourTxt) + "</b></span>";
     }}).join("") : "<span style='display:inline-block;color:#94a3b8;font-size:11px;padding:4px 0;'>Keine Einsätze im gewählten Jahr.</span>";
 
     var otherYears = Object.keys(d._byYear).filter(function(y){{ return y !== yr; }}).sort().reverse();
@@ -7151,7 +7151,7 @@ function samToggle(el) {{
           + "</summary>";
     html += "<div style='border-top:1px solid #dbe4ef;padding:7px 10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:4px;max-height:92px;overflow:auto;'>";
     lkwEntries.forEach(function(e) {{
-      html += "<span style='min-height:22px;display:inline-flex;align-items:center;justify-content:space-between;gap:6px;background:#f8fbff;border:1px solid #dbe4ef;border-radius:4px;padding:2px 7px;font-size:10.5px;font-weight:800;color:#1e3a5f;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;'>"
+      html += "<span style='min-height:22px;display:inline-flex;align-items:center;justify-content:space-between;gap:6px;background:#f6fbff;border:1px solid #dbe4ef;border-radius:4px;padding:2px 7px;font-size:10.5px;font-weight:800;color:#1e3a5f;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;'>"
             + "<span style='overflow:hidden;text-overflow:ellipsis;'>" + faEsc(e[0]) + "</span>"
             + "<span style='font-size:10px;color:#94a3b8;font-weight:700;flex:0 0 auto;'>" + e[1] + "x</span></span>";
     }});
@@ -7188,7 +7188,7 @@ function samToggle(el) {{
       + "table{{width:100%;border-collapse:collapse;font-size:10.5px;}}th,td{{border:1px solid #cbd5e1;padding:4px 5px;text-align:left;vertical-align:top;}}"
       + "th{{background:#f1f5f9;font-size:9px;text-transform:uppercase;letter-spacing:.3px;}}.num{{text-align:right;font-variant-numeric:tabular-nums;}}.over{{font-weight:800;color:#991b1b;}}"
       + ".month-block{{break-inside:avoid;margin-top:10px;border:1px solid #cbd5e1;border-radius:5px;overflow:hidden;}}"
-      + ".month-head{{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#f8fbff;border-bottom:1px solid #cbd5e1;padding:6px 8px;}}"
+      + ".month-head{{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#f6fbff;border-bottom:1px solid #cbd5e1;padding:6px 8px;}}"
       + ".month-title{{font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.45px;color:#1e3a5f;min-width:110px;}}"
       + ".month-meta{{font-size:9.5px;color:#475569;font-weight:700;display:flex;gap:8px;flex-wrap:wrap;}}"
       + ".mini{{border-bottom:1px solid #e2e8f0;padding:5px 8px;font-size:9.5px;line-height:1.35;}}"
@@ -7340,7 +7340,7 @@ function samToggle(el) {{
 
     if (monthFilter !== "all") {{
       html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;margin-bottom:12px;'>";
-      html += "<div style='padding:9px 14px;background:#f8fbff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:14px;flex-wrap:wrap;'>";
+      html += "<div style='padding:9px 14px;background:#f6fbff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:14px;flex-wrap:wrap;'>";
       html += "<span style='font-size:12px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.6px;'>" + faEsc(selectedLabel) + "</span>";
       html += "<span style='font-size:11px;color:#94a3b8;font-weight:600;'>" + stats.count + " Schichten" + (sickCount ? " · Krank " + sickCount : "") + (vacationCount ? " · Urlaub " + vacationCount : "") + "</span>";
       html += "<span style='margin-left:auto;font-size:11px;color:#64748b;font-weight:600;'>Σ Netto <b style='color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + _fmtMin(stats.netto) + "</b> &nbsp;·&nbsp; Urlaub +8h <b style='color:#075985;font-variant-numeric:tabular-nums;'>" + _fmtMin(vacationCredit) + "</b> &nbsp;·&nbsp; Σ inkl. Urlaub <b style='color:#0f172a;font-variant-numeric:tabular-nums;'>" + _fmtMin(nettoWithVacation) + "</b> &nbsp;·&nbsp; &gt; 10:00 Netto <b style='color:#be123c;font-variant-numeric:tabular-nums;'>" + stats.over10 + "</b></span>";
@@ -7354,7 +7354,7 @@ function samToggle(el) {{
         var gsVacationCredit = gsVacation * 480;
         var gsNettoWithVacation = gs.netto + gsVacationCredit;
         html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;margin-bottom:12px;'>";
-        html += "<div style='padding:9px 14px;background:#f8fbff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:14px;flex-wrap:wrap;'>";
+        html += "<div style='padding:9px 14px;background:#f6fbff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:14px;flex-wrap:wrap;'>";
         html += "<span style='font-size:12px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.6px;'>" + faEsc(grp.label) + "</span>";
         html += "<span style='font-size:11px;color:#94a3b8;font-weight:600;'>" + gs.count + " Schichten" + (gsSick ? " · Krank " + gsSick : "") + (gsVacation ? " · Urlaub " + gsVacation : "") + "</span>";
         html += "<span style='margin-left:auto;font-size:11px;color:#64748b;font-weight:600;'>Σ Netto <b style='color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + _fmtMin(gs.netto) + "</b> &nbsp;·&nbsp; Urlaub +8h <b style='color:#075985;font-variant-numeric:tabular-nums;'>" + _fmtMin(gsVacationCredit) + "</b> &nbsp;·&nbsp; Σ inkl. Urlaub <b style='color:#0f172a;font-variant-numeric:tabular-nums;'>" + _fmtMin(gsNettoWithVacation) + "</b> &nbsp;·&nbsp; &gt; 10:00 Netto <b style='color:#be123c;font-variant-numeric:tabular-nums;'>" + gs.over10 + "</b></span>";
@@ -7967,7 +7967,7 @@ function samToggle(el) {{
 
     function renderBox(title, sub, headers, rowsHtml, countLabel) {{
       return "<details style='background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;min-width:0;'>"
-        + "<summary style='list-style:none;cursor:pointer;padding:10px 12px;background:#f8fbff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:10px;'>"
+        + "<summary style='list-style:none;cursor:pointer;padding:10px 12px;background:#f6fbff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:10px;'>"
         + "<span><span style='font-size:13px;font-weight:950;color:#0f172a;'>" + title + "</span><span style='display:block;font-size:10.5px;font-weight:700;color:#64748b;margin-top:2px;'>" + sub + "</span></span>"
         + "<span style='font-size:10px;font-weight:950;color:#be123c;background:#fff1f2;border:1px solid #fecdd3;border-radius:999px;padding:3px 8px;white-space:nowrap;'>" + countLabel + "</span>"
         + "</summary>"
@@ -8220,8 +8220,8 @@ function samToggle(el) {{
     html += "<select id='fa10hDriverPdfSel' onchange='window.FA_10H_SELECTED_DRIVER=this.value; faShow10hTours(this.value);' style='border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:5px;padding:5px 8px;font-size:12px;font-weight:800;font-family:inherit;max-width:260px;'><option value=''>Alle Fahrer anzeigen</option>" + driverOptions + "</select>";
     html += "<button type='button' onclick='faExport10hDriverPdf()' style='border:2px solid #cbd5e1;background:#cbd5e1;color:#111827;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:950;cursor:pointer;font-family:inherit;'>PDF Fahrer</button>";
     html += "<span style='background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:900;'>" + rows.length + " Treffer</span>";
-    html += "<span style='background:#f8fbff;color:#0f172a;border:1px solid #e2e8f0;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:800;'>Auswahl: " + faEsc(yearLabel) + "</span>";
-    html += "<span style='background:#f8fbff;color:#0f172a;border:1px solid #e2e8f0;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:800;'>Σ Netto " + _fmtMin(sumNetto) + "</span>";
+    html += "<span style='background:#f6fbff;color:#0f172a;border:1px solid #e2e8f0;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:800;'>Auswahl: " + faEsc(yearLabel) + "</span>";
+    html += "<span style='background:#f6fbff;color:#0f172a;border:1px solid #e2e8f0;border-radius:5px;padding:5px 12px;font-size:12px;font-weight:800;'>Σ Netto " + _fmtMin(sumNetto) + "</span>";
     html += "</div></div></div>";
     html += _faRender10hFrequency(rows);
     html += _faRender10hRows(rows);
