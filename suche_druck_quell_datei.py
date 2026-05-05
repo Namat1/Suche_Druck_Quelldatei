@@ -21,7 +21,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "fahrzeugwaesche-match-final-2026-05-04-v2"
+APP_CACHE_VERSION = "fahrzeugwaesche-match-final-2026-05-05-v3"
 
 
 # =============================================================================
@@ -7171,7 +7171,7 @@ function samToggle(el) {{
       byMonth[mi.key].shifts.push(s);
     }});
     _faAddAbsenceMonths(name, yr, byMonth);
-    var monthKeys = Object.keys(byMonth).sort();
+    var monthKeys = Object.keys(byMonth).sort(function(a,b) {{ return String(b).localeCompare(String(a)); }});
 
     // Standardansicht beim Öffnen: Jahresübersicht / alle Monate.
     // Nur wenn der Nutzer bewusst einen Monat gewählt hat und dieser Monat nicht mehr existiert,
@@ -7204,7 +7204,7 @@ function samToggle(el) {{
           + "<label style='font-size:10.5px;color:#64748b;font-weight:800;text-transform:uppercase;letter-spacing:.5px;'>Monat</label>"
           + "<select onchange=\\\"faSetShiftMonth(this.value)\\\" style='padding:7px 10px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;font-size:12px;font-weight:700;color:#0f172a;'>";
     html += "<option value='all'" + (monthFilter === "all" ? " selected" : "") + ">Alle Monate</option>";
-    monthKeys.slice().reverse().forEach(function(mk) {{
+    monthKeys.forEach(function(mk) {{
       html += "<option value='" + faEsc(mk) + "'" + (monthFilter === mk ? " selected" : "") + ">" + faEsc(byMonth[mk].label) + "</option>";
     }});
     html += "</select>"
@@ -7302,7 +7302,7 @@ function samToggle(el) {{
     }});
     _faAddAbsenceMonths(name, yr, byMonth);
 
-    var monthKeys = Object.keys(byMonth).sort();
+    var monthKeys = Object.keys(byMonth).sort(function(a,b) {{ return String(b).localeCompare(String(a)); }});
     var monthFilter = faShiftMonthFilterByDriver[name] || "all";
     if (monthFilter !== "all" && !byMonth[monthFilter]) monthFilter = "all";
 
