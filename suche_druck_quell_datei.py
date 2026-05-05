@@ -9737,8 +9737,9 @@ def parse_grosskunden_excel(uploaded_file) -> str:
 def _empty_inst(name="Normalwochen"):
     return {"name": name, "suche_html": None, "druck_html": None, "source_sig": None}
 
-if "instances" not in st.session_state:
-    st.session_state.instances = [_empty_inst("Normalwochen")]
+# Session-State robust initialisieren.
+# Wichtig: nicht per Attributzugriff lesen, bevor der Key sicher existiert.
+st.session_state.setdefault("instances", [_empty_inst("Normalwochen")])
 
 
 # -----------------------------------------------------------------------------
@@ -9839,13 +9840,13 @@ with tab_stamm:
 
 # === Tab: Wochen =============================================================
 with tab_wochen:
-    for i, inst in enumerate(st.session_state.instances):
+    for i, inst in enumerate(st.session_state["instances"]):
         _is_normal = (i == 0)
         _label = "Normalwoche" if _is_normal else f"Woche {i+1}"
 
         with st.expander(f"{_label}: {inst['name']}", expanded=_is_normal):
             new_name = st.text_input("Bezeichnung", value=inst["name"], key=f"inst_name_{i}")
-            st.session_state.instances[i]["name"] = new_name
+            st.session_state["instances"][i]["name"] = new_name
 
             _excel_label = "Normalwochen-Excel (Pflicht)" if _is_normal else "Wochen-Excel (Pflicht)"
             excel = st.file_uploader(_excel_label, type=["xlsx"], key=f"excel_{i}")
@@ -9870,16 +9871,16 @@ with tab_wochen:
                         or not inst.get("druck_html")):
                     try:
                         with st.spinner("Generiere Suche + Druck ..."):
-                            st.session_state.instances[i]["suche_html"] = generate_suche_html(
+                            st.session_state["instances"][i]["suche_html"] = generate_suche_html(
                                 excel, _key, _logo, _fach, _fcsb,
                                 lieferhinweis_csv=_lh_csv, rahmentour_csv=_rahmen_csv
                             )
-                            st.session_state.instances[i]["druck_html"] = generate_druck_html(
+                            st.session_state["instances"][i]["druck_html"] = generate_druck_html(
                                 excel, _logo, _fcsb, lieferhinweis_csv=_lh_csv
                             )
-                            st.session_state.instances[i]["source_sig"] = current_source_sig
-                        kb_s = len(st.session_state.instances[i]["suche_html"]) // 1024
-                        kb_d = len(st.session_state.instances[i]["druck_html"]) // 1024
+                            st.session_state["instances"][i]["source_sig"] = current_source_sig
+                        kb_s = len(st.session_state["instances"][i]["suche_html"]) // 1024
+                        kb_d = len(st.session_state["instances"][i]["druck_html"]) // 1024
                         st.success(f"Fertig: Suche {kb_s} KB, Druck {kb_d} KB")
                     except Exception as e:
                         st.error(f"Fehler: {e}")
@@ -9900,12 +9901,12 @@ with tab_wochen:
 
             if i > 0:
                 if st.button("Entfernen", key=f"del_inst_{i}"):
-                    st.session_state.instances.pop(i)
+                    st.session_state["instances"].pop(i)
                     st.rerun()
 
     if st.button("Woche hinzufuegen"):
-        n = len(st.session_state.instances)
-        st.session_state.instances.append(_empty_inst(f"Sonderwoche {n}"))
+        n = len(st.session_state["instances"])
+        st.session_state["instances"].append(_empty_inst(f"Sonderwoche {n}"))
         st.rerun()
 
 # === Tab: Zusatzdateien ======================================================
@@ -9996,8 +9997,13 @@ with tab_extra:
 
 # === Tab: Download ===========================================================
 with tab_dl:
-    ready = [inst for inst in st.session_state.instances
-             if inst["suche_html"] and inst["druck_html"]]
+    instances_state = st.session_state.get("instances")
+    if not isinstance(instances_state, list) or not instances_state:
+        instances_state = [_empty_inst("Normalwochen")]
+        st.session_state["instances"] = instances_state
+
+    ready = [inst for inst in instances_state
+             if inst.get("suche_html") and inst.get("druck_html")]
     if ready:
         zulage_json_state      = st.session_state.get("zulage_json", "{}")
         drittkunden_json_state = st.session_state.get("drittkunden_json", "[]")
