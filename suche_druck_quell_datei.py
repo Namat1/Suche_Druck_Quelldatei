@@ -4762,10 +4762,14 @@ function verstossRender() {
   html += verstossMiniCard("Aktuellster Tag", latestDisplay, topDriver ? ("Top: " + topDriver.name + " (" + topDriver.count + ")") : "Keine Daten", "#1e3a5f", "#f0f4ff", "&#128197;");
   html += "</div>";
 
+  var maxCount = drivers.reduce(function(mx, d) { return Math.max(mx, d.count || 0); }, 1);
+  var podiumColors = ["#d97706", "#6b7280", "#b45309"];  // Gold, Silber, Bronze
+  var podiumBg     = ["#fffbeb", "#f9fafb", "#fff7ed"];
+
   html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-right:18px;'>";
   html += "<table style='width:100%;border-collapse:separate;border-spacing:0;font-size:13px;'>";
   html += "<thead><tr style='position:sticky;top:0;z-index:3;'>";
-  html += "<th style='padding:10px 6px;width:32px;background:#f8fafc;border-bottom:2px solid #e2e8f0;'></th>";
+  html += "<th style='padding:10px 6px;width:44px;background:#f8fafc;border-bottom:2px solid #e2e8f0;text-align:center;font-size:10px;color:#94a3b8;font-weight:700;'>#</th>";
   html += sortableTh("name",    "Fahrer",          "left");
   html += sortableTh("count",   "Verstöße",        "right");
   html += sortableTh("letzter", "Letzter Verstoß", "left");
@@ -4779,20 +4783,48 @@ function verstossRender() {
     var lastStart = last ? last.start : "";
     var lastSort  = last ? last.date_sort : "";
     var isRecent = !!(_latestViolationDay && lastSort && lastSort.substring(0, 10) === _latestViolationDay);
-    var rowBg = isOpen ? "#eef6ff" : (isRecent ? "#fef2f2" : (i % 2 === 0 ? "#ffffff" : "#f9fafb"));
+
+    // Severity: 0-1 basierend auf count vs max
+    var severity = Math.min(1, (d.count || 0) / maxCount);
+    var borderColor = isOpen ? "#1e3a5f" : (isRecent ? "#dc2626" : (severity > 0.6 ? "#dc2626" : severity > 0.3 ? "#f59e0b" : "#22c55e"));
+
+    // Top-3 Podium
+    var isPodium = (_vsSortKey === "count" && _vsSortDir === "desc" && i < 3);
+    var rowBg = isOpen ? "#eef6ff" : (isPodium ? podiumBg[i] : (isRecent ? "#fef2f2" : (i % 2 === 0 ? "#ffffff" : "#f9fafb")));
+
+    // Count bar width
+    var barPct = Math.max(8, Math.round(severity * 100));
     var countSeverity = d.count >= 15 ? 3 : d.count >= 8 ? 2 : d.count >= 3 ? 1 : 0;
-    var countBg = ["#e0f2fe", "#fef3c7", "#fee2e2", "#fecaca"][countSeverity];
+    var countBarColor = ["#bae6fd", "#fde68a", "#fecaca", "#fca5a5"][countSeverity];
     var countColor = ["#075985", "#92400e", "#991b1b", "#7f1d1d"][countSeverity];
 
+    // Rang-Display
+    var rankDisplay = "";
+    if (isPodium) {
+      var medal = ["&#129351;", "&#129352;", "&#129353;"][i];
+      rankDisplay = "<span style='font-size:16px;line-height:1;'>" + medal + "</span>";
+    } else {
+      rankDisplay = "<span style='font-size:12px;font-weight:800;color:#94a3b8;'>" + (i + 1) + "</span>";
+    }
+
     html += "<tr onclick='verstossToggleDriver(" + JSON.stringify(d.name) + ")' "
-          + "style='background:" + rowBg + ";cursor:pointer;transition:background .1s;border-left:4px solid " + (isOpen ? "#1e3a5f" : (isRecent ? "#dc2626" : "transparent")) + ";' "
+          + "style='background:" + rowBg + ";cursor:pointer;transition:background .1s;border-left:4px solid " + borderColor + ";' "
           + "onmouseover=\"this.style.background='#f0f4ff'\" onmouseout=\"this.style.background='" + rowBg + "'\">";
-    html += "<td style='padding:12px 4px 12px 8px;text-align:center;color:" + (isOpen ? "#1e3a5f" : "#94a3b8") + ";font-size:11px;border-bottom:1px solid #eef2f7;'>" + (isOpen ? "&#9660;" : "&#9654;") + "</td>";
+    html += "<td style='padding:10px 4px;text-align:center;border-bottom:1px solid #eef2f7;vertical-align:middle;'>"
+          + "<div style='display:flex;flex-direction:column;align-items:center;gap:2px;'>"
+          + rankDisplay
+          + "<span style='color:" + (isOpen ? "#1e3a5f" : "#cbd5e1") + ";font-size:8px;'>" + (isOpen ? "&#9660;" : "&#9654;") + "</span>"
+          + "</div></td>";
     html += "<td style='padding:12px 12px;border-bottom:1px solid #eef2f7;'>"
           + "<span style='font-weight:900;color:#0f172a;font-size:13.5px;'>" + verstossEsc(d.name) + "</span>"
+          + (isPodium ? " <span style='font-size:10px;font-weight:800;color:" + podiumColors[i] + ";'>Top " + (i+1) + "</span>" : "")
           + "</td>";
     html += "<td style='padding:12px 12px;text-align:right;border-bottom:1px solid #eef2f7;'>"
-          + "<span style='display:inline-flex;align-items:center;justify-content:center;min-width:40px;background:" + countBg + ";color:" + countColor + ";border-radius:6px;padding:4px 10px;font-size:13px;font-weight:950;font-variant-numeric:tabular-nums;'>" + d.count + "</span></td>";
+          + "<div style='display:flex;align-items:center;justify-content:flex-end;gap:8px;'>"
+          + "<div style='width:80px;height:8px;background:#f1f5f9;border-radius:4px;overflow:hidden;flex:0 0 80px;'>"
+          + "<div style='height:100%;width:" + barPct + "%;background:" + countBarColor + ";border-radius:4px;transition:width .3s;'></div></div>"
+          + "<span style='display:inline-flex;align-items:center;justify-content:center;min-width:40px;background:" + countBarColor + ";color:" + countColor + ";border-radius:6px;padding:4px 10px;font-size:13px;font-weight:950;font-variant-numeric:tabular-nums;'>" + d.count + "</span>"
+          + "</div></td>";
     html += "<td style='padding:12px 12px;border-bottom:1px solid #eef2f7;color:" + (isRecent ? "#991b1b" : "#334155") + ";font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums;font-size:13px;'>"
           + verstossEsc(lastStart || "—")
           + (isRecent ? " <span style='display:inline-flex;align-items:center;background:#dc2626;color:#fff;border-radius:4px;padding:2px 7px;font-size:9.5px;font-weight:900;margin-left:6px;letter-spacing:.3px;'>NEU</span>" : "")
@@ -4817,6 +4849,24 @@ function verstossRender() {
       html += "<button onclick='event.stopPropagation();verstossPdfOne(" + JSON.stringify(d.name) + ")' "
             + "style='margin-left:auto;padding:8px 16px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-weight:900;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;'>"
             + "&#128196; PDF drucken</button>";
+      html += "</div>";
+
+      // Kompakte Summary-Zeile
+      var avgDP = d.count > 0 ? ((d.sum_driver_penalty || 0) / d.count) : 0;
+      var avgCP = d.count > 0 ? ((d.sum_company_penalty || 0) / d.count) : 0;
+      var pctOfTotal = totV > 0 ? Math.round((d.count / totV) * 1000) / 10 : 0;
+      var topType = (d.types && d.types.length) ? d.types[0] : null;
+      html += "<div style='display:flex;gap:12px;padding:10px 18px;border-bottom:1px solid #e2e8f0;background:#fff;flex-wrap:wrap;'>";
+      html += "<div style='display:flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:5px 10px;font-size:11.5px;'>"
+            + "<span style='color:#64748b;font-weight:700;'>Anteil</span> <b style='color:#0f172a;'>" + pctOfTotal + "%</b></div>";
+      html += "<div style='display:flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:5px 10px;font-size:11.5px;'>"
+            + "<span style='color:#64748b;font-weight:700;'>&#216; Fahrer</span> <b style='color:#dc2626;'>" + verstossFmtEuro(avgDP) + "</b></div>";
+      html += "<div style='display:flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:5px 10px;font-size:11.5px;'>"
+            + "<span style='color:#64748b;font-weight:700;'>&#216; Firma</span> <b style='color:#b45309;'>" + verstossFmtEuro(avgCP) + "</b></div>";
+      if (topType) {
+        html += "<div style='display:flex;align-items:center;gap:5px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:5px 10px;font-size:11.5px;'>"
+              + "<span style='color:#64748b;font-weight:700;'>Häufigster</span> <b style='color:#991b1b;'>" + verstossEsc(topType[0].length > 30 ? topType[0].substring(0,28) + "…" : topType[0]) + " (" + topType[1] + ")</b></div>";
+      }
       html += "</div>";
 
       if (d.types && d.types.length) {
