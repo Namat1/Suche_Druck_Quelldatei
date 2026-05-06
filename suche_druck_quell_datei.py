@@ -7806,9 +7806,17 @@ function samToggle(el) {{
 
   function _faCandidateDateKeys(shift) {{
     var dk = _faShiftDateKey(shift);
-    // Wichtig: Zuordnung immer nach dem Datum des Anfangstages suchen.
-    // Auch bei Ende +1 wird NICHT auf den Folgetag gewechselt.
-    return dk ? [dk] : [];
+    if (!dk) return [];
+    // Schichtbeginn prüfen: bei spätem Start (>= 20:00) auch Folgetag suchen,
+    // weil der Fahrer kurz vor Mitternacht seine Karte steckt, die Tour aber
+    // im Tourenplan unter dem nächsten Tag steht.
+    var beginn = _toMin(shift && shift.beginn);
+    if (beginn && beginn >= 1200) {{
+      // 1200 min = 20:00 Uhr → auch Folgetag als Kandidat
+      var nextDk = _faAddDaysKey(dk, 1);
+      return nextDk ? [dk, nextDk] : [dk];
+    }}
+    return [dk];
   }}
 
   function _faPlanEntriesForShift(name, shift) {{
@@ -7876,7 +7884,8 @@ function samToggle(el) {{
 
   function _faScorePlanCandidate(e, shift, strictDriver) {{
     var score = strictDriver ? 500 : 900;
-    score += (e._matchDateRank || 0) * 120;
+    var dateRank = e._matchDateRank || 0;
+    score += dateRank * 120;
 
     var planLkw = String(e.lkw || "").trim();
     var shiftLkw = String(shift && shift.lkw || "").trim();
@@ -7888,6 +7897,16 @@ function samToggle(el) {{
     else score += 80;
 
     var diff = _faEntryTimeDiffMin(e.zeit, shift.beginn);
+    // Bei Folgetag-Zuordnung (dateRank>0, Schicht >= 20:00): Zeitdiff über
+    // Mitternacht berechnen, z.B. Schicht 23:44, Plan 00:00 → 16 min
+    if (dateRank > 0) {{
+      var shiftMin = _toMin(shift && shift.beginn);
+      var planMin  = _toMin(e.zeit);
+      if (shiftMin >= 1200 && planMin !== null) {{
+        var midnightDiff = (1440 - shiftMin) + planMin;
+        if (midnightDiff < diff) diff = midnightDiff;
+      }}
+    }}
     if (diff <= 30) score -= 360;
     else if (diff <= 90) score -= 260;
     else if (diff <= 180) score -= 120;
@@ -7934,10 +7953,11 @@ function samToggle(el) {{
     if (best) {{
       var lkwOkStrict = _faLkwMatch(best.lkw, shift.lkw);
       var diffStrict = _faEntryTimeDiffMin(best.zeit, shift.beginn);
-      if (lkwOkStrict && diffStrict <= 360) best._matchSource = "Fahrer + Anfangstag + LKW + Startzeit";
-      else if (lkwOkStrict) best._matchSource = "Fahrer + Anfangstag + LKW";
-      else if (diffStrict <= 180) best._matchSource = "Fahrer + Anfangstag + Startzeit";
-      else best._matchSource = "Fahrer + Anfangstag";
+      var nextDay = (best._matchDateRank || 0) > 0 ? " (Folgetag)" : "";
+      if (lkwOkStrict && diffStrict <= 360) best._matchSource = "Fahrer + Anfangstag + LKW + Startzeit" + nextDay;
+      else if (lkwOkStrict) best._matchSource = "Fahrer + Anfangstag + LKW" + nextDay;
+      else if (diffStrict <= 180) best._matchSource = "Fahrer + Anfangstag + Startzeit" + nextDay;
+      else best._matchSource = "Fahrer + Anfangstag" + nextDay;
       return best;
     }}
 
@@ -7953,9 +7973,10 @@ function samToggle(el) {{
     if (best) {{
       var lkwOk = _faLkwMatch(best.lkw, shift.lkw);
       var diff = _faEntryTimeDiffMin(best.zeit, shift.beginn);
-      if (lkwOk && diff <= 360) best._matchSource = "Fallback: LKW + Anfangstag + Startzeit";
-      else if (lkwOk) best._matchSource = "Fallback: LKW + Anfangstag";
-      else best._matchSource = "Fallback: Anfangstag + Startzeit";
+      var nextDay = (best._matchDateRank || 0) > 0 ? " (Folgetag)" : "";
+      if (lkwOk && diff <= 360) best._matchSource = "Fallback: LKW + Anfangstag + Startzeit" + nextDay;
+      else if (lkwOk) best._matchSource = "Fallback: LKW + Anfangstag" + nextDay;
+      else best._matchSource = "Fallback: Anfangstag + Startzeit" + nextDay;
     }}
     return best;
   }}
