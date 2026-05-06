@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "verstossliste-jahresfilter-2026-05-05-v13-redesign"
+APP_CACHE_VERSION = "verstossliste-jahresfilter-2026-05-05-v14-singlescroll"
 
 
 # =============================================================================
@@ -4883,9 +4883,9 @@ function verstossRender() {
         html += "</div>";
       }
 
-      html += "<div style='max-height:520px;overflow:auto;'>";
+      html += "<div>";
       html += "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
-      html += "<thead><tr style='position:sticky;top:0;z-index:2;background:#1e3a5f;color:#fff;'>";
+      html += "<thead><tr style='background:#1e3a5f;color:#fff;'>";
       ["Zeitraum", "", "Verstoß", "Soll", "Ist", "Diff.", "Fahrer €", "Firma €"].forEach(function(h, idx) {
         var align = ([3,4,5,6,7].indexOf(idx) >= 0) ? "right" : "left";
         var w = idx === 0 ? "width:100px;" : idx === 1 ? "width:100px;" : idx === 2 ? "min-width:200px;" : "width:80px;";
