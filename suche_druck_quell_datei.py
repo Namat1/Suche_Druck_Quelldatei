@@ -4148,6 +4148,7 @@ var _vsSortKey = "letzter";    // name | count | letzter | dp | cp
 var _vsSortDir = "desc";       // asc | desc
 var _vsTypeFilter = "";       // aktive Verstoßart im aufgeklappten Fahrer
 var _vsListYear = "all";      // Jahresfilter in der Liste, Start: alle Jahre
+var _vsDetailShown = 30;      // Pagination: aktuell sichtbare Einzelverstöße
 
 function verstossEsc(v) {
   return String(v == null ? "" : v)
@@ -4597,6 +4598,7 @@ function verstossToggleDriver(name) {
     _vsOpenDriver = null;
   } else {
     _vsOpenDriver = name;
+    _vsDetailShown = 30;
   }
   _vsTypeFilter = "";
   verstossRender();
@@ -4604,11 +4606,18 @@ function verstossToggleDriver(name) {
 
 function verstossFilterType(type) {
   _vsTypeFilter = String(type || "");
+  _vsDetailShown = 30;
   verstossRender();
 }
 
 function verstossResetTypeFilter() {
   _vsTypeFilter = "";
+  _vsDetailShown = 30;
+  verstossRender();
+}
+
+function verstossShowMore() {
+  _vsDetailShown += 30;
   verstossRender();
 }
 
@@ -4845,7 +4854,7 @@ function verstossRender() {
       html += "<div onclick='verstossToggleDriver(" + JSON.stringify(d.name) + ")' style='display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid #e2e8f0;background:#f8fafc;flex-wrap:wrap;cursor:pointer;' title='Klicken zum Schließen'>";
       html += "<div style='color:#1e3a5f;font-size:13px;flex:0 0 auto;'>&#9660;</div>";
       html += "<div style='min-width:0;flex:1;'><div style='font-size:14px;font-weight:900;color:#0f172a;'>" + verstossEsc(d.name) + " — Einzelverstöße</div>"
-            + "<div style='font-size:12px;font-weight:700;color:#64748b;margin-top:3px;'>" + detailList.length + " von " + d.count + " Verstöße" + (_vsTypeFilter ? " · Filter: " + verstossEsc(_vsTypeFilter) : "") + "</div></div>";
+            + "<div style='font-size:12px;font-weight:700;color:#64748b;margin-top:3px;'>" + Math.min(_vsDetailShown, detailList.length) + " von " + detailList.length + " angezeigt" + (_vsTypeFilter ? " · Filter: " + verstossEsc(_vsTypeFilter) : "") + "</div></div>";
       html += "<button onclick='event.stopPropagation();verstossPdfOne(" + JSON.stringify(d.name) + ")' "
             + "style='margin-left:auto;padding:8px 16px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-weight:900;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;'>"
             + "&#128196; PDF drucken</button>";
@@ -4897,8 +4906,12 @@ function verstossRender() {
         html += "<tr><td colspan='8' style='padding:28px;text-align:center;color:#64748b;font-weight:700;background:#fff;'>Keine Verstöße für diesen Filter.</td></tr>";
       }
 
+      var visibleList = detailList.slice(0, _vsDetailShown);
+      var hasMore = detailList.length > _vsDetailShown;
+      var remaining = detailList.length - _vsDetailShown;
+
       var currentMonth = "";
-      detailList.forEach(function(v, j) {
+      visibleList.forEach(function(v, j) {
         var monthLabel = vsMonthLabel(v);
         if (monthLabel !== currentMonth) {
           currentMonth = monthLabel;
@@ -4922,6 +4935,14 @@ function verstossRender() {
         html += "<td style='padding:9px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid #f1f5f9;'>" + vsPenaltyPill(v.company_penalty, "#b45309") + "</td>";
         html += "</tr>";
       });
+
+      if (hasMore) {
+        html += "<tr><td colspan='8' style='padding:14px;text-align:center;background:#f8fafc;border-top:2px solid #e2e8f0;'>"
+              + "<button onclick='event.stopPropagation();verstossShowMore()' "
+              + "style='padding:10px 28px;background:#1e3a5f;color:#fff;border:none;border-radius:8px;font-weight:900;font-size:13px;cursor:pointer;font-family:inherit;'>"
+              + "&#9660; Weitere " + Math.min(30, remaining) + " von " + remaining + " anzeigen</button>"
+              + "</td></tr>";
+      }
 
       html += "</tbody></table></div>";
       html += "</div>";
