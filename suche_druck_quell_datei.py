@@ -2509,10 +2509,14 @@ def parse_samstag_excel(dateien: list) -> str:
             if not is_saturday and not is_sunday and not is_friday:
                 continue
 
-            start = df[df["Spalte_0"] == 6001].index.min()
-            if pd.isna(start):
-                continue
-            df_sat = df.loc[start:start+40]
+            # Freitag-Dateien haben keinen 6001-Block → alle Tourenzeilen durchsuchen
+            if is_friday:
+                df_sat = df.iloc[5:].reset_index(drop=True)
+            else:
+                start = df[df["Spalte_0"] == 6001].index.min()
+                if pd.isna(start):
+                    continue
+                df_sat = df.loc[start:start+40]
 
             def parse_time_minutes(val):
                 """Gibt Minuten seit Mitternacht zurück, oder None wenn nicht parsebar."""
@@ -2757,7 +2761,7 @@ def parse_fahrer_excel(dateien: list) -> str:
                     "tour": tour,
                     "zeit": uhrzeit,
                     "lkw": lkw,
-                    "samstag": wd == "Samstag",
+                    "samstag": wd == "Samstag" or (wd == "Freitag" and uhrzeit >= "18:00" and uhrzeit != "n.A."),
                 })
 
     # Aggregate
