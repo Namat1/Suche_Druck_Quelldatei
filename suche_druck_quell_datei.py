@@ -5098,72 +5098,90 @@ function verstossPdfOne(name) {
         )
     instances_js = ",\n".join(inst_js_parts)
 
-    # Merge: add all fa drivers into sam_json + add Sunday < 15:00 deployments
+    # Merge: build sam_json from TIMEREC (Tachograph) data as primary source
     try:
         import json as _j
         import datetime as _dt2
-        sam_list = _j.loads(sam_json)
-        fa_list  = _j.loads(fa_json)
 
-        # Build sam lookup by name
-        sam_by_name = {d["name"]: d for d in sam_list}
+        timerec = _j.loads(timerec_json) if timerec_json and timerec_json != "{}" else {}
+        fa_list = _j.loads(fa_json)
+
+        def _is_planung_driver(name):
+            return str(name or "").strip().lower() in ("unzugeordnet, planung", "planung, unzugeordnet")
 
         def parse_mins(zeit_str):
-            """Parse 'HH:MM' → minutes since midnight, or None."""
             if not zeit_str or zeit_str == "n.A.": return None
             try:
                 parts = zeit_str.strip().split(":")
                 return int(parts[0]) * 60 + int(parts[1])
             except: return None
 
-        def _is_planung_driver(name):
-            return str(name or "").strip().lower() in ("unzugeordnet, planung", "planung, unzugeordnet")
+        sam_by_name = {}
+        cur_year = _dt2.datetime.now().year
 
-        # Scan fa_json for Sunday entries before 15:00
-        # Wichtig: interne Planungszeilen ohne Fahrer nicht als echter Fahrer in Sa+So anzeigen.
-        for fd in fa_list:
-            name = fd["name"]
-            if _is_planung_driver(name):
+        # Scan TIMEREC_DATA for Sa, Fr>=18:00, So<15:00
+        for driver_name, shifts in timerec.items():
+            if _is_planung_driver(driver_name):
                 continue
-            for yr_data in fd.get("years", {}).values():
-                for e in yr_data.get("eintraege", []):
-                    if not e.get("datum", "").startswith("Sonntag"):
-                        continue
-                    mins = parse_mins(e.get("zeit", ""))
-                    if mins is None or mins >= 15 * 60:
-                        continue
-                    # This is a Sunday tour before 15:00 → count as Samstag-Einsatz
-                    datum_str = e["datum"].replace("Sonntag, ", "") + f" (KW{e['kw']})"
-                    entry = {"datum": datum_str, "tour": e.get("tour", ""), "tag": "So"}
-                    if name not in sam_by_name:
-                        sam_by_name[name] = {
-                            "name": name,
-                            "nachname": name.split(", ")[0] if ", " in name else name,
-                            "vorname":  name.split(", ")[1] if ", " in name else "",
-                            "einsaetze": 0,
-                            "daten": [],
-                        }
-                        sam_list.append(sam_by_name[name])
-                    sam_by_name[name]["daten"].append(entry)
+            for s in shifts:
+                tag_str  = s.get("tag", "")       # "DD.MM.YYYY"
+                wd       = s.get("wochentag", "")  # "Mo"..."So"
+                beginn   = s.get("beginn", "")     # "HH:MM"
+                lkw      = s.get("lkw", "")
 
-        # Add all fa drivers with 0 deployments if still missing
-        # Planungszeilen ohne Fahrer bleiben nur als technische Matching-Daten für 10H,
-        # sie werden nicht als Fahrer in der Sa+So-Übersicht geführt.
+                # Parse date
+                try:
+                    d_obj = _dt2.datetime.strptime(tag_str, "%d.%m.%Y")
+                except Exception:
+                    continue
+                if d_obj.year != cur_year:
+                    continue
+
+                # Filter: Sa, Fr ab 18:00, So vor 15:00
+                is_sa = (wd == "Sa")
+                mins  = parse_mins(beginn)
+                is_fr_abend = (wd == "Fr" and mins is not None and mins >= 18 * 60)
+                is_so_frueh = (wd == "So" and mins is not None and mins < 15 * 60)
+
+                if not is_sa and not is_fr_abend and not is_so_frueh:
+                    continue
+
+                kw = d_obj.isocalendar()[1]
+                datum_kw = f"{tag_str} (KW{kw})"
+                tag_label = "So" if is_so_frueh else ("Fr→Sa" if is_fr_abend else "Sa")
+                tour_display = lkw if lkw else ""
+
+                if driver_name not in sam_by_name:
+                    parts = driver_name.split(", ", 1)
+                    sam_by_name[driver_name] = {
+                        "name": driver_name,
+                        "nachname": parts[0] if len(parts) >= 1 else driver_name,
+                        "vorname":  parts[1] if len(parts) >= 2 else "",
+                        "einsaetze": 0,
+                        "daten": [],
+                    }
+                sam_by_name[driver_name]["daten"].append({
+                    "datum": datum_kw,
+                    "tour": tour_display,
+                    "tag": tag_label,
+                })
+
+        # Add all FA drivers with 0 deployments if missing
         for fd in fa_list:
             if _is_planung_driver(fd.get("name")):
                 continue
             if fd["name"] not in sam_by_name:
-                d = {
+                parts = fd["name"].split(", ", 1)
+                sam_by_name[fd["name"]] = {
                     "name": fd["name"],
-                    "nachname": fd["name"].split(", ")[0] if ", " in fd["name"] else fd["name"],
-                    "vorname":  fd["name"].split(", ")[1] if ", " in fd["name"] else "",
+                    "nachname": parts[0] if len(parts) >= 1 else fd["name"],
+                    "vorname":  parts[1] if len(parts) >= 2 else "",
                     "einsaetze": 0,
                     "daten": [],
                 }
-                sam_list.append(d)
-                sam_by_name[fd["name"]] = d
 
         # Update einsaetze count
+        sam_list = list(sam_by_name.values())
         for d in sam_list:
             d["einsaetze"] = len(d["daten"])
 
