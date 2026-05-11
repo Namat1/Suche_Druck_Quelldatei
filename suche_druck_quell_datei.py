@@ -7262,6 +7262,11 @@ function samToggle(el) {{
     return html;
   }}
 
+  // Freitag ab 18:00 zählt als Samstags-Einsatz
+  function _isFrAbend(s) {{
+    return s.wochentag === "Fr" && s.beginn && s.beginn >= "18:00";
+  }}
+
   function _summarizeShifts(shifts) {{
     var out = {{ count: shifts.length, dauer: 0, netto: 0, over10: 0, samstage: 0, sonntage: 0, lkwSet: {{}} }};
     shifts.forEach(function(s) {{
@@ -7269,7 +7274,7 @@ function samToggle(el) {{
       out.dauer += _toMin(s.schichtdauer);
       out.netto += netto;
       if (netto > 600) out.over10 += 1;
-      if (s.wochentag === "Sa") out.samstage += 1;
+      if (s.wochentag === "Sa" || _isFrAbend(s)) out.samstage += 1;
       if (s.wochentag === "So") out.sonntage += 1;
       (s.lkw || "").split(",").forEach(function(l) {{
         l = l.trim();
@@ -7305,7 +7310,7 @@ function samToggle(el) {{
     rows.forEach(function(s, i) {{
       var netto = _toMin(s.profil);
       var over = netto > 600;
-      var weekend = s.wochentag === "Sa" || s.wochentag === "So";
+      var weekend = s.wochentag === "Sa" || s.wochentag === "So" || _isFrAbend(s);
       var rowBg = over ? "#fff1f2" : (weekend ? "#fff7ed" : (i % 2 === 0 ? "#fff" : "#fafbfc"));
       var tagColor = weekend ? (s.wochentag === "So" ? "#dc2626" : "#b45309") : "#0f172a";
       var endeStr = faEsc(s.ende || "");
