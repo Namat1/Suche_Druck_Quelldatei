@@ -2795,7 +2795,7 @@ def parse_fahrer_excel(dateien: list) -> str:
 
 
 def parse_timerecording_csv(uploaded_file) -> str:
-    """Liest die Tachograph-Schicht-CSV (timerecording_v3*.csv) und liefert JSON
+    """Liest die Tachograph-Schicht-Datei (CSV oder XLSX) und liefert JSON
     pro Fahrer:
         {"Nachname, Vorname": [
             {"tag":"DD.MM.YYYY","wochentag":"Mo","beginn":"HH:MM","ende":"HH:MM",
@@ -2804,41 +2804,62 @@ def parse_timerecording_csv(uploaded_file) -> str:
     import json as _json
     import csv as _csv
     import datetime as _dt
-    from io import StringIO
+    from io import StringIO, BytesIO
 
     raw = read_upload_bytes(uploaded_file)
     if not raw:
         return "{}"
-    # BOM-tolerant decoding
-    for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+
+    # ── Detect XLSX vs CSV ──────────────────────────────────────────────────
+    is_xlsx = raw[:4] == b'PK\x03\x04'  # ZIP magic bytes = xlsx
+    rows = []
+    header_raw = []
+
+    if is_xlsx:
         try:
-            text = raw.decode(enc)
-            break
-        except UnicodeDecodeError:
-            continue
+            import pandas as _pd
+            df = _pd.read_excel(BytesIO(raw), header=0, dtype=str)
+            header_raw = [str(c) for c in df.columns]
+            for _, r in df.iterrows():
+                rows.append([str(r[c]) if _pd.notna(r[c]) else "" for c in df.columns])
+        except Exception:
+            return "{}"
     else:
+        # CSV path (original)
+        for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+            try:
+                text = raw.decode(enc)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            return "{}"
+        reader = _csv.reader(StringIO(text), delimiter=";", quotechar='"')
+        all_rows = list(reader)
+        if not all_rows or len(all_rows) < 2:
+            return "{}"
+        header_raw = [h.strip() for h in all_rows[0]]
+        rows = all_rows[1:]
+
+    if not rows:
         return "{}"
 
-    reader = _csv.reader(StringIO(text), delimiter=";", quotechar='"')
-    rows = list(reader)
-    if not rows or len(rows) < 2:
-        return "{}"
-
-    header = [h.strip().lower() for h in rows[0]]
+    header = [h.lower().strip() for h in header_raw]
 
     def col(name_variants):
         for v in name_variants:
             v = v.lower().strip()
-            if v in header:
-                return header.index(v)
+            for i, h in enumerate(header):
+                if v in h:  # substring match for longer XLSX headers
+                    return i
         return -1
 
     idx_person = col(["person"])
-    idx_beg    = col(["schichtbeginn"])
-    idx_end    = col(["schichtende"])
+    idx_beg    = col(["schichtbeginn", "beginn"])
+    idx_end    = col(["schichtende", "ende"])
     idx_dauer  = col(["schichtdauer"])
     idx_profil = col(["arbeitszeit nach arbeitszeitprofil"])
-    idx_lkw    = col(["fahrzeuge"])
+    idx_lkw    = col(["fahrzeuge", "terminal"])
 
     if idx_person < 0 or idx_beg < 0:
         return "{}"
@@ -2847,26 +2868,46 @@ def parse_timerecording_csv(uploaded_file) -> str:
     by_driver = {}
 
     def split_dt(s):
+        """Parse 'DD.MM.YYYY HH:MM' or '2026-01-02 00:30:00' → (date_str, time_str)."""
         s = (s or "").strip()
         if not s:
             return ("", "")
-        # "DD.MM.YYYY HH:MM"
+        # Try ISO format first (from XLSX datetime strings: '2026-01-02 00:30:00')
+        try:
+            d_obj = _dt.datetime.fromisoformat(s)
+            return (d_obj.strftime("%d.%m.%Y"), d_obj.strftime("%H:%M"))
+        except (ValueError, TypeError):
+            pass
+        # Fallback: "DD.MM.YYYY HH:MM"
         parts = s.split(" ")
         if len(parts) >= 2:
-            return (parts[0].strip(), parts[1].strip())
+            return (parts[0].strip(), parts[1].strip()[:5])
         return (s, "")
 
-    for r in rows[1:]:
+    def fmt_duration(s):
+        """Normalize timedelta strings like '0 days 09:14:00' → '09:14'."""
+        s = (s or "").strip()
+        if not s:
+            return ""
+        import re
+        m = re.search(r'(\d{1,2}):(\d{2})', s)
+        if m:
+            return f"{int(m.group(1)):02d}:{m.group(2)}"
+        return s
+
+    for r in rows:
         if not r or len(r) <= idx_person:
             continue
         name = (r[idx_person] or "").strip()
-        if not name:
+        if not name or name.lower() in ("nan", "none", ""):
             continue
         beg_d, beg_t = split_dt(r[idx_beg]) if idx_beg < len(r) else ("", "")
         end_d, end_t = split_dt(r[idx_end]) if 0 <= idx_end < len(r) else ("", "")
-        dauer  = (r[idx_dauer]  or "").strip() if 0 <= idx_dauer  < len(r) else ""
-        profil = (r[idx_profil] or "").strip() if 0 <= idx_profil < len(r) else ""
+        dauer  = fmt_duration(r[idx_dauer])  if 0 <= idx_dauer  < len(r) else ""
+        profil = fmt_duration(r[idx_profil]) if 0 <= idx_profil < len(r) else ""
         lkw    = (r[idx_lkw]    or "").strip() if 0 <= idx_lkw    < len(r) else ""
+        if lkw.lower() in ("nan", "none"):
+            lkw = ""
 
         if not beg_d:
             continue
