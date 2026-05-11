@@ -2503,9 +2503,10 @@ def parse_samstag_excel(dateien: list) -> str:
                     if n and v and n not in ("0", "nan") and v not in ("0", "nan") and not ist_ausgeschlossen(n):
                         alle_fahrer.add((n, v))
 
-            # Samstag oder Sonntag (Sonntag nur bis 15:00 Uhr)
+            # Samstag, Sonntag (nur bis 15:00), oder Freitag (ab 18:00 → zählt als Sa)
             is_sunday = parsed_date.weekday() == 6  # 6 = Sonntag
-            if not is_saturday and not is_sunday:
+            is_friday = parsed_date.weekday() == 4  # 4 = Freitag
+            if not is_saturday and not is_sunday and not is_friday:
                 continue
 
             start = df[df["Spalte_0"] == 6001].index.min()
@@ -2541,6 +2542,12 @@ def parse_samstag_excel(dateien: list) -> str:
                     mins = parse_time_minutes(zeit_raw)
                     if mins is None or mins >= 15 * 60:
                         continue
+                # Freitagfilter: nur Touren mit Startzeit >= 18:00
+                if is_friday:
+                    zeit_raw = row[8] if len(row) > 8 else None
+                    mins = parse_time_minutes(zeit_raw)
+                    if mins is None or mins < 18 * 60:
+                        continue
 
                 paare = []
                 if len(row) > 4 and pd.notna(row[3]) and pd.notna(row[4]):
@@ -2553,7 +2560,7 @@ def parse_samstag_excel(dateien: list) -> str:
                     tour = row[0] if len(row) > 0 else "zbv"
                     if pd.isna(tour):
                         tour = "zbv"
-                    tag_label = "So" if is_sunday else "Sa"
+                    tag_label = "So" if is_sunday else ("Fr→Sa" if is_friday else "Sa")
                     key = (nachname, vorname)
                     if key not in gearbeitete_daten:
                         gearbeitete_daten[key] = []
