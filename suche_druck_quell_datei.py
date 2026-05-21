@@ -7061,6 +7061,55 @@ function samToggle(el) {{
     return (neg ? "-" : "") + h + ":" + (mm < 10 ? "0" + mm : mm);
   }}
 
+  // ── Download-Cutoff-Erkennung ────────────────────────────────────────────
+  // Tachograph-Downloads erzeugen für noch laufende Schichten einen
+  // künstlichen Schichtende-Zeitpunkt (= Auslesezeitpunkt).  Wenn ≥10
+  // Schichten denselben Ende-Zeitpunkt (Datum+Uhrzeit) teilen, handelt es
+  // sich mit Sicherheit um einen solchen Cutoff.
+  var _faCutoffSet = null;
+
+  function _faComputeEndDate(s) {{
+    var d = s.tag || "";
+    if (!s.ende_naechster_tag) return d;
+    var m = d.match(/^(\d{{2}})\.(\d{{2}})\.(\d{{4}})$/);
+    if (!m) return d;
+    var dt = new Date(parseInt(m[3],10), parseInt(m[2],10)-1, parseInt(m[1],10)+1);
+    return (dt.getDate()<10?"0":"") + dt.getDate() + "."
+         + ((dt.getMonth()+1)<10?"0":"") + (dt.getMonth()+1) + "."
+         + dt.getFullYear();
+  }}
+
+  function _faGetCutoffSet() {{
+    if (_faCutoffSet) return _faCutoffSet;
+    var freq = {{}};
+    Object.keys(TIMEREC_DATA || {{}}).forEach(function(name) {{
+      (TIMEREC_DATA[name] || []).forEach(function(s) {{
+        if (!s.ende) return;
+        var key = _faComputeEndDate(s) + " " + s.ende;
+        freq[key] = (freq[key] || 0) + 1;
+      }});
+    }});
+    _faCutoffSet = {{}};
+    Object.keys(freq).forEach(function(k) {{
+      if (freq[k] >= 10) _faCutoffSet[k] = true;
+    }});
+    return _faCutoffSet;
+  }}
+
+  function _faIsShiftCutoff(s) {{
+    if (!s.ende) return false;
+    var key = _faComputeEndDate(s) + " " + s.ende;
+    return !!_faGetCutoffSet()[key];
+  }}
+
+  function _faIsShiftInvalid(s) {{
+    // 1) Noch laufend: Schichtende = Tachograph-Download-Zeitpunkt
+    if (_faIsShiftCutoff(s)) return true;
+    // 2) Tachograph-Fehler: Schichtdauer > 24 Stunden
+    if (_toMin(s.schichtdauer) > 1440) return true;
+    return false;
+  }}
+
   function _vacationCreditMin(rows) {{
     return (rows || []).length * 480;
   }}
@@ -7329,10 +7378,13 @@ function samToggle(el) {{
   function _summarizeShifts(shifts) {{
     var out = {{ count: shifts.length, dauer: 0, netto: 0, over10: 0, samstage: 0, sonntage: 0, lkwSet: {{}} }};
     shifts.forEach(function(s) {{
-      var netto = _toMin(s.profil);
-      out.dauer += _toMin(s.schichtdauer);
-      out.netto += netto;
-      if (netto > 600) out.over10 += 1;
+      var invalid = _faIsShiftInvalid(s);
+      if (!invalid) {{
+        var netto = _toMin(s.profil);
+        out.dauer += _toMin(s.schichtdauer);
+        out.netto += netto;
+        if (netto > 600) out.over10 += 1;
+      }}
       if (s.wochentag === "Sa" || _isFrAbend(s)) out.samstage += 1;
       if (s.wochentag === "So") out.sonntage += 1;
       (s.lkw || "").split(",").forEach(function(l) {{
@@ -7368,21 +7420,28 @@ function samToggle(el) {{
     var html = "";
     rows.forEach(function(s, i) {{
       var netto = _toMin(s.profil);
-      var over = netto > 600;
+      var invalid = _faIsShiftInvalid(s);
+      var over = !invalid && netto > 600;
       var weekend = s.wochentag === "Sa" || s.wochentag === "So" || _isFrAbend(s);
-      var rowBg = over ? "#fff1f2" : (weekend ? "#fff7ed" : (i % 2 === 0 ? "#fff" : "#fafbfc"));
-      var tagColor = weekend ? (s.wochentag === "So" ? "#dc2626" : "#b45309") : "#0f172a";
+      var rowBg = invalid ? "#f9fafb" : (over ? "#fff1f2" : (weekend ? "#fff7ed" : (i % 2 === 0 ? "#fff" : "#fafbfc")));
+      var tagColor = invalid ? "#b0b8c4" : (weekend ? (s.wochentag === "So" ? "#dc2626" : "#b45309") : "#0f172a");
+      var cellDim = invalid ? "color:#b0b8c4;text-decoration:line-through;" : "";
       var endeStr = faEsc(s.ende || "");
       if (endeStr && s.ende_naechster_tag) endeStr += " <span style='color:#94a3b8;font-size:9.5px;font-weight:600;'>+1</span>";
-      var tagDisplay = (s.wochentag ? "<span style='display:inline-block;width:22px;color:#94a3b8;font-weight:700;font-size:10.5px;'>" + faEsc(s.wochentag) + "</span> " : "") + faEsc(s.tag);
+      var tagDisplay = (s.wochentag ? "<span style='display:inline-block;width:22px;color:" + (invalid ? "#cbd5e1" : "#94a3b8") + ";font-weight:700;font-size:10.5px;'>" + faEsc(s.wochentag) + "</span> " : "") + faEsc(s.tag);
+      var cutoffLabel = "";
+      if (invalid) {{
+        var reason = _faIsShiftCutoff(s) ? "noch laufend" : "Tachofehler";
+        cutoffLabel = " <span style='font-size:8.5px;font-weight:800;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:3px;padding:0 4px;vertical-align:middle;text-decoration:none;display:inline-block;'>" + reason + "</span>";
+      }}
 
-      html += "<tr style='background:" + rowBg + ";border-bottom:1px solid #f1f5f9;'>";
-      html += "<td style='padding:5px 8px;color:" + tagColor + ";font-weight:" + (weekend ? "700" : "600") + ";font-variant-numeric:tabular-nums;white-space:nowrap;'>" + tagDisplay + "</td>";
-      html += "<td style='padding:5px 6px;color:#475569;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc(s.beginn || "") + "</td>";
-      html += "<td style='padding:5px 6px;color:#475569;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + endeStr + "</td>";
-      html += "<td style='padding:5px 7px;text-align:right;font-weight:800;color:#1e3a5f;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc(s.schichtdauer || "") + "</td>";
-      html += "<td style='padding:5px 7px;text-align:right;font-weight:" + (over ? "900" : "700") + ";color:" + (over ? "#be123c" : "#0f172a") + ";font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc(s.profil || "") + "</td>";
-      html += "<td style='padding:5px 8px;color:#166534;font-weight:600;font-size:11px;white-space:normal;'>" + faEsc(s.lkw || "") + "</td>";
+      html += "<tr style='background:" + rowBg + ";border-bottom:1px solid #f1f5f9;" + (invalid ? "opacity:.7;" : "") + "'>";
+      html += "<td style='padding:5px 8px;color:" + tagColor + ";font-weight:" + (weekend ? "700" : "600") + ";font-variant-numeric:tabular-nums;white-space:nowrap;'>" + tagDisplay + cutoffLabel + "</td>";
+      html += "<td style='padding:5px 6px;font-variant-numeric:tabular-nums;white-space:nowrap;" + (invalid ? cellDim : "color:#475569;") + "'>" + faEsc(s.beginn || "") + "</td>";
+      html += "<td style='padding:5px 6px;font-variant-numeric:tabular-nums;white-space:nowrap;" + (invalid ? cellDim : "color:#475569;") + "'>" + endeStr + "</td>";
+      html += "<td style='padding:5px 7px;text-align:right;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;" + (invalid ? cellDim : "color:#1e3a5f;") + "'>" + faEsc(s.schichtdauer || "") + "</td>";
+      html += "<td style='padding:5px 7px;text-align:right;font-weight:" + (over ? "900" : "700") + ";font-variant-numeric:tabular-nums;white-space:nowrap;" + (invalid ? cellDim : ("color:" + (over ? "#be123c" : "#0f172a") + ";")) + "'>" + faEsc(s.profil || "") + "</td>";
+      html += "<td style='padding:5px 8px;font-weight:600;font-size:11px;white-space:normal;" + (invalid ? cellDim : "color:#166534;") + "'>" + faEsc(s.lkw || "") + "</td>";
       html += "</tr>";
     }});
     return html;
@@ -7576,12 +7635,14 @@ function samToggle(el) {{
       var out = "";
       rowList.forEach(function(s) {{
         var netto = _toMin(s.profil);
-        out += "<tr>"
-           + "<td>" + faEsc((s.wochentag || "") + " " + (s.tag || "")) + "</td>"
+        var invalid = _faIsShiftInvalid(s);
+        var cls = invalid ? "invalid" : (netto > 600 ? "over" : "");
+        out += "<tr" + (invalid ? " style='opacity:.5;'" : "") + ">"
+           + "<td>" + faEsc((s.wochentag || "") + " " + (s.tag || "")) + (invalid ? " <span style='font-size:5pt;color:#92400e;font-weight:800;'>" + (_faIsShiftCutoff(s) ? "laufend" : "Fehler") + "</span>" : "") + "</td>"
            + "<td>" + faEsc(s.beginn || "") + "</td>"
            + "<td>" + faEsc(s.ende || "") + (s.ende_naechster_tag ? " +1" : "") + "</td>"
-           + "<td class='num'>" + faEsc(s.schichtdauer || "") + "</td>"
-           + "<td class='num " + (netto > 600 ? "over" : "") + "'>" + faEsc(s.profil || "") + "</td>"
+           + "<td class='num'" + (invalid ? " style='text-decoration:line-through;'" : "") + ">" + faEsc(s.schichtdauer || "") + "</td>"
+           + "<td class='num " + cls + "'" + (invalid ? " style='text-decoration:line-through;'" : "") + ">" + faEsc(s.profil || "") + "</td>"
            + "<td>" + faEsc(s.lkw || "") + "</td>"
            + "</tr>";
       }});
@@ -8091,6 +8152,7 @@ function samToggle(el) {{
           yrOk = !!(m && m[1] === faYearFilter);
         }}
         if (!yrOk) return;
+        if (_faIsShiftInvalid(s)) return;
         var netto = _toMin(s.profil);
         if (netto <= 600) return;
         var plan = _faFindPlanEntryForShift(name, s);
