@@ -8649,6 +8649,128 @@ function samToggle(el) {{
 </html>"""
 
 
+
+def build_plane_zulagen_json(zulage_json_str: str, drittkunden_json_str: str, generated_at: str = "") -> bytes:
+    """Erzeugt eine flache JSON-Datei fuer plane.php aus den bereits berechneten Zulagen.
+
+    Die Plane muss dadurch keine Excel-Dateien lesen. Sie bekommt nur noch eine Datei:
+    csv/zulagen.json
+    """
+    import json as _json
+    import re as _re
+    import datetime as _dt
+
+    def _loads(value, fallback):
+        try:
+            return _json.loads(value or "")
+        except Exception:
+            return fallback
+
+    def _amount(value) -> float:
+        try:
+            if value is None or value == "":
+                return 0.0
+            if isinstance(value, str):
+                value = value.replace("€", "").replace(".", "").replace(",", ".").strip()
+            return float(value)
+        except Exception:
+            return 0.0
+
+    def _date_parts(raw: str):
+        raw = str(raw or "").strip()
+        m = _re.search(r"(\d{2})\.(\d{2})\.(\d{4})", raw)
+        if not m:
+            return "", "", None, None
+        d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        try:
+            dt = _dt.date(y, mo, d)
+            return dt.strftime("%d.%m.%Y"), dt.isoformat(), dt.year, dt.month
+        except Exception:
+            return m.group(0), "", None, None
+
+    def _kw(raw: str, iso: str) -> str:
+        raw = str(raw or "")
+        m = _re.search(r"KW\s*([0-9]{1,2})", raw, flags=_re.IGNORECASE)
+        if m:
+            return "KW" + m.group(1).zfill(2)
+        if iso:
+            try:
+                return "KW" + str(_dt.date.fromisoformat(iso).isocalendar()[1]).zfill(2)
+            except Exception:
+                pass
+        return ""
+
+    entries = []
+    zulage_data = _loads(zulage_json_str, {})
+    dk_data = _loads(drittkunden_json_str, [])
+
+    def _add_common(typ: str, fahrer: dict, tag: dict, betrag_key: str, extra: dict):
+        raw_date = tag.get("datum") or tag.get("datum_raw") or ""
+        datum, iso, jahr, monat = _date_parts(raw_date)
+        if not datum:
+            return
+        amount = _amount(tag.get(betrag_key, tag.get("betrag", 0)))
+        item = {
+            "typ": typ,
+            "fahrer": fahrer.get("name", ""),
+            "persnr": fahrer.get("persnr", ""),
+            "datum": datum,
+            "datum_iso": iso,
+            "datum_raw": raw_date,
+            "jahr": jahr,
+            "monat": monat,
+            "kw": tag.get("kw") or _kw(raw_date, iso),
+            "betrag": amount,
+        }
+        item.update({k: ("" if v is None else v) for k, v in extra.items()})
+        entries.append(item)
+
+    for typ_key, typ_label in (("sonder", "Sonderfahrzeug"), ("fuengers", "Füngers")):
+        for monat in (zulage_data.get(typ_key, []) if isinstance(zulage_data, dict) else []):
+            for fahrer in monat.get("fahrer", []):
+                for tag in fahrer.get("tage", []):
+                    if typ_key == "sonder":
+                        _add_common(typ_label, fahrer, tag, "verdienst", {
+                            "tour": tag.get("tour", ""),
+                            "lkw": tag.get("lkw", ""),
+                            "art": tag.get("art", ""),
+                            "kommentar": tag.get("kommentar", ""),
+                            "info": tag.get("info", ""),
+                        })
+                    else:
+                        _add_common(typ_label, fahrer, tag, "verdienst", {
+                            "tour": tag.get("tour", ""),
+                            "lkw": tag.get("lkw", ""),
+                            "art": tag.get("art", ""),
+                            "kommentar": tag.get("kommentar", ""),
+                            "info": tag.get("info", ""),
+                        })
+
+    if isinstance(dk_data, list):
+        for monat in dk_data:
+            for fahrer in monat.get("fahrer", []):
+                for tag in fahrer.get("tage", []):
+                    _add_common("Drittkunden", fahrer, tag, "zulage", {
+                        "tour": tag.get("tour", ""),
+                        "lkw": tag.get("lkw", ""),
+                        "art": tag.get("art", ""),
+                        "kommentar": tag.get("kommentar", ""),
+                        "info": tag.get("info", ""),
+                    })
+
+    entries.sort(key=lambda e: (e.get("datum_iso") or "", e.get("fahrer") or "", e.get("typ") or ""), reverse=True)
+    payload = {
+        "schema": "plane_zulagen_v1",
+        "generated_at": generated_at or _dt.datetime.now().strftime("%d.%m.%Y %H:%M"),
+        "source": "Streamlit Touren-Dateien",
+        "entries": entries,
+        "totals": {
+            "entries": len(entries),
+            "betrag": round(sum(_amount(e.get("betrag")) for e in entries), 2),
+        },
+    }
+    return _json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+
 def generate_zulage_excel(zulage_json_str: str, tab: str = "sonder") -> bytes:
     """Formatierte Excel mit openpyxl – inkl. Persnr. und Zusammenfassung."""
     import io as _io, json as _j
@@ -10297,7 +10419,35 @@ with tab_dl:
             type="primary",
             use_container_width=True,
         )
+
+        plane_zulagen_json = build_plane_zulagen_json(
+            zulage_json_state,
+            drittkunden_json_state,
+            generated_at=datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
+        )
+        st.download_button(
+            label="zulagen.json herunterladen",
+            data=plane_zulagen_json,
+            file_name="zulagen.json",
+            mime="application/json",
+            use_container_width=True,
+        )
         st.caption(f"{len(app_html)//1024} KB, {len(ready)} Woche(n): "
                    f"{', '.join(i['name'] for i in ready)}")
     else:
         st.info("Mindestens Logo, Marktschluessel und eine Wochen-Excel hochladen.")
+        zulage_json_state      = st.session_state.get("zulage_json", "{}")
+        drittkunden_json_state = st.session_state.get("drittkunden_json", "[]")
+        if zulage_json_state not in ("{}", "") or drittkunden_json_state not in ("[]", ""):
+            plane_zulagen_json = build_plane_zulagen_json(
+                zulage_json_state,
+                drittkunden_json_state,
+                generated_at=datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
+            )
+            st.download_button(
+                label="zulagen.json herunterladen",
+                data=plane_zulagen_json,
+                file_name="zulagen.json",
+                mime="application/json",
+                use_container_width=True,
+            )
