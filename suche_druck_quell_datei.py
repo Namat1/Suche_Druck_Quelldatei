@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "spediteure-auswertung-2026-06-02-v15"
+APP_CACHE_VERSION = "spediteure-baumansicht-2026-06-02-v17"
 
 
 # =============================================================================
@@ -5523,7 +5523,7 @@ function spedRender() {
 
   if(!spedData().fahrten.length) {
     if(stats) stats.innerHTML = "";
-    wrap.innerHTML = "<div style='color:#94a3b8;padding:70px;text-align:center;font-size:14px;'>Keine Spediteur-Daten – bitte Tourenpläne (Excel) in Streamlit hochladen.</div>";
+    wrap.innerHTML = "<div style='color:#94a3b8;padding:70px;text-align:center;font-size:14px;'>Keine Spediteur-Daten – bitte Touren-Dateien (Excel) in Streamlit hochladen.</div>";
     return;
   }
 
@@ -5555,69 +5555,137 @@ function spedRender() {
     return;
   }
 
-  var html = "";
-  speds.forEach(function(sp){
-    // Touren-Häufigkeit
-    var tcnt = {};
-    sp.fahrten.forEach(function(f){ if(f.tour) tcnt[f.tour] = (tcnt[f.tour]||0)+1; });
-    var tchips = Object.keys(tcnt).sort(function(a,b){
-      return (parseInt(a,10)||0)-(parseInt(b,10)||0) || a.localeCompare(b);
-    }).map(function(t){
-      return "<span style='display:inline-block;background:#eef5fc;border:1px solid #cfe0f1;border-radius:5px;padding:2px 9px;margin:2px;font-size:11px;font-weight:700;color:#1e6091;'>" + spedEsc(t) + " <span style='color:#64748b;font-weight:500;'>" + tcnt[t] + "x</span></span>";
+  function _badge(t,bg,fg,br){
+    return "<span style='display:inline-flex;align-items:baseline;padding:3px 9px;border-radius:999px;font-size:10px;font-weight:800;background:"+bg+";color:"+fg+";border:1px solid "+br+";white-space:nowrap;'>"+t+"</span>";
+  }
+  function _tchips(t){
+    var keys = Object.keys(t).sort(function(a,b){ return (parseInt(a,10)||0)-(parseInt(b,10)||0)||a.localeCompare(b); });
+    return keys.map(function(k){
+      return "<span style='display:inline-block;background:#eef5fc;border:1px solid #cfe0f1;border-radius:5px;padding:2px 9px;margin:2px;font-size:11px;font-weight:700;color:#1e6091;'>"+spedEsc(k)+" <span style='color:#64748b;font-weight:500;'>"+t[k]+"x</span></span>";
     }).join("");
+  }
 
-    html += "<div style='background:#fff;border:1px solid #cad7e8;border-radius:12px;box-shadow:0 2px 10px rgba(30,96,145,.07);margin-bottom:16px;overflow:hidden;'>";
-    // Kopf
-    html += "<div style='display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 18px;background:linear-gradient(180deg,#f8fbff 0%,#fff 100%);border-bottom:1px solid #eef2f7;'>";
-    html += "<span style='display:inline-flex;align-items:center;justify-content:center;min-width:54px;height:26px;padding:0 8px;border-radius:7px;background:linear-gradient(135deg,#1e6091 0%,#2f80b7 100%);color:#fff;font-weight:900;font-size:12px;'>" + spedEsc(sp.nr) + "</span>";
-    html += "<span style='font-size:15px;font-weight:900;color:#0f172a;'>" + spedEsc(sp.name) + "</span>";
-    html += "<span style='margin-left:auto;font-size:11px;font-weight:800;color:#64748b;'>" + sp.fahrten.length + " Fahrten</span>";
-    html += "</div>";
-    // Touren-Übersicht
-    if(tchips) html += "<div style='padding:10px 18px;border-bottom:1px solid #f1f5f9;'><div style='font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#94a3b8;margin-bottom:5px;'>Gefahrene Touren</div>" + tchips + "</div>";
+  var html = "<div style='display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;'>" +
+    "<button onclick='spedExpandAll(true)' style='cursor:pointer;border:1px solid #cad7e8;background:#fff;color:#1e6091;font-weight:700;font-size:11px;padding:6px 12px;border-radius:7px;'>&#11167; Alles aufklappen</button>" +
+    "<button onclick='spedExpandAll(false)' style='cursor:pointer;border:1px solid #cad7e8;background:#fff;color:#64748b;font-weight:700;font-size:11px;padding:6px 12px;border-radius:7px;'>&#11165; Alles einklappen</button></div>";
 
-    // nach Monat gruppieren
-    var byMonth = {};
+  var autoSp = speds.length === 1;  // nur eine Spedition -> direkt offen
+
+  speds.forEach(function(sp){
+    var byYear = {}, spTours = {};
     sp.fahrten.forEach(function(f){
-      var key = f.jahr + "-" + f.monat;
-      if(!byMonth[key]) byMonth[key] = [];
-      byMonth[key].push(f);
+      if(!byYear[f.jahr]) byYear[f.jahr] = {};
+      var m = f.monat || "00";
+      if(!byYear[f.jahr][m]) byYear[f.jahr][m] = [];
+      byYear[f.jahr][m].push(f);
+      if(f.tour) spTours[f.tour] = (spTours[f.tour]||0)+1;
     });
-    var mkeys = Object.keys(byMonth).sort();
+    var years = Object.keys(byYear).sort().reverse();
 
-    mkeys.forEach(function(mk){
-      var parts = mk.split("-");
-      var label = SPED_MONATE[parseInt(parts[1],10)] + " " + parts[0];
-      var list = byMonth[mk].slice().sort(function(a,b){
-        return (a.iso || "").localeCompare(b.iso || "") || (a.tour||"").localeCompare(b.tour||"");
-      });
-      html += "<div style='padding:6px 18px;background:#f1f5f9;font-size:11px;font-weight:900;color:#334155;border-bottom:1px solid #e2e8f0;'>" + spedEsc(label) + " · " + list.length + " Fahrten</div>";
-      html += "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
-      html += "<thead><tr style='background:#fff;color:#64748b;'>" +
-        "<th style='padding:6px 18px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;'>Datum</th>" +
-        "<th style='padding:6px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;'>Wochentag</th>" +
-        "<th style='padding:6px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;'>Tour</th>" +
-        "<th style='padding:6px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;'>LKW</th>" +
-        "<th style='padding:6px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;'>Zeit</th></tr></thead><tbody>";
-      list.forEach(function(f,i){
-        var bg = i%2===0 ? "#ffffff" : "#f8fafc";
-        var sa = (f.wd === "Samstag" || f.wd === "Sonntag") ? "color:#b45309;font-weight:700;" : "color:#334155;";
-        html += "<tr style='background:"+bg+";border-bottom:1px solid #f1f5f9;'>";
-        html += "<td style='padding:6px 18px;font-weight:800;color:#0f172a;white-space:nowrap;'>" + spedEsc(f.datum) + "</td>";
-        html += "<td style='padding:6px 10px;"+sa+"'>" + spedEsc(f.wd) + "</td>";
-        html += "<td style='padding:6px 10px;font-weight:700;color:#1e6091;'>" + spedEsc(f.tour) + "</td>";
-        html += "<td style='padding:6px 10px;color:#166534;font-weight:700;'>" + spedEsc(f.lkw) + "</td>";
-        html += "<td style='padding:6px 10px;color:#475569;font-variant-numeric:tabular-nums;'>" + spedEsc(f.zeit) + "</td>";
-        html += "</tr>";
-      });
-      html += "</tbody></table>";
-    });
-
+    html += "<div style='background:#fff;border:1px solid #cad7e8;border-radius:12px;box-shadow:0 2px 10px rgba(30,96,145,.07);margin-bottom:12px;overflow:hidden;'>";
+    // ── Ebene 1: Spedition ──
+    html += "<div class='sped-acc' onclick='spedTog(this)' data-open='"+(autoSp?"1":"0")+"' style='cursor:pointer;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 18px;background:linear-gradient(180deg,#f8fbff 0%,#fff 100%);'>";
+    html += "<span class='chev' style='font-size:12px;color:#1e6091;transition:transform .15s;transform:rotate("+(autoSp?"90":"0")+"deg);'>&#9654;</span>";
+    html += "<span style='display:inline-flex;align-items:center;justify-content:center;min-width:54px;height:26px;padding:0 8px;border-radius:7px;background:linear-gradient(135deg,#1e6091 0%,#2f80b7 100%);color:#fff;font-weight:900;font-size:12px;'>"+spedEsc(sp.nr)+"</span>";
+    html += "<span style='font-size:15px;font-weight:900;color:#0f172a;'>"+spedEsc(sp.name)+"</span>";
+    html += "<span style='margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;'>"+
+      _badge(sp.fahrten.length+" Fahrten","#e8f2fb","#1e6091","#bdd0e7")+
+      _badge(years.length+" Jahre","#f3e8fb","#6b21a8","#e0c7f1")+
+      _badge(Object.keys(spTours).length+" Touren","#fff7e6","#9a5b00","#f6d9b3")+"</span>";
     html += "</div>";
+    html += "<div class='sped-body' style='display:"+(autoSp?"block":"none")+";border-top:1px solid #eef2f7;'>";
+
+    years.forEach(function(yr){
+      var byMonth = byYear[yr];
+      var mkeys = Object.keys(byMonth).sort();
+      var yrCount = 0, yrTours = {};
+      mkeys.forEach(function(m){ yrCount += byMonth[m].length; byMonth[m].forEach(function(f){ if(f.tour) yrTours[f.tour]=1; }); });
+      var autoYr = autoSp && years.length === 1;
+
+      html += "<div style='border-bottom:1px solid #f1f5f9;'>";
+      // ── Ebene 2: Jahr ──
+      html += "<div class='sped-acc' onclick='spedTog(this)' data-open='"+(autoYr?"1":"0")+"' style='cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 18px 10px 30px;background:#f6f9fd;'>";
+      html += "<span class='chev' style='font-size:11px;color:#6b21a8;transition:transform .15s;transform:rotate("+(autoYr?"90":"0")+"deg);'>&#9654;</span>";
+      html += "<span style='font-size:13px;font-weight:900;color:#334155;'>Jahr "+spedEsc(yr)+"</span>";
+      html += "<span style='margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;'>"+
+        _badge(yrCount+" Fahrten","#e8f2fb","#1e6091","#bdd0e7")+
+        _badge(mkeys.length+" Monate","#ecfdf5","#047857","#a7f3d0")+
+        _badge(Object.keys(yrTours).length+" Touren","#fff7e6","#9a5b00","#f6d9b3")+"</span>";
+      html += "</div>";
+      html += "<div class='sped-body' style='display:"+(autoYr?"block":"none")+";'>";
+
+      mkeys.forEach(function(m){
+        var list = byMonth[m].slice().sort(function(a,b){ return (a.iso||"").localeCompare(b.iso||"") || (a.tour||"").localeCompare(b.tour||""); });
+        var moTours = {};
+        list.forEach(function(f){ if(f.tour) moTours[f.tour]=(moTours[f.tour]||0)+1; });
+        var label = (SPED_MONATE[parseInt(m,10)]||m) + " " + yr;
+
+        html += "<div style='border-top:1px solid #f1f5f9;'>";
+        // ── Ebene 3: Monat ──
+        html += "<div class='sped-acc' onclick='spedTog(this)' data-open='0' style='cursor:pointer;display:flex;align-items:center;gap:10px;padding:9px 18px 9px 44px;background:#fcfdff;'>";
+        html += "<span class='chev' style='font-size:10px;color:#047857;transition:transform .15s;transform:rotate(0deg);'>&#9654;</span>";
+        html += "<span style='font-size:12px;font-weight:900;color:#0f172a;'>"+spedEsc(label)+"</span>";
+        html += "<span style='margin-left:auto;'>"+_badge(list.length+" Fahrten","#e8f2fb","#1e6091","#bdd0e7")+"</span>";
+        html += "</div>";
+        html += "<div class='sped-body' style='display:none;padding-bottom:4px;'>";
+        // Touren des Monats
+        html += "<div style='padding:8px 18px 4px 44px;'><div style='font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#94a3b8;margin-bottom:5px;'>Gefahrene Touren</div>"+_tchips(moTours)+"</div>";
+        // Fahrten-Tabelle
+        html += "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
+        html += "<thead><tr style='background:#fff;color:#64748b;'>"+
+          "<th style='padding:6px 18px 6px 44px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;'>Datum</th>"+
+          "<th style='padding:6px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;'>Wochentag</th>"+
+          "<th style='padding:6px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;'>Tour</th>"+
+          "<th style='padding:6px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;'>LKW</th>"+
+          "<th style='padding:6px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;'>Zeit</th></tr></thead><tbody>";
+        list.forEach(function(f,i){
+          var bg = i%2===0 ? "#ffffff" : "#f8fafc";
+          var sa = (f.wd === "Samstag" || f.wd === "Sonntag") ? "color:#b45309;font-weight:700;" : "color:#334155;";
+          html += "<tr style='background:"+bg+";border-bottom:1px solid #f1f5f9;'>";
+          html += "<td style='padding:6px 18px 6px 44px;font-weight:800;color:#0f172a;white-space:nowrap;'>"+spedEsc(f.datum)+"</td>";
+          html += "<td style='padding:6px 10px;"+sa+"'>"+spedEsc(f.wd)+"</td>";
+          html += "<td style='padding:6px 10px;font-weight:700;color:#1e6091;'>"+spedEsc(f.tour)+"</td>";
+          html += "<td style='padding:6px 10px;color:#166534;font-weight:700;'>"+spedEsc(f.lkw)+"</td>";
+          html += "<td style='padding:6px 10px;color:#475569;font-variant-numeric:tabular-nums;'>"+spedEsc(f.zeit)+"</td>";
+          html += "</tr>";
+        });
+        html += "</tbody></table>";
+        html += "</div></div>";  // Monat-Body + Monat-Wrap
+      });
+
+      html += "</div></div>";  // Jahr-Body + Jahr-Wrap
+    });
+
+    html += "</div>";  // Spedition-Body
+    html += "</div>";  // Spedition-Card
   });
 
   wrap.innerHTML = html;
   wrap.scrollTop = 0;
+}
+
+function spedTog(el){
+  var body = el.nextElementSibling;
+  if(!body) return;
+  var open = body.style.display !== "none";
+  body.style.display = open ? "none" : "block";
+  el.setAttribute("data-open", open ? "0" : "1");
+  var chev = el.querySelector(".chev");
+  if(chev) chev.style.transform = "rotate(" + (open ? "0" : "90") + "deg)";
+}
+function spedExpandAll(open){
+  var wrap = document.getElementById("sped-content");
+  if(!wrap) return;
+  var accs = wrap.querySelectorAll(".sped-acc");
+  for(var i=0;i<accs.length;i++){
+    var el = accs[i];
+    var body = el.nextElementSibling;
+    if(!body) continue;
+    body.style.display = open ? "block" : "none";
+    el.setAttribute("data-open", open ? "1" : "0");
+    var chev = el.querySelector(".chev");
+    if(chev) chev.style.transform = "rotate(" + (open ? "90" : "0") + "deg)";
+  }
 }
 
 function spedInit() {
@@ -6113,7 +6181,7 @@ iframe.active{{display:block}}
       <div id="sped-stats" style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;"></div>
     </div>
     <div id="sped-content" style="flex:1;overflow-y:auto;padding:16px 18px 28px;background:#f3f7fb;">
-      <div style="color:#94a3b8;padding:70px;text-align:center;font-size:14px;">Keine Spediteur-Daten &ndash; bitte Tourenpl&auml;ne (Excel) in Streamlit hochladen.</div>
+      <div style="color:#94a3b8;padding:70px;text-align:center;font-size:14px;">Keine Spediteur-Daten &ndash; bitte Touren-Dateien (Excel) in Streamlit hochladen.</div>
     </div>
   </div>
 
@@ -10766,8 +10834,10 @@ with tab_extra:
             _znf = sum(len(m["fahrer"]) for m in _zd.get("fuengers", []))
             _dkd = json.loads(st.session_state.drittkunden_json)
             _fan = len(json.loads(st.session_state.fa_json))
+            _spd = json.loads(st.session_state.get("spediteure_json", '{"katalog":[],"fahrten":[]}'))
             return (f"{len(ups)} Dateien: Samstag {_sn}, Sonder {_zns}, "
-                    f"Fuengers {_znf}, Drittkunden {len(_dkd)}, Fahrer {_fan}")
+                    f"Fuengers {_znf}, Drittkunden {len(_dkd)}, Fahrer {_fan}, "
+                    f"Spediteure {len(_spd.get('katalog', []))} ({len(_spd.get('fahrten', []))} Fahrten)")
         _extra_multi_upload(
             "Touren-Dateien (Samstag, Zulagen, Drittkunden, Fahrerauswertung)",
             ["xlsx"], "touren",
@@ -10776,6 +10846,7 @@ with tab_extra:
                 "zulage_json":      parse_zulage_excel,
                 "drittkunden_json": parse_drittkunden_excel,
                 "fa_json":          parse_fahrer_excel,
+                "spediteure_json":  parse_spediteure_excel,
             },
             summary_fn=_touren_summary,
         )
@@ -10834,16 +10905,6 @@ with tab_extra:
             spinner_text="Verarbeite Schichten-CSV ...",
         )
 
-        def _sped_summary(ups):
-            sp = json.loads(st.session_state.get("spediteure_json", '{"katalog":[],"fahrten":[]}'))
-            return (f"{len(ups)} Dateien: {len(sp.get('fahrten', []))} Fahrten, "
-                    f"{len(sp.get('katalog', []))} Spediteure")
-        _extra_multi_upload(
-            "Spediteur-Tourenpläne (Excel)", ["xlsx"], "spediteure",
-            {"spediteure_json": parse_spediteure_excel},
-            summary_fn=_sped_summary,
-            spinner_text="Werte Spediteur-Tourenpläne aus ...",
-        )
 
 # === Tab: Download ===========================================================
 with tab_dl:
