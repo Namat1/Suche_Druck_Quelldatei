@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "verstossliste-jahresfilter-2026-05-05-v14-singlescroll"
+APP_CACHE_VERSION = "spediteure-auswertung-2026-06-02-v15"
 
 
 # =============================================================================
@@ -2794,6 +2794,220 @@ def parse_fahrer_excel(dateien: list) -> str:
     return _json.dumps(result, ensure_ascii=False)
 
 
+# =============================================================================
+# SPEDITEURE — Auswertung der Tourenpläne nach externen Speditionen.
+# Sucht in den Touren-Excel die Spediteur-Namen (inkl. Abwandlungen) und
+# wertet pro Spedition nach Monat/Jahr aus: was wurde wann mit welcher
+# Tournummer gefahren.
+# =============================================================================
+SPEDITEUR_KATALOG = [
+    ("8001", "Spedition Meyer 1"), ("8002", "Spedition Meyer 2 (36er)"), ("8003", "Spedition Meyer 3"),
+    ("8004", "Spedition Meyer 4"), ("8005", "Spedition Meyer 5"), ("8006", "Spedition Meyer 6"),
+    ("8007", "Spedition Meyer 7"), ("8008", "Spedition Meyer 8"), ("8009", "Spedition Meyer SZ"),
+    ("8010", "Spedition Meyer 9"), ("80101", "Spedition Meyer 10"), ("80102", "Spedition Meyer 11"),
+    ("8011", "Paasch & Reinke 1"), ("8012", "Paasch & Reinke 2"), ("8013", "Paasch & Reinke 3"),
+    ("8015", "Ch. Holtz T1"), ("8016", "Ch. Holtz T2"), ("8017", "Ch. Holtz T3"),
+    ("8019", "deVries - 1"), ("8020", "deVries - 2"), ("8022", "Spedition Ihde"),
+    ("8024", "Zippel Logistik T2"), ("8025", "Zippel Logistik T1"), ("8026", "Zippel Logistik T3"),
+    ("8027", "Zippel Logistik T4"), ("8029", "Zippel Logistik T5"),
+    ("8030", "Insellogistik 1"), ("8031", "Insellogistik 2"), ("8032", "Insellogistik 3"), ("8033", "Insellogistik 4"),
+    ("8034", "T & D"), ("8035", "Sped. Maas"), ("8036", "Nordfrost"), ("8037", "Emons"), ("8038", "Thermotraffic"),
+    ("8039", "Kudex 1"), ("8040", "Kudex 2"), ("8045", "Kudex 3"), ("8046", "Kudex 4"),
+    ("8041", "Pfenning 1"), ("8042", "Pfenning 2"), ("8043", "Pfenning 3"), ("8044", "Pfenning 4"),
+]
+_SPED_GENERIC = {"spedition", "sped", "logistik", "gmbh", "kg", "co", "transporte", "transport", "cocg", "und"}
+_SPED_COMPANY_ALIASES = {"paasch": "paaschreinke", "reinke": "paaschreinke"}
+
+
+def _sped_tokens(text: str) -> list:
+    s = str(text or "").lower()
+    s = s.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = re.sub(r"\([^)]*\)", " ", s)   # Zusätze wie "(36er)" entfernen
+    toks = [t for t in re.split(r"[^a-z0-9]+", s) if t]
+    return [t for t in toks if t not in _SPED_GENERIC]
+
+
+def _sped_parse(text: str):
+    """Zerlegt einen Namen in (compact, company, variant).
+
+    variant ist die Tour-Kennung am Ende (z.B. '1', '10', 't2', 'sz')."""
+    toks = _sped_tokens(text)
+    if not toks:
+        return "", "", ""
+    if re.fullmatch(r"(t\d+|sz|\d+)", toks[-1]):
+        variant = toks[-1]
+        comp_toks = toks[:-1]
+    else:
+        variant = ""
+        comp_toks = toks[:]
+    company = "".join(comp_toks)
+    company = _SPED_COMPANY_ALIASES.get(company, company)
+    return company + variant, company, variant
+
+
+def _sped_build_index():
+    by_compact, by_company, company_disp = {}, {}, {}
+    for nr, name in SPEDITEUR_KATALOG:
+        compact, company, variant = _sped_parse(name)
+        entry = {"nr": nr, "name": name, "company": company, "variant": variant}
+        by_compact[compact] = entry
+        by_company.setdefault(company, []).append(entry)
+        disp = re.sub(r"\s*[-–]?\s*(T\d+|SZ|\d+)\s*$", "", name, flags=re.I)
+        disp = re.sub(r"\s*\([^)]*\)\s*", "", disp).strip()
+        company_disp.setdefault(company, disp or name)
+    return by_compact, by_company, company_disp
+
+
+_SPED_BY_COMPACT, _SPED_BY_COMPANY, _SPED_COMPANY_DISP = _sped_build_index()
+
+
+def _sped_match(text: str):
+    compact, company, variant = _sped_parse(text)
+    if not compact:
+        return None
+    if compact in _SPED_BY_COMPACT:
+        return _SPED_BY_COMPACT[compact]
+    ents = _SPED_BY_COMPANY.get(company)
+    if ents:
+        if variant:
+            for e in ents:
+                if e["variant"] == variant:
+                    return e
+            return None  # Firma bekannt, Variante unbekannt -> nicht raten
+        if len(ents) == 1:
+            return ents[0]
+    return None
+
+
+def parse_spediteure_excel(dateien: list) -> str:
+    """Liest mehrere Touren-Excel und liefert JSON {katalog, fahrten}.
+
+    Pro Treffer: Spediteur-Nr/Name, Jahr, Monat, Datum, Wochentag, Tour, LKW, Zeit.
+    """
+    import json as _json
+    from io import BytesIO
+    import datetime as _dt
+    import pandas as _pd
+
+    WOCHENTAGE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+
+    def _zeit(val):
+        try:
+            if _pd.isna(val):
+                return ""
+        except Exception:
+            pass
+        if isinstance(val, str):
+            v = val.strip()
+            if ":" in v:
+                p = v.split(":")
+                try:
+                    return f"{int(p[0]):02d}:{int(p[1]):02d}"
+                except Exception:
+                    return ""
+            return ""
+        if isinstance(val, float) and val > 0:
+            return f"{int(val * 24):02d}:{int((val * 1440) % 60):02d}"
+        if isinstance(val, (_dt.datetime, _pd.Timestamp)):
+            return val.strftime("%H:%M")
+        if isinstance(val, _dt.time):
+            return val.strftime("%H:%M")
+        return ""
+
+    def _tour(val):
+        try:
+            if _pd.isna(val):
+                return ""
+        except Exception:
+            pass
+        if isinstance(val, float) and val.is_integer():
+            return str(int(val))
+        t = str(val).strip()
+        if t.lower() in ("nan", "none", "nat"):
+            return ""
+        if re.fullmatch(r"\d+\.0", t):
+            t = t[:-2]
+        return re.sub(r"\s+", " ", t)
+
+    def _lkw(val):
+        try:
+            if _pd.isna(val):
+                return ""
+        except Exception:
+            pass
+        s = str(val).strip()
+        if s.lower() in ("nan", "none", ""):
+            return ""
+        return str(int(float(s))) if s.replace(".", "").replace("-", "").isdigit() else s
+
+    seen = set()
+    fahrten = []
+    used_nr = set()
+
+    for datei in dateien:
+        try:
+            datei.seek(0)
+            df = _pd.read_excel(BytesIO(datei.read()), sheet_name="Touren", header=None)
+            df = df.iloc[5:].reset_index(drop=True)
+        except Exception:
+            continue
+        quelle = getattr(datei, "name", "") or ""
+
+        for row in df.itertuples(index=False, name=None):
+            datum = _pd.to_datetime(row[14] if len(row) > 14 else None, errors="coerce")
+            if _pd.isna(datum):
+                continue
+
+            # Kandidaten-Namen aus den Fahrer-/Namenszellen (D/E, G/H) sammeln
+            cands = []
+            for i in (3, 4, 6, 7):
+                if len(row) > i and row[i] is not None:
+                    s = str(row[i]).strip()
+                    if s and s.lower() not in ("nan", "none", "nat"):
+                        cands.append(s)
+            if len(row) > 4:
+                cands.append(f"{row[3]} {row[4]}")
+            if len(row) > 7:
+                cands.append(f"{row[6]} {row[7]}")
+
+            ent = None
+            for c in cands:
+                ent = _sped_match(c)
+                if ent:
+                    break
+            if not ent:
+                continue
+
+            tour = _tour(row[15] if len(row) > 15 else "")
+            lkw = _lkw(row[11] if len(row) > 11 else "")
+            zeit = _zeit(row[8] if len(row) > 8 else None)
+            iso = datum.strftime("%Y-%m-%d")
+            key = (ent["nr"], iso, tour, lkw, zeit)
+            if key in seen:
+                continue
+            seen.add(key)
+            used_nr.add(ent["nr"])
+            fahrten.append({
+                "nr": ent["nr"],
+                "name": ent["name"],
+                "jahr": str(datum.year),
+                "monat": f"{datum.month:02d}",
+                "datum": datum.strftime("%d.%m.%Y"),
+                "iso": iso,
+                "wd": WOCHENTAGE[datum.weekday()],
+                "tour": tour,
+                "lkw": lkw,
+                "zeit": zeit,
+                "quelle": quelle,
+            })
+
+    katalog = [{"nr": nr, "name": name} for nr, name in SPEDITEUR_KATALOG if nr in used_nr]
+    fahrten.sort(key=lambda x: (x["iso"], (int(x["nr"]) if x["nr"].isdigit() else 0)))
+    return _json.dumps({"katalog": katalog, "fahrten": fahrten}, ensure_ascii=False)
+
+
 def parse_timerecording_csv(uploaded_file) -> str:
     """Liest die Tachograph-Schicht-Datei (CSV oder XLSX) und liefert JSON
     pro Fahrer:
@@ -2946,7 +3160,7 @@ def parse_timerecording_csv(uploaded_file) -> str:
     return _json.dumps(by_driver, ensure_ascii=False)
 
 
-def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', spesen_json: str = '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}', grosskunden_json: str = "[]", timerec_json: str = "{}", last_updated: str = "") -> str:
+def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', spesen_json: str = '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}', grosskunden_json: str = "[]", timerec_json: str = "{}", spediteure_json: str = '{"katalog":[],"fahrten":[]}', last_updated: str = "") -> str:
     try:
         _logo_up = st.session_state.get("g_logo")
     except Exception:
@@ -5231,6 +5445,225 @@ function verstossPdfOne(name) {
     except Exception:
         pass
 
+    sped_js_code = r"""
+// ── Spediteure (Tourenplan-Auswertung externer Speditionen) ──────────────────
+function spedData() {
+  return (typeof SPED_DATA !== "undefined" && SPED_DATA && SPED_DATA.fahrten)
+    ? SPED_DATA : { katalog: [], fahrten: [] };
+}
+function spedEsc(v) {
+  return String(v == null ? "" : v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+var SPED_MONATE = ["","Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+var spedState = { jahr: null, monat: "all", sped: "all" };
+
+function spedAllYears() {
+  var ys = {};
+  spedData().fahrten.forEach(function(f){ if(f.jahr) ys[f.jahr] = 1; });
+  return Object.keys(ys).sort().reverse();
+}
+function spedMonthsForYear(yr) {
+  var ms = {};
+  spedData().fahrten.forEach(function(f){ if(f.jahr === yr && f.monat) ms[f.monat] = 1; });
+  return Object.keys(ms).sort();
+}
+
+function spedPopulateYears() {
+  var sel = document.getElementById("sped-year");
+  if(!sel) return;
+  var years = spedAllYears();
+  sel.innerHTML = years.map(function(y){ return "<option value='"+y+"'>"+y+"</option>"; }).join("");
+  if(!years.length) { sel.innerHTML = "<option value=''>—</option>"; spedState.jahr = null; return; }
+  var cur = String(new Date().getFullYear());
+  if(spedState.jahr && years.indexOf(spedState.jahr) !== -1) sel.value = spedState.jahr;
+  else if(years.indexOf(cur) !== -1) sel.value = cur;
+  else sel.value = years[0];
+  spedState.jahr = sel.value;
+}
+function spedPopulateMonths() {
+  var sel = document.getElementById("sped-month");
+  if(!sel) return;
+  var months = spedState.jahr ? spedMonthsForYear(spedState.jahr) : [];
+  var opts = "<option value='all'>Alle Monate</option>";
+  months.forEach(function(m){ opts += "<option value='"+m+"'>"+SPED_MONATE[parseInt(m,10)]+"</option>"; });
+  sel.innerHTML = opts;
+  if(months.indexOf(spedState.monat) === -1) spedState.monat = "all";
+  sel.value = spedState.monat;
+}
+function spedPopulateSped() {
+  var sel = document.getElementById("sped-filter");
+  if(!sel) return;
+  var kat = spedData().katalog.slice().sort(function(a,b){
+    return (parseInt(a.nr,10)||0) - (parseInt(b.nr,10)||0);
+  });
+  var opts = "<option value='all'>Alle Spediteure</option>";
+  kat.forEach(function(k){ opts += "<option value='"+spedEsc(k.nr)+"'>"+spedEsc(k.nr)+" · "+spedEsc(k.name)+"</option>"; });
+  sel.innerHTML = opts;
+  sel.value = spedState.sped;
+  if(sel.value !== spedState.sped) { spedState.sped = "all"; sel.value = "all"; }
+}
+
+function spedSetJahr(v){ spedState.jahr = v; spedPopulateMonths(); spedRender(); }
+function spedSetMonat(v){ spedState.monat = v; spedRender(); }
+function spedSetSped(v){ spedState.sped = v; spedRender(); }
+
+function spedFiltered() {
+  return spedData().fahrten.filter(function(f){
+    if(spedState.jahr && f.jahr !== spedState.jahr) return false;
+    if(spedState.monat !== "all" && f.monat !== spedState.monat) return false;
+    if(spedState.sped !== "all" && f.nr !== spedState.sped) return false;
+    return true;
+  });
+}
+
+function spedRender() {
+  var wrap = document.getElementById("sped-content");
+  var stats = document.getElementById("sped-stats");
+  if(!wrap) return;
+
+  if(!spedData().fahrten.length) {
+    if(stats) stats.innerHTML = "";
+    wrap.innerHTML = "<div style='color:#94a3b8;padding:70px;text-align:center;font-size:14px;'>Keine Spediteur-Daten – bitte Tourenpläne (Excel) in Streamlit hochladen.</div>";
+    return;
+  }
+
+  var rows = spedFiltered();
+
+  // gruppieren nach Spediteur-Nummer
+  var bySped = {};
+  rows.forEach(function(f){
+    if(!bySped[f.nr]) bySped[f.nr] = { nr:f.nr, name:f.name, fahrten:[] };
+    bySped[f.nr].fahrten.push(f);
+  });
+  var speds = Object.keys(bySped).map(function(k){ return bySped[k]; })
+    .sort(function(a,b){ return (parseInt(a.nr,10)||0) - (parseInt(b.nr,10)||0); });
+
+  var tourSet = {};
+  rows.forEach(function(f){ if(f.tour) tourSet[f.tour] = 1; });
+
+  if(stats) {
+    var pc = "display:inline-flex;align-items:baseline;gap:5px;padding:4px 11px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.2";
+    var nc = "font-size:13px;font-weight:900;letter-spacing:-.3px";
+    stats.innerHTML =
+      "<span style=\"" + pc + ";background:#e8f2fb;color:#1e6091;border:1px solid #bdd0e7\"><span style=\"" + nc + "\">" + rows.length + "</span> Fahrten</span>" +
+      "<span style=\"" + pc + ";background:#ecf7f1;color:#165532;border:1px solid #c7e5d4\"><span style=\"" + nc + "\">" + speds.length + "</span> Spediteure</span>" +
+      "<span style=\"" + pc + ";background:#fff7e6;color:#9a5b00;border:1px solid #f6d9b3\"><span style=\"" + nc + "\">" + Object.keys(tourSet).length + "</span> Touren</span>";
+  }
+
+  if(!speds.length) {
+    wrap.innerHTML = "<div style='color:#94a3b8;padding:50px;text-align:center;font-size:13px;'>Keine Fahrten für die gewählten Filter.</div>";
+    return;
+  }
+
+  var html = "";
+  speds.forEach(function(sp){
+    // Touren-Häufigkeit
+    var tcnt = {};
+    sp.fahrten.forEach(function(f){ if(f.tour) tcnt[f.tour] = (tcnt[f.tour]||0)+1; });
+    var tchips = Object.keys(tcnt).sort(function(a,b){
+      return (parseInt(a,10)||0)-(parseInt(b,10)||0) || a.localeCompare(b);
+    }).map(function(t){
+      return "<span style='display:inline-block;background:#eef5fc;border:1px solid #cfe0f1;border-radius:5px;padding:2px 9px;margin:2px;font-size:11px;font-weight:700;color:#1e6091;'>" + spedEsc(t) + " <span style='color:#64748b;font-weight:500;'>" + tcnt[t] + "x</span></span>";
+    }).join("");
+
+    html += "<div style='background:#fff;border:1px solid #cad7e8;border-radius:12px;box-shadow:0 2px 10px rgba(30,96,145,.07);margin-bottom:16px;overflow:hidden;'>";
+    // Kopf
+    html += "<div style='display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 18px;background:linear-gradient(180deg,#f8fbff 0%,#fff 100%);border-bottom:1px solid #eef2f7;'>";
+    html += "<span style='display:inline-flex;align-items:center;justify-content:center;min-width:54px;height:26px;padding:0 8px;border-radius:7px;background:linear-gradient(135deg,#1e6091 0%,#2f80b7 100%);color:#fff;font-weight:900;font-size:12px;'>" + spedEsc(sp.nr) + "</span>";
+    html += "<span style='font-size:15px;font-weight:900;color:#0f172a;'>" + spedEsc(sp.name) + "</span>";
+    html += "<span style='margin-left:auto;font-size:11px;font-weight:800;color:#64748b;'>" + sp.fahrten.length + " Fahrten</span>";
+    html += "</div>";
+    // Touren-Übersicht
+    if(tchips) html += "<div style='padding:10px 18px;border-bottom:1px solid #f1f5f9;'><div style='font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#94a3b8;margin-bottom:5px;'>Gefahrene Touren</div>" + tchips + "</div>";
+
+    // nach Monat gruppieren
+    var byMonth = {};
+    sp.fahrten.forEach(function(f){
+      var key = f.jahr + "-" + f.monat;
+      if(!byMonth[key]) byMonth[key] = [];
+      byMonth[key].push(f);
+    });
+    var mkeys = Object.keys(byMonth).sort();
+
+    mkeys.forEach(function(mk){
+      var parts = mk.split("-");
+      var label = SPED_MONATE[parseInt(parts[1],10)] + " " + parts[0];
+      var list = byMonth[mk].slice().sort(function(a,b){
+        return (a.iso || "").localeCompare(b.iso || "") || (a.tour||"").localeCompare(b.tour||"");
+      });
+      html += "<div style='padding:6px 18px;background:#f1f5f9;font-size:11px;font-weight:900;color:#334155;border-bottom:1px solid #e2e8f0;'>" + spedEsc(label) + " · " + list.length + " Fahrten</div>";
+      html += "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
+      html += "<thead><tr style='background:#fff;color:#64748b;'>" +
+        "<th style='padding:6px 18px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;'>Datum</th>" +
+        "<th style='padding:6px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;'>Wochentag</th>" +
+        "<th style='padding:6px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;'>Tour</th>" +
+        "<th style='padding:6px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;'>LKW</th>" +
+        "<th style='padding:6px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;'>Zeit</th></tr></thead><tbody>";
+      list.forEach(function(f,i){
+        var bg = i%2===0 ? "#ffffff" : "#f8fafc";
+        var sa = (f.wd === "Samstag" || f.wd === "Sonntag") ? "color:#b45309;font-weight:700;" : "color:#334155;";
+        html += "<tr style='background:"+bg+";border-bottom:1px solid #f1f5f9;'>";
+        html += "<td style='padding:6px 18px;font-weight:800;color:#0f172a;white-space:nowrap;'>" + spedEsc(f.datum) + "</td>";
+        html += "<td style='padding:6px 10px;"+sa+"'>" + spedEsc(f.wd) + "</td>";
+        html += "<td style='padding:6px 10px;font-weight:700;color:#1e6091;'>" + spedEsc(f.tour) + "</td>";
+        html += "<td style='padding:6px 10px;color:#166534;font-weight:700;'>" + spedEsc(f.lkw) + "</td>";
+        html += "<td style='padding:6px 10px;color:#475569;font-variant-numeric:tabular-nums;'>" + spedEsc(f.zeit) + "</td>";
+        html += "</tr>";
+      });
+      html += "</tbody></table>";
+    });
+
+    html += "</div>";
+  });
+
+  wrap.innerHTML = html;
+  wrap.scrollTop = 0;
+}
+
+function spedInit() {
+  spedPopulateYears();
+  spedPopulateMonths();
+  spedPopulateSped();
+  spedRender();
+}
+
+function spedPDF() {
+  var rows = spedFiltered();
+  if(!rows.length) { alert("Keine Fahrten für die gewählten Filter."); return; }
+  var bySped = {};
+  rows.forEach(function(f){
+    if(!bySped[f.nr]) bySped[f.nr] = { nr:f.nr, name:f.name, fahrten:[] };
+    bySped[f.nr].fahrten.push(f);
+  });
+  var speds = Object.keys(bySped).map(function(k){ return bySped[k]; })
+    .sort(function(a,b){ return (parseInt(a.nr,10)||0)-(parseInt(b.nr,10)||0); });
+  var today = new Date().toLocaleDateString("de-DE",{day:"2-digit",month:"long",year:"numeric"});
+  var scope = (spedState.jahr || "") + (spedState.monat !== "all" ? " · " + SPED_MONATE[parseInt(spedState.monat,10)] : " · Alle Monate");
+  var css = "@page{size:A4 portrait;margin:11mm 10mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;font-size:8pt}.cover{text-align:center;padding:14mm 0 7mm;border-bottom:3px solid #1e6091;margin-bottom:7mm}.cover h1{font-size:18pt;color:#1e6091;font-weight:900;margin-bottom:2mm}.sub{font-size:9pt;color:#64748b}.sb{page-break-inside:avoid;margin-bottom:6mm}.sh{background:#1e6091;color:#fff;padding:2mm 4mm;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:8px}.snr{background:#fff;color:#1e6091;border-radius:3px;padding:1px 6px;font-weight:900;font-size:8pt}.sn{font-size:11pt;font-weight:900;flex:1}.mh{background:#eef2f7;font-weight:900;color:#334155;padding:1.5mm 4mm;font-size:8pt}table{width:100%;border-collapse:collapse}thead tr{background:#f1f5f9;color:#475569}thead th{padding:1.5mm 3mm;font-weight:800;font-size:6.5pt;text-align:left;text-transform:uppercase}tbody td{padding:1.2mm 3mm;border-bottom:1px solid #f1f5f9;font-size:7.5pt}.ft{text-align:right;color:#94a3b8;font-size:6pt;margin-top:6mm}";
+  var body = "<div class='cover'><div style='font-size:22pt;margin-bottom:2mm;'>&#128666;</div><h1>Spediteur-Auswertung</h1><div class='sub'>NordFrische Center &middot; " + spedEsc(scope) + " &middot; " + today + "</div><div class='sub'>" + rows.length + " Fahrten &middot; " + speds.length + " Spediteure</div></div>";
+  speds.forEach(function(sp){
+    body += "<div class='sb'><div class='sh'><span class='snr'>" + spedEsc(sp.nr) + "</span><span class='sn'>" + spedEsc(sp.name) + "</span><span style='font-size:8pt;font-weight:700;'>" + sp.fahrten.length + " Fahrten</span></div>";
+    var byMonth = {};
+    sp.fahrten.forEach(function(f){ var k=f.jahr+"-"+f.monat; if(!byMonth[k])byMonth[k]=[]; byMonth[k].push(f); });
+    Object.keys(byMonth).sort().forEach(function(mk){
+      var parts = mk.split("-");
+      body += "<div class='mh'>" + SPED_MONATE[parseInt(parts[1],10)] + " " + parts[0] + "</div>";
+      body += "<table><thead><tr><th>Datum</th><th>Wochentag</th><th>Tour</th><th>LKW</th><th>Zeit</th></tr></thead><tbody>";
+      byMonth[mk].slice().sort(function(a,b){ return (a.iso||"").localeCompare(b.iso||""); }).forEach(function(f){
+        body += "<tr><td style='font-weight:700;'>" + spedEsc(f.datum) + "</td><td>" + spedEsc(f.wd) + "</td><td style='font-weight:700;color:#1e6091;'>" + spedEsc(f.tour) + "</td><td>" + spedEsc(f.lkw) + "</td><td>" + spedEsc(f.zeit) + "</td></tr>";
+      });
+      body += "</tbody></table>";
+    });
+    body += "</div>";
+  });
+  body += "<div class='ft'>NordFrischeCenter &middot; Spediteur-Auswertung</div>";
+  var w = window.open("","_blank","width=900,height=800");
+  w.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Spediteur-Auswertung</title><style>"+css+"</style></head><body>"+body+"</body></html>");
+  w.document.close(); w.focus(); setTimeout(function(){ w.print(); }, 600);
+}
+
+"""
+
     return f"""<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -5359,6 +5792,7 @@ iframe.active{{display:block}}
   <button class="nav-btn" id="btn-zulage" onclick="showArea('zulage')">&#128176; Zulagen</button>
   <button class="nav-btn" id="btn-spesen" onclick="showArea('spesen')">&#128181; Spesen</button>
   <button class="nav-btn" id="btn-gk" onclick="showArea('gk')">&#127970; Gro&#223;kunden</button>
+  <button class="nav-btn" id="btn-sped" onclick="showArea('sped')">&#128666; Spediteure</button>
   </div>
   <span class="topnav-stamp">{last_updated}</span>
 </nav>
@@ -5658,6 +6092,31 @@ iframe.active{{display:block}}
     </div>
   </div>
 
+  <!-- ── Spediteure Panel ───────────────────────────────────────────────────── -->
+  <div id="panel-sped" style="display:none;flex:1;overflow:hidden;background:#f3f7fb;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
+    <div style="flex-shrink:0;background:linear-gradient(180deg,#f8fbff 0%,#edf4fb 100%);border-bottom:1.5px solid #c6d6e8;padding:12px 18px;box-shadow:0 1px 5px rgba(30,96,145,.08);">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#1e6091 0%,#2f80b7 100%);display:flex;align-items:center;justify-content:center;font-size:17px;">&#128666;</div>
+          <div>
+            <div style="font-size:14px;font-weight:900;color:#0f172a;letter-spacing:-.2px;">Spediteure</div>
+            <div style="font-size:11px;color:#64748b;">Tourenpl&auml;ne nach Spedition &middot; Monat / Jahr</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:8px;">
+          <select id="sped-year" onchange="spedSetJahr(this.value)" style="padding:7px 11px;border:1.5px solid #b9cce3;border-radius:6px;font-size:12px;font-weight:700;font-family:inherit;background:#fff;color:#1f3347;outline:none;"></select>
+          <select id="sped-month" onchange="spedSetMonat(this.value)" style="padding:7px 11px;border:1.5px solid #b9cce3;border-radius:6px;font-size:12px;font-weight:700;font-family:inherit;background:#fff;color:#1f3347;outline:none;"></select>
+          <select id="sped-filter" onchange="spedSetSped(this.value)" style="padding:7px 11px;border:1.5px solid #b9cce3;border-radius:6px;font-size:12px;font-weight:700;font-family:inherit;background:#fff;color:#1f3347;outline:none;max-width:240px;"></select>
+        </div>
+        <button onclick="spedPDF()" style="margin-left:auto;padding:8px 15px;background:linear-gradient(180deg,#2f80b7 0%,#1e6091 100%);color:#fff;border:none;border-radius:7px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;box-shadow:0 2px 6px rgba(30,96,145,.28);">&#128196; PDF</button>
+      </div>
+      <div id="sped-stats" style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;"></div>
+    </div>
+    <div id="sped-content" style="flex:1;overflow-y:auto;padding:16px 18px 28px;background:#f3f7fb;">
+      <div style="color:#94a3b8;padding:70px;text-align:center;font-size:14px;">Keine Spediteur-Daten &ndash; bitte Tourenpl&auml;ne (Excel) in Streamlit hochladen.</div>
+    </div>
+  </div>
+
 </div>
 </div>
 
@@ -5828,6 +6287,11 @@ function showArea(s) {{
   var gkBtn = document.getElementById("btn-gk");
   if(gkBtn) gkBtn.className = "nav-btn" + (s==="gk" ? " active" : "");
   if(s==="gk" && gkPanel && !gkPanel.dataset.loaded) {{ gkRender(); gkPanel.dataset.loaded="1"; }}
+  var spedPanel = document.getElementById("panel-sped");
+  if(spedPanel) spedPanel.style.display = (s==="sped") ? "flex" : "none";
+  var spedBtn = document.getElementById("btn-sped");
+  if(spedBtn) spedBtn.className = "nav-btn" + (s==="sped" ? " active" : "");
+  if(s==="sped" && spedPanel && !spedPanel.dataset.loaded) {{ spedInit(); spedPanel.dataset.loaded="1"; }}
 }}
 
 // showKundenListeTop removed — Kunden Liste is now a standalone panel
@@ -6057,9 +6521,12 @@ var VERSTOSS_DATA           = {verstoss_json};
 var SPESEN_DATA            = {spesen_json};
 var GK_DATA                = {grosskunden_json};
 var TIMEREC_DATA           = {timerec_json};
+var SPED_DATA              = {spediteure_json};
 var faActiveTab            = "schichten";
 
 {spesen_js_code}
+
+{sped_js_code}
 
 // ── Großkunden ────────────────────────────────────────────────────────────────
 var gkSelected = 0;
@@ -10367,6 +10834,17 @@ with tab_extra:
             spinner_text="Verarbeite Schichten-CSV ...",
         )
 
+        def _sped_summary(ups):
+            sp = json.loads(st.session_state.get("spediteure_json", '{"katalog":[],"fahrten":[]}'))
+            return (f"{len(ups)} Dateien: {len(sp.get('fahrten', []))} Fahrten, "
+                    f"{len(sp.get('katalog', []))} Spediteure")
+        _extra_multi_upload(
+            "Spediteur-Tourenpläne (Excel)", ["xlsx"], "spediteure",
+            {"spediteure_json": parse_spediteure_excel},
+            summary_fn=_sped_summary,
+            spinner_text="Werte Spediteur-Tourenpläne aus ...",
+        )
+
 # === Tab: Download ===========================================================
 with tab_dl:
     instances_state = st.session_state.get("instances")
@@ -10409,6 +10887,7 @@ with tab_dl:
                 spesen_json=st.session_state.get("spesen_json", '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}'),
                 grosskunden_json=st.session_state.get("grosskunden_json", "[]"),
                 timerec_json=st.session_state.get("timerec_json", "{}"),
+                spediteure_json=st.session_state.get("spediteure_json", '{"katalog":[],"fahrten":[]}'),
                 last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
             )
         st.download_button(
