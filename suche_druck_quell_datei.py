@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "spediteure-gruppen-2026-06-02-v22-clean"
+APP_CACHE_VERSION = "spediteure-gruppen-2026-06-02-v23-graph"
 
 
 # =============================================================================
@@ -5659,9 +5659,7 @@ function spedRender() {
     var nc = "font-size:13px;font-weight:900;letter-spacing:-.3px";
     stats.innerHTML =
       "<span style=\"" + pc + ";background:#e8f2fb;color:#1e6091;border:1px solid #bdd0e7\"><span style=\"" + nc + "\">" + rows.length + "</span> Fahrten</span>" +
-      "<span style=\"" + pc + ";background:#ecf7f1;color:#165532;border:1px solid #c7e5d4\"><span style=\"" + nc + "\">" + grps.length + "</span> Speditionen</span>" +
-      "<span style=\"" + pc + ";background:#f3e8fb;color:#6b21a8;border:1px solid #e0c7f1\"><span style=\"" + nc + "\">" + Object.keys(nrSet).length + "</span> Unternamen</span>" +
-      "<span style=\"" + pc + ";background:#fff7e6;color:#9a5b00;border:1px solid #f6d9b3\"><span style=\"" + nc + "\">" + Object.keys(tourSet).length + "</span> Touren</span>";
+      "<span style=\"" + pc + ";background:#ecf7f1;color:#165532;border:1px solid #c7e5d4\"><span style=\"" + nc + "\">" + grps.length + "</span> Speditionen</span>";
   }
 
   if(!grps.length) {
@@ -5701,9 +5699,7 @@ function spedRender() {
       "<span style='font-size:15px;font-weight:900;color:#0f172a;'>"+spedEsc(g.gruppe)+"</span>"+
       "<span style='margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;'>"+
         _badge(g.fahrten.length+" Fahrten","#e8f2fb","#1e6091","#bdd0e7")+
-        _badge(years.length+" Jahre","#ecfdf5","#047857","#a7f3d0")+
-        _badge(Object.keys(gNames).length+" Unternamen","#f3e8fb","#6b21a8","#e0c7f1")+
-        _badge(Object.keys(gTours).length+" Touren","#fff7e6","#9a5b00","#f6d9b3")+"</span>";
+        _badge(years.length+" Jahre","#ecfdf5","#047857","#a7f3d0")+"</span>";
     html += "<div class='sped-acc' onclick='spedTog(this)' data-open='"+(autoG?"1":"0")+"' style='cursor:pointer;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:15px 18px;background:linear-gradient(180deg,#f8fbff 0%,#ffffff 100%);'>";
     html += "<span class='chev' style='font-size:12px;color:#1e6091;transition:transform .15s;transform:rotate("+(autoG?"90":"0")+"deg);'>&#9654;</span>"+gInner;
     html += "</div>";
@@ -5728,9 +5724,7 @@ function spedRender() {
         "<span style='font-size:13px;font-weight:900;color:#334155;'>Jahr "+spedEsc(yr)+"</span>"+
         "<span style='margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;'>"+
           _badge(yRows.length+" Fahrten","#e8f2fb","#1e6091","#bdd0e7")+
-          _badge(mkeys.length+" Monate","#ecfdf5","#047857","#a7f3d0")+
-          _badge(Object.keys(yrNames).length+" Unternamen","#f3e8fb","#6b21a8","#e0c7f1")+
-          _badge(Object.keys(yrTours).length+" Touren","#fff7e6","#9a5b00","#f6d9b3")+"</span>";
+          _badge(mkeys.length+" Monate","#ecfdf5","#047857","#a7f3d0")+"</span>";
       html += "<div class='sped-acc' onclick='spedTog(this)' data-open='"+(autoY?"1":"0")+"' style='cursor:pointer;display:flex;align-items:center;gap:10px;padding:11px 18px 11px 30px;background:#f6f9fd;'>";
       html += "<span class='chev' style='font-size:11px;color:#6b21a8;transition:transform .15s;transform:rotate("+(autoY?"90":"0")+"deg);'>&#9654;</span>"+yInner;
       html += "</div>";
@@ -5756,9 +5750,7 @@ function spedRender() {
         var mInner =
           "<span style='font-size:12.5px;font-weight:900;color:#0f172a;'>"+spedEsc(label)+"</span>"+
           "<span style='margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;'>"+
-            _badge(mRows.length+" Fahrten","#e8f2fb","#1e6091","#bdd0e7")+
-            _badge(names.length+" Unternamen","#f3e8fb","#6b21a8","#e0c7f1")+
-            _badge(Object.keys(moTours).length+" Touren","#fff7e6","#9a5b00","#f6d9b3")+"</span>";
+            _badge(mRows.length+" Fahrten","#e8f2fb","#1e6091","#bdd0e7")+"</span>";
         html += "<div class='sped-acc' onclick='spedTog(this)' data-open='"+(autoM?"1":"0")+"' style='cursor:pointer;display:flex;align-items:center;gap:10px;padding:9px 18px 9px 46px;background:#fafcff;'>";
         html += "<span class='chev' style='font-size:11px;color:#047857;transition:transform .15s;transform:rotate("+(autoM?"90":"0")+"deg);'>&#9654;</span>"+mInner;
         html += "</div>";
@@ -5776,13 +5768,11 @@ function spedRender() {
             "<span style='display:inline-flex;align-items:center;justify-content:center;min-width:50px;height:23px;padding:0 7px;border-radius:6px;background:#eef5fc;border:1px solid #cfe0f1;color:#1e6091;font-weight:900;font-size:11px;'>"+spedEsc(nm.nr)+"</span>"+
             "<span style='font-size:12.5px;font-weight:850;color:#0f766e;'>"+spedEsc(nm.name)+"</span>"+
             "<span style='margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;'>"+
-              _badge(list.length+" Fahrten","#e8f2fb","#1e6091","#bdd0e7")+
-              _badge(Object.keys(nmTours).length+" Touren","#fff7e6","#9a5b00","#f6d9b3")+"</span>";
+              _badge(list.length+" Fahrten","#e8f2fb","#1e6091","#bdd0e7")+"</span>";
           html += "<div class='sped-acc' onclick='spedTog(this)' data-open='"+(autoN?"1":"0")+"' style='cursor:pointer;display:flex;align-items:center;gap:10px;padding:8px 18px 8px 62px;background:#fff;'>";
           html += "<span class='chev' style='font-size:10px;color:#0f766e;transition:transform .15s;transform:rotate("+(autoN?"90":"0")+"deg);'>&#9654;</span>"+nInner;
           html += "</div>";
           html += "<div class='sped-body' style='display:"+(autoN?"block":"none")+";padding-bottom:6px;'>";
-          html += "<div style='padding:8px 18px 4px 78px;'><div style='font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#94a3b8;margin-bottom:5px;'>Gefahrene Touren</div>"+_tchips(nmTours)+"</div>";
           html += "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
           html += "<thead><tr style='background:#fff;color:#64748b;'>"+
             "<th style='padding:6px 18px 6px 78px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;'>Datum</th>"+
@@ -5817,6 +5807,218 @@ function spedRender() {
 
   wrap.innerHTML = html;
   wrap.scrollTop = 0;
+}
+
+
+function buildSpedDdMenu() {
+  var menu = document.getElementById("ddmenu-sped");
+  if(!menu) return;
+  var items = [
+    { id: "sped", label: "Liste" },
+    { id: "sped_graph", label: "Graph" }
+  ];
+  menu.innerHTML = items.map(function(it){
+    var active = (currentArea === it.id) ? " active" : "";
+    return "<div class='dd-item" + active + "' onclick='ddSelectSped(\"" + it.id + "\")'>" + it.label + "</div>";
+  }).join("");
+}
+function ddSelectSped(area) {
+  showArea(area);
+  document.querySelectorAll(".nav-dd").forEach(function(d){ d.classList.remove("open"); });
+}
+
+var spedGraphState = { jahr: null, monat: "all", sped: "all", metric: "spedition" };
+var spedGraphChart = null;
+
+function spedGraphFiltered() {
+  return spedData().fahrten.filter(function(f){
+    if(spedGraphState.jahr && f.jahr !== spedGraphState.jahr) return false;
+    if(spedGraphState.monat !== "all" && f.monat !== spedGraphState.monat) return false;
+    if(spedGraphState.sped !== "all" && (f.gruppe || f.name) !== spedGraphState.sped) return false;
+    return true;
+  });
+}
+
+function spedGraphPopulateYears() {
+  var sel = document.getElementById("sped-graph-year");
+  if(!sel) return;
+  var years = spedAllYears();
+  sel.innerHTML = years.map(function(y){ return "<option value='"+y+"'>"+y+"</option>"; }).join("");
+  if(!years.length) { sel.innerHTML = "<option value=''>—</option>"; spedGraphState.jahr = null; return; }
+  var cur = String(new Date().getFullYear());
+  if(spedGraphState.jahr && years.indexOf(spedGraphState.jahr) !== -1) sel.value = spedGraphState.jahr;
+  else if(years.indexOf(cur) !== -1) sel.value = cur;
+  else sel.value = years[0];
+  spedGraphState.jahr = sel.value;
+}
+function spedGraphPopulateMonths() {
+  var sel = document.getElementById("sped-graph-month");
+  if(!sel) return;
+  var months = spedGraphState.jahr ? spedMonthsForYear(spedGraphState.jahr) : [];
+  var opts = "<option value='all'>Alle Monate</option>";
+  months.forEach(function(m){ opts += "<option value='"+m+"'>"+(SPED_MONATE[parseInt(m,10)]||m)+"</option>"; });
+  sel.innerHTML = opts;
+  if(months.indexOf(spedGraphState.monat) === -1) spedGraphState.monat = "all";
+  sel.value = spedGraphState.monat;
+}
+function spedGraphPopulateSped() {
+  var sel = document.getElementById("sped-graph-filter");
+  if(!sel) return;
+  var seen = {}, grps = [];
+  spedData().katalog.slice().sort(function(a,b){ return (parseInt(a.nr,10)||0) - (parseInt(b.nr,10)||0); }).forEach(function(k){
+    var g = k.gruppe || k.name;
+    if(!seen[g]) { seen[g] = 1; grps.push(g); }
+  });
+  var opts = "<option value='all'>Alle Speditionen</option>";
+  grps.forEach(function(g){ opts += "<option value='"+spedEsc(g)+"'>"+spedEsc(g)+"</option>"; });
+  sel.innerHTML = opts;
+  sel.value = spedGraphState.sped;
+  if(sel.value !== spedGraphState.sped) { spedGraphState.sped = "all"; sel.value = "all"; }
+}
+function spedGraphSetJahr(v){ spedGraphState.jahr = v; spedGraphPopulateMonths(); spedRenderGraph(); }
+function spedGraphSetMonat(v){ spedGraphState.monat = v; spedRenderGraph(); }
+function spedGraphSetSped(v){ spedGraphState.sped = v; spedRenderGraph(); }
+function spedGraphSetMetric(v){ spedGraphState.metric = v; spedRenderGraph(); }
+
+function spedGraphBuildGroups(rows) {
+  var map = {};
+  rows.forEach(function(f){
+    var key = "";
+    if(spedGraphState.metric === "month") key = (SPED_MONATE[parseInt(f.monat,10)] || f.monat || "—") + " " + (f.jahr || "");
+    else if(spedGraphState.metric === "name") key = (f.nr ? f.nr + " · " : "") + (f.name || "—");
+    else key = f.gruppe || f.name || "—";
+    if(!map[key]) map[key] = { label:key, count:0, tours:{}, names:{}, months:{} };
+    map[key].count += 1;
+    if(f.tour) map[key].tours[f.tour] = 1;
+    if(f.name) map[key].names[f.name] = 1;
+    if(f.monat) map[key].months[(SPED_MONATE[parseInt(f.monat,10)] || f.monat) + " " + (f.jahr || "")] = 1;
+  });
+  var arr = Object.keys(map).map(function(k){ return map[k]; });
+  if(spedGraphState.metric === "month") {
+    var idx = {};
+    SPED_MONATE.forEach(function(m, i){ if(m) idx[m] = i; });
+    arr.sort(function(a,b){
+      var am = (a.label.split(" ")[0] || "");
+      var bm = (b.label.split(" ")[0] || "");
+      return (idx[am]||99) - (idx[bm]||99) || a.label.localeCompare(b.label, "de");
+    });
+  } else {
+    arr.sort(function(a,b){ return b.count - a.count || a.label.localeCompare(b.label, "de"); });
+  }
+  if(spedGraphState.metric !== "month") arr = arr.slice(0, 20);
+  return arr;
+}
+
+function spedGraphModeButtons() {
+  ["spedition","month","name"].forEach(function(m){
+    var b = document.getElementById("sped-graph-mode-" + m);
+    if(!b) return;
+    var active = spedGraphState.metric === m;
+    b.style.background = active ? "linear-gradient(180deg,#2f80b7 0%,#1e6091 100%)" : "#fff";
+    b.style.color = active ? "#fff" : "#1e6091";
+    b.style.borderColor = active ? "#164e75" : "#b9cce3";
+    b.style.boxShadow = active ? "0 2px 7px rgba(30,96,145,.22)" : "none";
+  });
+}
+
+function spedRenderGraph() {
+  var panel = document.getElementById("panel-sped-graph");
+  if(!panel) return;
+  var stats = document.getElementById("sped-graph-stats");
+  var canvas = document.getElementById("sped-graph-chart");
+  var empty = document.getElementById("sped-graph-empty");
+  var wrap = document.getElementById("sped-graph-canvas-wrap");
+  var list = document.getElementById("sped-graph-list");
+
+  spedGraphModeButtons();
+
+  if(!spedData().fahrten.length) {
+    if(stats) stats.innerHTML = "";
+    if(empty) { empty.style.display = "block"; empty.innerHTML = "Keine Spediteur-Daten – bitte Touren-Dateien (Excel) in Streamlit hochladen."; }
+    if(wrap) wrap.style.display = "none";
+    if(list) list.innerHTML = "";
+    if(spedGraphChart) { spedGraphChart.destroy(); spedGraphChart = null; }
+    return;
+  }
+
+  var rows = spedGraphFiltered();
+  var groups = spedGraphBuildGroups(rows);
+  var speds = {}, names = {}, months = {};
+  rows.forEach(function(f){
+    if(f.gruppe || f.name) speds[f.gruppe || f.name] = 1;
+    if(f.name) names[f.name] = 1;
+    if(f.monat) months[(SPED_MONATE[parseInt(f.monat,10)] || f.monat) + " " + (f.jahr || "")] = 1;
+  });
+
+  if(stats) {
+    var pc = "display:inline-flex;align-items:baseline;gap:5px;padding:4px 11px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.2";
+    var nc = "font-size:13px;font-weight:900;letter-spacing:-.3px";
+    stats.innerHTML =
+      "<span style=\"" + pc + ";background:#e8f2fb;color:#1e6091;border:1px solid #bdd0e7\"><span style=\"" + nc + "\">" + rows.length + "</span> Fahrten</span>" +
+      "<span style=\"" + pc + ";background:#ecf7f1;color:#165532;border:1px solid #c7e5d4\"><span style=\"" + nc + "\">" + Object.keys(speds).length + "</span> Speditionen</span>" +
+      "<span style=\"" + pc + ";background:#f8fafc;color:#334155;border:1px solid #cbd5e1\"><span style=\"" + nc + "\">" + Object.keys(months).length + "</span> Monate</span>";
+  }
+
+  if(!rows.length || !groups.length) {
+    if(empty) { empty.style.display = "block"; empty.innerHTML = "Keine Daten für die gewählten Filter."; }
+    if(wrap) wrap.style.display = "none";
+    if(list) list.innerHTML = "";
+    if(spedGraphChart) { spedGraphChart.destroy(); spedGraphChart = null; }
+    return;
+  }
+
+  if(empty) empty.style.display = "none";
+  if(wrap) wrap.style.display = "block";
+
+  var labels = groups.map(function(g){ return g.label; });
+  var data = groups.map(function(g){ return g.count; });
+  var title = spedGraphState.metric === "month" ? "Fahrten je Monat" : (spedGraphState.metric === "name" ? "Fahrten je Untername" : "Fahrten je Spedition");
+  var horizontal = spedGraphState.metric !== "month" || labels.length > 8;
+
+  if(canvas && window.Chart) {
+    if(spedGraphChart) spedGraphChart.destroy();
+    var ctx = canvas.getContext("2d");
+    spedGraphChart = new Chart(ctx, {
+      type: "bar",
+      data: { labels: labels, datasets: [{ label: "Fahrten", data: data, borderRadius: 7, borderWidth: 1 }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: horizontal ? "y" : "x",
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: title, color: "#0f172a", font: { size: 15, weight: "bold" }, padding: { bottom: 14 } },
+          tooltip: { callbacks: { label: function(ctx){ return (ctx.parsed.x || ctx.parsed.y || 0) + " Fahrten"; } } }
+        },
+        scales: {
+          x: { beginAtZero: true, ticks: { precision: 0, color: "#64748b" }, grid: { color: "#eef2f7" } },
+          y: { beginAtZero: true, ticks: { precision: 0, color: "#334155", autoSkip: false }, grid: { color: "#f1f5f9" } }
+        }
+      }
+    });
+  }
+
+  if(list) {
+    var top = groups.slice(0, 10);
+    var max = top.reduce(function(m,g){ return Math.max(m, g.count); }, 1);
+    list.innerHTML = "<div style='font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.35px;color:#64748b;margin:4px 0 8px;'>Top 10</div>" +
+      top.map(function(g, i){
+        var w = Math.max(4, Math.round((g.count / max) * 100));
+        return "<div style='display:grid;grid-template-columns:26px minmax(160px,1fr) 70px;gap:10px;align-items:center;padding:6px 0;border-top:1px solid #f1f5f9;'>" +
+          "<div style='font-size:11px;font-weight:900;color:#94a3b8;'>" + (i+1) + ".</div>" +
+          "<div style='min-width:0;'><div style='font-size:12px;font-weight:850;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + spedEsc(g.label) + "</div>" +
+          "<div style='height:7px;background:#e8f2fb;border-radius:99px;overflow:hidden;margin-top:5px;'><div style='height:100%;width:" + w + "%;background:linear-gradient(90deg,#2f80b7,#1e6091);border-radius:99px;'></div></div></div>" +
+          "<div style='text-align:right;font-size:12px;font-weight:900;color:#1e6091;'>" + g.count + "</div>" +
+        "</div>";
+      }).join("");
+  }
+}
+
+function spedInitGraph() {
+  spedGraphPopulateYears();
+  spedGraphPopulateMonths();
+  spedGraphPopulateSped();
+  spedRenderGraph();
 }
 
 
@@ -5967,7 +6169,12 @@ iframe.active{{display:block}}
   <button class="nav-btn" id="btn-zulage" onclick="showArea('zulage')">&#128176; Zulagen</button>
   <button class="nav-btn" id="btn-spesen" onclick="showArea('spesen')">&#128181; Spesen</button>
   <button class="nav-btn" id="btn-gk" onclick="showArea('gk')">&#127970; Gro&#223;kunden</button>
-  <button class="nav-btn" id="btn-sped" onclick="showArea('sped')">&#128666; Spediteure</button>
+  <div class="nav-dd" id="dd-sped">
+    <button class="nav-dd-btn" id="btn-sped" onclick="ddToggle('sped',event)">
+      &#128666; Spediteure <span class="dd-arrow">&#9660;</span>
+    </button>
+    <div class="dd-menu" id="ddmenu-sped"></div>
+  </div>
   </div>
   <span class="topnav-stamp">{last_updated}</span>
 </nav>
@@ -6291,6 +6498,42 @@ iframe.active{{display:block}}
     </div>
   </div>
 
+  <!-- ── Spediteure Graph Panel ─────────────────────────────────────────────── -->
+  <div id="panel-sped-graph" style="display:none;flex:1;overflow:hidden;background:#f3f7fb;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
+    <div style="flex-shrink:0;background:linear-gradient(180deg,#f8fbff 0%,#edf4fb 100%);border-bottom:1.5px solid #c6d6e8;padding:12px 18px;box-shadow:0 1px 5px rgba(30,96,145,.08);">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#1e6091 0%,#2f80b7 100%);display:flex;align-items:center;justify-content:center;font-size:17px;">&#128202;</div>
+          <div>
+            <div style="font-size:14px;font-weight:900;color:#0f172a;letter-spacing:-.2px;">Spediteure Graph</div>
+            <div style="font-size:11px;color:#64748b;">Grafische Auswertung der Fahrten</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:8px;">
+          <select id="sped-graph-year" onchange="spedGraphSetJahr(this.value)" title="Jahr" style="padding:8px 11px;border:1.5px solid #b9cce3;border-radius:8px;font-size:12px;font-weight:800;font-family:inherit;background:#fff;color:#1f3347;outline:none;"></select>
+          <select id="sped-graph-month" onchange="spedGraphSetMonat(this.value)" title="Monat" style="padding:8px 11px;border:1.5px solid #b9cce3;border-radius:8px;font-size:12px;font-weight:800;font-family:inherit;background:#fff;color:#1f3347;outline:none;"></select>
+          <select id="sped-graph-filter" onchange="spedGraphSetSped(this.value)" title="Spedition" style="padding:8px 11px;border:1.5px solid #b9cce3;border-radius:8px;font-size:12px;font-weight:800;font-family:inherit;background:#fff;color:#1f3347;outline:none;max-width:240px;"></select>
+        </div>
+      </div>
+      <div id="sped-graph-stats" style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;"></div>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:16px 18px 28px;background:#f3f7fb;">
+      <div style="background:#fff;border:1px solid #cad7e8;border-radius:14px;box-shadow:0 8px 24px rgba(30,96,145,.08);overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:13px 16px;border-bottom:1px solid #e2e8f0;background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);">
+          <div style="font-size:14px;font-weight:900;color:#0f172a;margin-right:auto;">Grafik</div>
+          <button id="sped-graph-mode-spedition" onclick="spedGraphSetMetric('spedition')" style="padding:7px 12px;border:1px solid #b9cce3;border-radius:8px;background:#fff;color:#1e6091;font-size:12px;font-weight:850;font-family:inherit;cursor:pointer;">Speditionen</button>
+          <button id="sped-graph-mode-month" onclick="spedGraphSetMetric('month')" style="padding:7px 12px;border:1px solid #b9cce3;border-radius:8px;background:#fff;color:#1e6091;font-size:12px;font-weight:850;font-family:inherit;cursor:pointer;">Monate</button>
+          <button id="sped-graph-mode-name" onclick="spedGraphSetMetric('name')" style="padding:7px 12px;border:1px solid #b9cce3;border-radius:8px;background:#fff;color:#1e6091;font-size:12px;font-weight:850;font-family:inherit;cursor:pointer;">Unternamen</button>
+        </div>
+        <div id="sped-graph-empty" style="display:none;color:#94a3b8;padding:70px;text-align:center;font-size:14px;font-weight:700;">Keine Daten f&uuml;r die gew&auml;hlten Filter.</div>
+        <div id="sped-graph-canvas-wrap" style="height:440px;padding:18px;">
+          <canvas id="sped-graph-chart"></canvas>
+        </div>
+        <div id="sped-graph-list" style="padding:0 18px 18px;"></div>
+      </div>
+    </div>
+  </div>
+
 </div>
 </div>
 
@@ -6357,6 +6600,7 @@ function ddToggle(area, e) {{
   document.querySelectorAll(".nav-dd").forEach(function(d){{d.classList.remove("open");}});
   if(!wasOpen) {{
     if(area === "verstoss") buildVerstossDdMenu();
+    else if(area === "sped") buildSpedDdMenu();
     else buildDdMenu(area);
     dd.classList.add("open");
     // Position unter dem Button berechnen (fixed, ignoriert iframe)
@@ -6463,9 +6707,16 @@ function showArea(s) {{
   if(s==="gk" && gkPanel && !gkPanel.dataset.loaded) {{ gkRender(); gkPanel.dataset.loaded="1"; }}
   var spedPanel = document.getElementById("panel-sped");
   if(spedPanel) spedPanel.style.display = (s==="sped") ? "flex" : "none";
+  var spedGraphPanel = document.getElementById("panel-sped-graph");
+  if(spedGraphPanel) spedGraphPanel.style.display = (s==="sped_graph") ? "flex" : "none";
   var spedBtn = document.getElementById("btn-sped");
-  if(spedBtn) spedBtn.className = "nav-btn" + (s==="sped" ? " active" : "");
+  if(spedBtn) spedBtn.className = "nav-dd-btn" + ((s==="sped" || s==="sped_graph") ? " active" : "");
+  if(typeof buildSpedDdMenu === "function") buildSpedDdMenu();
   if(s==="sped" && spedPanel && !spedPanel.dataset.loaded) {{ spedInit(); spedPanel.dataset.loaded="1"; }}
+  if(s==="sped_graph") {{
+    if(spedGraphPanel && !spedGraphPanel.dataset.loaded) {{ spedInitGraph(); spedGraphPanel.dataset.loaded="1"; }}
+    else {{ spedRenderGraph(); }}
+  }}
 }}
 
 // showKundenListeTop removed — Kunden Liste is now a standalone panel
