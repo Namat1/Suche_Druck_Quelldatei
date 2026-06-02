@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "spediteure-gruppen-2026-06-02-v21"
+APP_CACHE_VERSION = "spediteure-gruppen-2026-06-02-v22-clean"
 
 
 # =============================================================================
@@ -5552,7 +5552,7 @@ function spedEsc(v) {
   return String(v == null ? "" : v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
 var SPED_MONATE = ["","Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
-var spedState = { jahr: null, monat: "all", sped: "all", suche: "" };
+var spedState = { jahr: null, monat: "all", sped: "all" };
 
 function spedAllYears() {
   var ys = {};
@@ -5608,30 +5608,20 @@ function spedPopulateSped() {
 function spedSetJahr(v){ spedState.jahr = v; spedPopulateMonths(); spedRender(); }
 function spedSetMonat(v){ spedState.monat = v; spedRender(); }
 function spedSetSped(v){ spedState.sped = v; spedRender(); }
-function spedSetSearch(v){ spedState.suche = String(v || "").toLowerCase().trim(); spedRender(); }
 function spedResetFilters(){
   spedState.monat = "all";
   spedState.sped = "all";
-  spedState.suche = "";
   spedPopulateYears();
   spedPopulateMonths();
   spedPopulateSped();
-  var q = document.getElementById("sped-search");
-  if(q) q.value = "";
   spedRender();
 }
 
 function spedFiltered() {
-  var q = String(spedState.suche || "").toLowerCase().trim();
   return spedData().fahrten.filter(function(f){
     if(spedState.jahr && f.jahr !== spedState.jahr) return false;
     if(spedState.monat !== "all" && f.monat !== spedState.monat) return false;
     if(spedState.sped !== "all" && (f.gruppe || f.name) !== spedState.sped) return false;
-    if(q) {
-      var monatName = SPED_MONATE[parseInt(f.monat,10)] || "";
-      var hay = [f.gruppe, f.nr, f.name, f.tour, f.lkw, f.datum, f.wd, f.zeit, monatName, f.jahr].join(" ").toLowerCase();
-      if(hay.indexOf(q) === -1) return false;
-    }
     return true;
   });
 }
@@ -5689,16 +5679,9 @@ function spedRender() {
     }).join("");
   }
 
-  var activeBits = [];
-  if(spedState.sped !== "all") activeBits.push("Spedition: " + spedState.sped);
-  if(spedState.monat !== "all") activeBits.push("Monat: " + (SPED_MONATE[parseInt(spedState.monat,10)] || spedState.monat));
-  if(spedState.suche) activeBits.push("Suche: " + spedState.suche);
-  var html = "<div style='display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;'>" +
-    "<div style='flex:1;min-width:240px;background:#fff;border:1px solid #dbe6f2;border-radius:10px;padding:8px 12px;color:#64748b;font-size:11.5px;font-weight:700;'>Ansicht: <b style='color:#0f172a;'>Spedition</b> &rarr; <b style='color:#0f172a;'>Jahr</b> &rarr; <b style='color:#0f172a;'>Monat</b> &rarr; <b style='color:#0f172a;'>Untername</b>" + (activeBits.length ? "<span style='margin-left:8px;color:#1e6091;'>· " + spedEsc(activeBits.join(" · ")) + "</span>" : "") + "</div>" +
-    "<button onclick='spedExpandAll(true)' style='cursor:pointer;border:1px solid #cad7e8;background:#fff;color:#1e6091;font-weight:800;font-size:11px;padding:8px 12px;border-radius:8px;font-family:inherit;'>&#11167; Aufklappen</button>" +
-    "<button onclick='spedExpandAll(false)' style='cursor:pointer;border:1px solid #cad7e8;background:#fff;color:#64748b;font-weight:800;font-size:11px;padding:8px 12px;border-radius:8px;font-family:inherit;'>&#11165; Einklappen</button></div>";
+  var html = "";
 
-  var searchActive = !!String(spedState.suche || "").trim();
+  var searchActive = false;
   var autoG = grps.length === 1 || searchActive;
 
   grps.forEach(function(g){
@@ -5846,21 +5829,6 @@ function spedTog(el){
   var chev = el.querySelector(".chev");
   if(chev) chev.style.transform = "rotate(" + (open ? "0" : "90") + "deg)";
 }
-function spedExpandAll(open){
-  var wrap = document.getElementById("sped-content");
-  if(!wrap) return;
-  var accs = wrap.querySelectorAll(".sped-acc");
-  for(var i=0;i<accs.length;i++){
-    var el = accs[i];
-    var body = el.nextElementSibling;
-    if(!body) continue;
-    body.style.display = open ? "block" : "none";
-    el.setAttribute("data-open", open ? "1" : "0");
-    var chev = el.querySelector(".chev");
-    if(chev) chev.style.transform = "rotate(" + (open ? "90" : "0") + "deg)";
-  }
-}
-
 function spedInit() {
   spedPopulateYears();
   spedPopulateMonths();
@@ -6310,12 +6278,10 @@ iframe.active{{display:block}}
             <div style="font-size:11px;color:#64748b;">Tourenpl&auml;ne nach Spedition &middot; Jahr / Monat / Untername</div>
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:8px;flex:1;min-width:320px;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:8px;">
           <select id="sped-year" onchange="spedSetJahr(this.value)" title="Jahr" style="padding:8px 11px;border:1.5px solid #b9cce3;border-radius:8px;font-size:12px;font-weight:800;font-family:inherit;background:#fff;color:#1f3347;outline:none;"></select>
           <select id="sped-month" onchange="spedSetMonat(this.value)" title="Monat" style="padding:8px 11px;border:1.5px solid #b9cce3;border-radius:8px;font-size:12px;font-weight:800;font-family:inherit;background:#fff;color:#1f3347;outline:none;"></select>
           <select id="sped-filter" onchange="spedSetSped(this.value)" title="Spedition" style="padding:8px 11px;border:1.5px solid #b9cce3;border-radius:8px;font-size:12px;font-weight:800;font-family:inherit;background:#fff;color:#1f3347;outline:none;max-width:240px;"></select>
-          <input id="sped-search" oninput="spedSetSearch(this.value)" placeholder="Suche: Untername, Nummer, Tour, LKW..." style="flex:1;min-width:220px;padding:8px 12px;border:1.5px solid #b9cce3;border-radius:8px;font-size:12px;font-weight:700;font-family:inherit;background:#fff;color:#1f3347;outline:none;box-shadow:0 1px 3px rgba(30,96,145,.07);">
-          <button onclick="spedResetFilters()" title="Filter und Suche zurücksetzen" style="padding:8px 12px;background:#fff;color:#64748b;border:1.5px solid #cbd5e1;border-radius:8px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;">Zurücksetzen</button>
         </div>
       </div>
       <div id="sped-stats" style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;"></div>
