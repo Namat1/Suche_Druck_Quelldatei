@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "spediteure-gruppen-2026-06-02-v24-verstoss-graph-style"
+APP_CACHE_VERSION = "spediteure-gruppen-2026-06-03-v25-farbige-graphen"
 
 
 # =============================================================================
@@ -5829,6 +5829,30 @@ function ddSelectSped(area) {
 
 var spedGraphState = { jahr: null, monat: "all", sped: "all" };
 var _spedGraphCharts = {};
+var SPED_GRAPH_PALETTE = [
+  "#2563eb", "#16a34a", "#f59e0b", "#9333ea", "#ef4444", "#0891b2",
+  "#f97316", "#14b8a6", "#8b5cf6", "#84cc16", "#ec4899", "#64748b",
+  "#0f766e", "#b45309", "#1d4ed8", "#7c3aed"
+];
+function spedHashColorSeed(str) {
+  str = String(str || "");
+  var h = 0;
+  for (var i = 0; i < str.length; i++) h = ((h << 5) - h) + str.charCodeAt(i);
+  return Math.abs(h);
+}
+function spedColorForGroup(name) {
+  if(!name) return "#94a3b8";
+  return SPED_GRAPH_PALETTE[spedHashColorSeed(name) % SPED_GRAPH_PALETTE.length];
+}
+function spedColorAlpha(hex, alpha) {
+  if(!hex || hex[0] !== "#") return hex;
+  var h = hex.slice(1);
+  if(h.length === 3) h = h.split("").map(function(c){ return c + c; }).join("");
+  var r = parseInt(h.slice(0,2), 16) || 0;
+  var g = parseInt(h.slice(2,4), 16) || 0;
+  var b = parseInt(h.slice(4,6), 16) || 0;
+  return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
+}
 
 function spedGraphFiltered() {
   return spedData().fahrten.filter(function(f){
@@ -5987,11 +6011,15 @@ function spedRenderGraph() {
   var spedLabel = spedGraphState.sped === "all" ? "alle Speditionen" : spedGraphState.sped;
   var total = rows.length;
 
-  var spedMap = {}, nameMap = {}, tourMap = {}, lkwMap = {}, monthCount = Array(12).fill(0);
+  var spedMap = {}, nameMap = {}, nameSpedMap = {}, tourMap = {}, lkwMap = {}, monthCount = Array(12).fill(0);
   rows.forEach(function(f){
     var g = f.gruppe || f.name || "—";
     spedMap[g] = (spedMap[g] || 0) + 1;
-    if(f.name) nameMap[(f.nr ? f.nr + " · " : "") + f.name] = (nameMap[(f.nr ? f.nr + " · " : "") + f.name] || 0) + 1;
+    if(f.name) {
+      var nameKey = (f.nr ? f.nr + " · " : "") + f.name;
+      nameMap[nameKey] = (nameMap[nameKey] || 0) + 1;
+      if(!nameSpedMap[nameKey]) nameSpedMap[nameKey] = g;
+    }
     if(f.tour) tourMap[f.tour] = (tourMap[f.tour] || 0) + 1;
     if(f.lkw) lkwMap[f.lkw] = (lkwMap[f.lkw] || 0) + 1;
     var mi = parseInt(f.monat, 10);
@@ -6000,6 +6028,27 @@ function spedRenderGraph() {
 
   var topSpeds = spedTopEntries(spedMap, 12);
   var topNames = spedTopEntries(nameMap, 15);
+  var monthDatasets = topSpeds.map(function(entry){
+    var grp = entry[0];
+    var values = Array(12).fill(0);
+    rows.forEach(function(f){
+      var g = f.gruppe || f.name || "—";
+      var mi = parseInt(f.monat, 10);
+      if(g === grp && mi >= 1 && mi <= 12) values[mi - 1] += 1;
+    });
+    var baseColor = spedColorForGroup(grp);
+    return {
+      label: grp,
+      data: values,
+      backgroundColor: spedColorAlpha(baseColor, 0.88),
+      borderColor: baseColor,
+      borderWidth: 1,
+      borderRadius: 4,
+      borderSkipped: false,
+      maxBarThickness: 34,
+      stack: 'fahrten'
+    };
+  });
   var months = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
   var maxMonth = Math.max.apply(null, monthCount.concat([0]));
   var maxMonthName = maxMonth ? months[monthCount.indexOf(maxMonth)] : "—";
@@ -6031,11 +6080,11 @@ function spedRenderGraph() {
   html += "</div>";
 
   html += "<div style='display:grid;grid-template-columns:minmax(0,1.15fr) minmax(420px,.95fr);gap:14px;margin-bottom:14px;align-items:stretch;'>";
-  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:360px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Fahrten nach Monat</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anzahl und Anteil an allen Fahrten</div><div style='height:300px;'><canvas id='sped-chart-month'></canvas></div></div>";
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:360px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Fahrten nach Monat</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Farben zeigen die Speditionen je Monat</div><div style='height:300px;'><canvas id='sped-chart-month'></canvas></div></div>";
   html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:470px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Speditionen</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anteil je Spedition</div><div style='height:410px;'><canvas id='sped-chart-sped'></canvas></div></div>";
   html += "</div>";
 
-  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Top Unternamen nach Fahrten</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anzahl und Anteil an allen Fahrten</div><div style='height:360px;'><canvas id='sped-chart-name'></canvas></div></div>";
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Top Unternamen nach Fahrten</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Farben zeigen die zugehörige Spedition</div><div style='height:360px;'><canvas id='sped-chart-name'></canvas></div></div>";
 
   html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:14px;'>";
   html += "<div style='padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:900;color:#0f172a;'>Monatsübersicht " + spedEsc(yearLabel) + "</div>";
@@ -6068,14 +6117,30 @@ function spedRenderGraph() {
 
   spedGraphChart("sped-chart-month", {
     type: "bar",
-    data: { labels: months, datasets: [{ label: "Fahrten", data: monthCount, backgroundColor: "#2f80b7", borderRadius: 5 }] },
-    plugins: [spedPctLabelPlugin(total, "bar-x")],
+    data: { labels: months, datasets: monthDatasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { top: 18 } },
-      plugins: { legend: { display: false }, tooltip: spedTooltipPct(total, "y") },
-      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+      plugins: {
+        legend: { position: "bottom", labels: { boxWidth: 10, padding: 12, font: { size: 10 } } },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              var v = Number(ctx.parsed.y) || 0;
+              return (ctx.dataset.label || "Spedition") + ": " + spedCountPctLabel(v, total);
+            },
+            footer: function(items) {
+              var sum = 0;
+              (items || []).forEach(function(it){ sum += Number(it.parsed.y) || 0; });
+              return "Monat gesamt: " + spedCountPctLabel(sum, total);
+            }
+          }
+        }
+      },
+      scales: {
+        x: { stacked: true },
+        y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } }
+      }
     }
   });
 
@@ -6083,7 +6148,13 @@ function spedRenderGraph() {
     type: "doughnut",
     data: {
       labels: topSpeds.map(function(x){ return x[0] + " · " + spedCountPctLabel(x[1], total); }),
-      datasets: [{ data: topSpeds.map(function(x){ return x[1]; }), backgroundColor: ["#1e6091", "#2f80b7", "#0891b2", "#047857", "#16a34a", "#6b21a8", "#9333ea", "#f59e0b", "#b45309", "#475569", "#0f766e", "#cbd5e1"] }]
+      datasets: [{
+        data: topSpeds.map(function(x){ return x[1]; }),
+        backgroundColor: topSpeds.map(function(x){ return spedColorForGroup(x[0]); }),
+        hoverBackgroundColor: topSpeds.map(function(x){ return spedColorAlpha(spedColorForGroup(x[0]), 0.95); }),
+        borderColor: "#ffffff",
+        borderWidth: 2
+      }]
     },
     plugins: [spedPctLabelPlugin(total, "doughnut")],
     options: {
@@ -6098,14 +6169,41 @@ function spedRenderGraph() {
 
   spedGraphChart("sped-chart-name", {
     type: "bar",
-    data: { labels: topNames.map(function(x){ return x[0]; }), datasets: [{ label: "Fahrten", data: topNames.map(function(x){ return x[1]; }), backgroundColor: "#1e3a5f", borderRadius: 5 }] },
+    data: {
+      labels: topNames.map(function(x){ return x[0]; }),
+      datasets: [{
+        label: "Fahrten",
+        data: topNames.map(function(x){ return x[1]; }),
+        backgroundColor: topNames.map(function(x){ return spedColorAlpha(spedColorForGroup(nameSpedMap[x[0]]), 0.9); }),
+        borderColor: topNames.map(function(x){ return spedColorForGroup(nameSpedMap[x[0]]); }),
+        borderWidth: 1,
+        borderRadius: 5
+      }]
+    },
     plugins: [spedPctLabelPlugin(total, "bar-y")],
     options: {
       indexAxis: "y",
       responsive: true,
       maintainAspectRatio: false,
       layout: { padding: { right: 90 } },
-      plugins: { legend: { display: false }, tooltip: spedTooltipPct(total, "x") },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: function(items) {
+              return items && items[0] ? items[0].label : "";
+            },
+            label: function(ctx) {
+              var v = Number(ctx.parsed.x) || 0;
+              return "Fahrten: " + spedCountPctLabel(v, total);
+            },
+            afterLabel: function(ctx) {
+              var key = ctx.label || "";
+              return "Spedition: " + (nameSpedMap[key] || "—");
+            }
+          }
+        }
+      },
       scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
     }
   });
