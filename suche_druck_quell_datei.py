@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "spediteure-gruppen-2026-06-02-v19"
+APP_CACHE_VERSION = "spediteure-gruppen-2026-06-02-v20"
 
 
 # =============================================================================
@@ -2881,9 +2881,51 @@ def _sped_build_index():
 
 
 _SPED_BY_COMPACT, _SPED_BY_COMPANY, _SPED_COMPANY_DISP = _sped_build_index()
+_SPED_BY_NR = {nr: {"nr": nr, "name": name, **dict(zip(("compact", "company", "variant"), _sped_parse(name)))}
+               for nr, name in SPEDITEUR_KATALOG}
 
 
-def _sped_match(text: str):
+def _sped_clean_number(value) -> str:
+    """Normiert Nummernzellen aus Excel, zum Beispiel 8035.0 -> 8035."""
+    try:
+        if pd.isna(value):
+            return ""
+    except Exception:
+        pass
+    s = str(value or "").strip()
+    if not s or s.lower() in ("nan", "none", "nat"):
+        return ""
+    if re.fullmatch(r"\d+\.0+", s):
+        s = s.split(".", 1)[0]
+    return s if re.fullmatch(r"\d+", s) else ""
+
+
+def _sped_has_marker(text: str) -> bool:
+    """Erkennt, ob ein Text wirklich nach Spediteur/Firma aussieht.
+
+    Wichtig gegen Fehlzuordnungen: Der Nachname 'Maas' allein darf nicht
+    automatisch als 'Sped. Maas' gewertet werden.
+    """
+    s = str(text or "").lower()
+    s = s.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+    return bool(re.search(r"\b(sped|spedition|logistik|transport|transporte|gmbh|kg)\b", s))
+
+
+def _sped_match(text: str, *, allow_bare_single_company: bool = False):
+    # Exakte Katalog-Nummer hat Vorrang. Damit wird nicht über Namen geraten,
+    # wenn in der Datei bereits eine eindeutige Spediteur-Nummer steht.
+    nr = _sped_clean_number(text)
+    if nr and nr in _SPED_BY_NR:
+        e = _SPED_BY_NR[nr]
+        return {"nr": e["nr"], "name": e["name"], "company": e["company"], "variant": e["variant"]}
+
+    toks = _sped_tokens(text)
+    # Einzelne blanke Nachnamen/Firmennamen sind zu unsicher: 'Maas' kann
+    # ein Fahrer-Nachname sein. Erlaubt ist das nur, wenn die Zelle einen
+    # Firmenmarker wie 'Sped.' enthält oder bewusst freigeschaltet wird.
+    if len(toks) == 1 and not _sped_has_marker(text) and not allow_bare_single_company:
+        return None
+
     compact, company, variant = _sped_parse(text)
     if not compact:
         return None
@@ -2898,6 +2940,46 @@ def _sped_match(text: str):
             return None  # Firma bekannt, Variante unbekannt -> nicht raten
         if len(ents) == 1:
             return ents[0]
+    return None
+
+
+def _sped_match_pair(left, right):
+    """Matcht die beiden Fahrer-/Namensspalten zusammen.
+
+    Wenn links eine Nummer steht, ist diese bindend. Eine fremde Fahrer-Nummer
+    darf nicht durch einen zufälligen Nachnamen rechts überschrieben werden
+    (Beispiel: Michael Maas != Sped. Maas 8035).
+    """
+    ltxt = str(left or "").strip()
+    rtxt = str(right or "").strip()
+    lnr = _sped_clean_number(left)
+    rnr = _sped_clean_number(right)
+
+    if lnr:
+        if lnr in _SPED_BY_NR:
+            return _sped_match(lnr)
+        # Nummer vorhanden, aber keine Spediteur-Katalognummer: nicht über
+        # den Namen raten. Genau dadurch wurden Fahrer mit gleichem Nachnamen
+        # bisher fälschlich als Spedition erkannt.
+        return None
+    if rnr:
+        if rnr in _SPED_BY_NR:
+            return _sped_match(rnr)
+        return None
+
+    # Erst die Paar-Zelle prüfen, damit 'Sped.' + 'Maas' sauber erkannt wird.
+    combo = (ltxt + " " + rtxt).strip()
+    if combo:
+        ent = _sped_match(combo)
+        if ent:
+            return ent
+
+    # Einzelzellen nur mit strenger Erkennung. Bare Ein-Wort-Namen wie 'Maas'
+    # werden hier absichtlich nicht angenommen.
+    for val in (ltxt, rtxt):
+        ent = _sped_match(val)
+        if ent:
+            return ent
     return None
 
 
@@ -2980,21 +3062,14 @@ def parse_spediteure_excel(dateien: list) -> str:
             if _pd.isna(datum):
                 continue
 
-            # Kandidaten-Namen aus den Fahrer-/Namenszellen (D/E, G/H) sammeln
-            cands = []
-            for i in (3, 4, 6, 7):
-                if len(row) > i and row[i] is not None:
-                    s = str(row[i]).strip()
-                    if s and s.lower() not in ("nan", "none", "nat"):
-                        cands.append(s)
-            if len(row) > 4:
-                cands.append(f"{row[3]} {row[4]}")
-            if len(row) > 7:
-                cands.append(f"{row[6]} {row[7]}")
-
+            # Spediteur-Erkennung aus den Fahrer-/Namenspaaren (D/E, G/H).
+            # Die Nummernspalte ist bindend: Steht dort eine fremde Fahrer-Nummer,
+            # darf ein gleicher Nachname nicht als Spedition gewertet werden.
             ent = None
-            for c in cands:
-                ent = _sped_match(c)
+            for a, b in ((3, 4), (6, 7)):
+                left = row[a] if len(row) > a else ""
+                right = row[b] if len(row) > b else ""
+                ent = _sped_match_pair(left, right)
                 if ent:
                     break
             if not ent:
