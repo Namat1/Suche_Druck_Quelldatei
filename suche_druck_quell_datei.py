@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "spediteure-gruppen-2026-06-03-v25-spediteur-graph-excel-export"
+APP_CACHE_VERSION = "spediteure-gruppen-2026-06-03-v26-kundenart-absetzer-rampe"
 
 
 # =============================================================================
@@ -1303,6 +1303,89 @@ DRUCK_HTML_TEMPLATE_PATCHES = (_patch_druck_template_cleanup,)
 
 
 @st.cache_resource(show_spinner=False)
+
+def _patch_suche_template_kundenart_absetzer_rampe(template: str) -> str:
+    """Zeigt je Kunde eine SAP-basierte Kennzeichnung Absetzer/Rampenkunde in der Suche."""
+    # Daten-Konstante einfuegen
+    template = template.replace(
+        "const rahmentourIndex  = {  };",
+        "const rahmentourIndex  = {  };\nconst kundenArtIndex    = {  };",
+        1,
+    )
+
+    # Kleine Badge-Optik fuer die Ergebnisliste
+    css = """
+.kundenart-chip{
+  display:inline-flex;
+  align-items:center;
+  min-height:24px;
+  max-width:100%;
+  padding:4px 8px;
+  border-radius:5px;
+  border:1px solid #8fb7ff;
+  background:#eef6ff;
+  color:#1d4ed8;
+  font-size:10px;
+  font-weight:900;
+  line-height:1.1;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.kundenart-chip.rampe{
+  border-color:#86efac;
+  background:#ecfdf5;
+  color:#166534;
+}
+.kundenart-chip.kombi{
+  border-color:#fbbf24;
+  background:#fffbeb;
+  color:#92400e;
+}
+"""
+    if ".kundenart-chip" not in template:
+        template = template.replace("</style>", css + "\n</style>", 1)
+
+    helper = """function makeKundenArtChip(value){
+  const label = String(value||'').trim();
+  if(!label) return null;
+  const s = document.createElement('span');
+  const n = normDE(label);
+  s.className = 'kundenart-chip' + (n.includes('rampe') && n.includes('absetzer') ? ' kombi' : (n.includes('rampe') ? ' rampe' : ''));
+  s.textContent = label;
+  s.title = 'Kundenart: ' + label;
+  return s;
+}
+"""
+    if "function makeKundenArtChip" not in template:
+        template = template.replace(
+            "function makeEmptyChip(label, value='-'){",
+            helper + "\nfunction makeEmptyChip(label, value='-'){",
+            1,
+        )
+
+    # Kundenart bereits beim Datenaufbau an den Kunden haengen
+    template = template.replace(
+        "        rec.sap_nummer   = normalizeDigits(rec.sap_nummer);",
+        "        rec.sap_nummer   = normalizeDigits(rec.sap_nummer);\n        rec.kunden_art   = kundenArtIndex[rec.sap_nummer] || '';",
+        1,
+    )
+
+    # In der CSB/SAP-Spalte anzeigen
+    template = template.replace(
+        "  idSlot1.appendChild(makeIdChip('CSB', csb));\n  idSlot2.appendChild(makeIdChip('SAP', sap));\n  c1.append(idSlot1,idSlot2);",
+        "  idSlot1.appendChild(makeIdChip('CSB', csb));\n  idSlot2.appendChild(makeIdChip('SAP', sap));\n  c1.append(idSlot1,idSlot2);\n  const artChip = makeKundenArtChip(k.kunden_art || '');\n  if(artChip){ const artSlot = el('div','cell-slot compact'); artSlot.appendChild(artChip); c1.appendChild(artSlot); }",
+        1,
+    )
+
+    # Kundenart in den Suchindex aufnehmen, damit Suche nach Absetzer/Rampe funktioniert
+    template = template.replace(
+        "      noteC, noteD, tourText",
+        "      noteC, noteD, c.kunden_art||'', tourText",
+        1,
+    )
+    return template
+
 def get_suche_template() -> str:
     """Baut das Suche-Template einmalig (nach Re-import gecached).
     Spart bei jedem Streamlit-Re-Run die ~11 String-Patches uebers ~700 KB Template."""
@@ -1319,6 +1402,7 @@ def get_suche_template() -> str:
         _patch_suche_template_rahmentour_list_in_rows,
         _patch_suche_template_sonderliste_marktkauf,
         _patch_suche_template_perf_searchindex,
+        _patch_suche_template_kundenart_absetzer_rampe,
         _patch_suche_template_optik,
     ):
         tpl = patch(tpl)
@@ -1908,9 +1992,92 @@ def cached_rahmentour_map(csv_bytes: bytes) -> dict:
     return build_rahmentour_map(io.BytesIO(csv_bytes))
 
 
+@st.cache_data(show_spinner=False, max_entries=8)
+def cached_kundenart_map(csv_bytes: bytes) -> dict:
+    if not csv_bytes:
+        return {}
+    return build_kundenart_map(io.BytesIO(csv_bytes))
+
+
 # =============================================================================
 # HTML-ERZEUGUNG: SUCHE
 # =============================================================================
+
+def build_kundenart_map(csv_file) -> dict:
+    """Liest die Kundenart-CSV mit SAP NR., LKW-Absetzer und LKW-Rampe.
+    Ergebnis: {sap_nummer: "Absetzer" | "Rampenkunde" | "Absetzer + Rampenkunde"}.
+    """
+    if csv_file is None:
+        return {}
+    try:
+        csv_file.seek(0)
+        raw = csv_file.read()
+        if isinstance(raw, str):
+            raw = raw.encode("utf-8", errors="ignore")
+    except Exception:
+        return {}
+
+    if not raw:
+        return {}
+
+    def _read_csv_bytes(payload: bytes):
+        for enc in ("utf-8-sig", "utf-8", "cp1252", "latin1"):
+            try:
+                return pd.read_csv(io.BytesIO(payload), sep=None, engine="python", encoding=enc, dtype=str)
+            except Exception:
+                continue
+        try:
+            return pd.read_csv(io.BytesIO(payload), sep=";", encoding="utf-8-sig", dtype=str)
+        except Exception:
+            return pd.DataFrame()
+
+    def _norm_header_local(value: str) -> str:
+        return norm_de_py(str(value or "")).replace("-", " ").replace(".", " ").strip()
+
+    def _is_marked(value) -> bool:
+        if value is None or pd.isna(value):
+            return False
+        s = str(value).strip().lower()
+        if not s or s in ("nan", "none", "0", "nein", "no", "false", "falsch", "-"):
+            return False
+        return True
+
+    df = _read_csv_bytes(raw)
+    if df.empty:
+        return {}
+
+    norm_cols = {_norm_header_local(col): col for col in df.columns}
+
+    sap_col = None
+    for key, col in norm_cols.items():
+        if "sap" in key and ("nr" in key or "nummer" in key or key.strip() == "sap"):
+            sap_col = col
+            break
+    if sap_col is None:
+        sap_col = df.columns[0]
+
+    absetzer_col = None
+    rampe_col = None
+    for key, col in norm_cols.items():
+        if "absetzer" in key:
+            absetzer_col = col
+        if "rampe" in key:
+            rampe_col = col
+
+    result = {}
+    for _, row in df.iterrows():
+        sap = normalize_digits_py(row.get(sap_col, ""))
+        if not sap:
+            continue
+        labels = []
+        if absetzer_col is not None and _is_marked(row.get(absetzer_col, "")):
+            labels.append("Absetzer")
+        if rampe_col is not None and _is_marked(row.get(rampe_col, "")):
+            labels.append("Rampenkunde")
+        if labels:
+            result[sap] = " + ".join(labels)
+    return result
+
 
 def build_lieferhinweis_csv(csv_file) -> dict:
     """Liest Lieferhinweis-CSV: ';'-getrennt, gequotet.
@@ -2004,7 +2171,8 @@ def build_rahmentour_map(csv_file) -> dict:
 
 def generate_suche_html(excel_file, key_file, logo_file,
                          berater_file, berater_csb_file,
-                         lieferhinweis_csv=None, rahmentour_csv=None) -> str:
+                         lieferhinweis_csv=None, rahmentour_csv=None,
+                         kundenart_csv=None) -> str:
     if logo_file is None:
         raise ValueError("Bitte Logo hochladen.")
 
@@ -2139,6 +2307,7 @@ def generate_suche_html(excel_file, key_file, logo_file,
 
     notizen_map: dict = cached_lieferhinweis_map(read_upload_bytes(lieferhinweis_csv))
     rahmen_map:  dict = cached_rahmentour_map(read_upload_bytes(rahmentour_csv))
+    kundenart_map: dict = cached_kundenart_map(read_upload_bytes(kundenart_csv))
 
     # separators=(",", ":") — spart bei grossen Maps 10-20% Output-Groesse
     # und ist auch beim json.dumps selbst etwas schneller.
@@ -2160,6 +2329,8 @@ def generate_suche_html(excel_file, key_file, logo_file,
                  f"const kundenNotizen    = {_dump(notizen_map)}")
         .replace("const rahmentourIndex  = {  }",
                  f"const rahmentourIndex  = {_dump(rahmen_map)}")
+        .replace("const kundenArtIndex    = {  }",
+                 f"const kundenArtIndex    = {_dump(kundenart_map)}")
         .replace("__LOGO_DATA_URL__", logo_data_url)
         .replace("</style>", ".header{display:none !important;} .page{padding-top:0 !important;} .container{margin-top:0 !important;} </style>")
     )
@@ -11411,10 +11582,12 @@ with tab_stamm:
         _global_uploader("Kundenliste Original",       ["xlsx"], "g_fcsb",       "global_up_fcsb_v2")
         _global_uploader("Lieferhinweise CSV",         ["csv"],  "g_lh_csv",     "global_up_lh_csv_v2")
         _global_uploader("Rahmentourprofil CSV",       ["csv"],  "g_rahmen_csv", "global_up_rahmen_csv_v2")
+        _global_uploader("Kundenart Absetzer/Rampe CSV", ["csv"], "g_kundenart_csv", "global_up_kundenart_csv_v1")
 
     _items = [
         ("g_logo","Logo"), ("g_key","Schluessel"), ("g_fach","FB-Tel"),
-        ("g_fcsb","Kundenliste"), ("g_lh_csv","Lieferhinweise"), ("g_rahmen_csv","Rahmentour")
+        ("g_fcsb","Kundenliste"), ("g_lh_csv","Lieferhinweise"), ("g_rahmen_csv","Rahmentour"),
+        ("g_kundenart_csv","Kundenart")
     ]
     _ok   = [lbl for k, lbl in _items if st.session_state.get(k)]
     _miss = [lbl for k, lbl in _items if not st.session_state.get(k)]
@@ -11443,6 +11616,7 @@ with tab_wochen:
             _fcsb       = st.session_state.get("g_fcsb")
             _lh_csv     = st.session_state.get("g_lh_csv")
             _rahmen_csv = st.session_state.get("g_rahmen_csv")
+            _kundenart_csv = st.session_state.get("g_kundenart_csv")
 
             if excel and _logo and _key:
                 current_source_sig = combine_signatures(
@@ -11450,7 +11624,7 @@ with tab_wochen:
                     upload_signature(excel),  upload_signature(_logo),
                     upload_signature(_key),   upload_signature(_fach),
                     upload_signature(_fcsb),  upload_signature(_lh_csv),
-                    upload_signature(_rahmen_csv),
+                    upload_signature(_rahmen_csv), upload_signature(_kundenart_csv),
                 )
                 if (inst.get("source_sig") != current_source_sig
                         or not inst.get("suche_html")
@@ -11459,7 +11633,8 @@ with tab_wochen:
                         with st.spinner("Generiere Suche + Druck ..."):
                             st.session_state["instances"][i]["suche_html"] = generate_suche_html(
                                 excel, _key, _logo, _fach, _fcsb,
-                                lieferhinweis_csv=_lh_csv, rahmentour_csv=_rahmen_csv
+                                lieferhinweis_csv=_lh_csv, rahmentour_csv=_rahmen_csv,
+                                kundenart_csv=_kundenart_csv
                             )
                             st.session_state["instances"][i]["druck_html"] = generate_druck_html(
                                 excel, _logo, _fcsb, lieferhinweis_csv=_lh_csv
