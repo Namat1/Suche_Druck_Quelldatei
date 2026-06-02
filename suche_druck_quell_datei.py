@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "spediteure-gruppen-2026-06-02-v24-verstoss-graph-style"
+APP_CACHE_VERSION = "spediteure-gruppen-2026-06-03-v25-spediteur-graph-excel-export"
 
 
 # =============================================================================
@@ -5964,6 +5964,98 @@ function spedTopEntries(map, limit) {
   return Object.entries(map).sort(function(a,b){ return b[1] - a[1] || a[0].localeCompare(b[0], "de"); }).slice(0, limit || 15);
 }
 
+function spedSheetName(name) {
+  var s = String(name || "Tabelle").replace(/[\\\/\?\*\[\]:]/g, " ").trim();
+  return (s || "Tabelle").substring(0, 31);
+}
+function spedFilePart(value) {
+  return String(value || "alle").replace(/[äÄ]/g,"ae").replace(/[öÖ]/g,"oe").replace(/[üÜ]/g,"ue").replace(/ß/g,"ss").replace(/[^a-zA-Z0-9_-]+/g,"_").replace(/^_+|_+$/g,"") || "alle";
+}
+function spedAoAToSheet(aoa, widths) {
+  var ws = XLSX.utils.aoa_to_sheet(aoa);
+  if(widths && widths.length) ws["!cols"] = widths.map(function(w){ return { wch: w }; });
+  if(aoa && aoa.length && aoa[0]) ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s:{ r:0, c:0 }, e:{ r:Math.max(0, aoa.length - 1), c:Math.max(0, aoa[0].length - 1) } }) };
+  return ws;
+}
+function spedGraphExportExcel() {
+  if(typeof XLSX === "undefined") {
+    alert("Excel Export ist nicht verfügbar, weil die XLSX-Bibliothek nicht geladen wurde.");
+    return;
+  }
+
+  var rows = spedGraphFiltered();
+  if(!rows.length) {
+    alert("Keine Spediteur-Daten für die aktuellen Filter vorhanden.");
+    return;
+  }
+
+  var yearLabel = spedGraphState.jahr || "alle Jahre";
+  var monthLabel = spedGraphState.monat === "all" ? "alle Monate" : (SPED_MONATE[parseInt(spedGraphState.monat,10)] || spedGraphState.monat);
+  var spedLabel = spedGraphState.sped === "all" ? "alle Speditionen" : spedGraphState.sped;
+  var total = rows.length;
+
+  var spedMap = {}, nameMap = {}, tourMap = {}, lkwMap = {}, monthCount = Array(12).fill(0), monthSped = Array(12).fill(0).map(function(){ return {}; }), monthName = Array(12).fill(0).map(function(){ return {}; });
+  rows.forEach(function(f){
+    var g = f.gruppe || f.name || "—";
+    spedMap[g] = (spedMap[g] || 0) + 1;
+    if(f.name) nameMap[(f.nr ? f.nr + " · " : "") + f.name] = (nameMap[(f.nr ? f.nr + " · " : "") + f.name] || 0) + 1;
+    if(f.tour) tourMap[f.tour] = (tourMap[f.tour] || 0) + 1;
+    if(f.lkw) lkwMap[f.lkw] = (lkwMap[f.lkw] || 0) + 1;
+    var mi = parseInt(f.monat, 10);
+    if(mi >= 1 && mi <= 12) {
+      monthCount[mi - 1] += 1;
+      monthSped[mi - 1][g] = 1;
+      if(f.name) monthName[mi - 1][f.name] = 1;
+    }
+  });
+
+  function pctNumber(count) {
+    return total ? Math.round((Number(count || 0) / total) * 1000) / 10 : 0;
+  }
+  function addCountRows(title, map) {
+    var out = [[title, "Fahrten", "Anteil in Prozent"]];
+    spedTopEntries(map, 100000).forEach(function(x){ out.push([x[0], x[1], pctNumber(x[1])]); });
+    return out;
+  }
+
+  var months = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+  var overview = [
+    ["Spediteure Graph Export"],
+    ["Erstellt am", new Date().toLocaleString("de-DE")],
+    ["Jahr", yearLabel],
+    ["Monat", monthLabel],
+    ["Spedition", spedLabel],
+    ["Fahrten gesamt", total],
+    ["Speditionen", Object.keys(spedMap).length],
+    ["Unternamen", Object.keys(nameMap).length],
+    [],
+    ["Hinweis", "Exportiert wird die Datenbasis des Graphen mit den aktuell gesetzten Filtern."]
+  ];
+  var monthRows = [["Monat", "Fahrten", "Anteil in Prozent", "Speditionen", "Unternamen"]];
+  months.forEach(function(m, i){
+    monthRows.push([m, monthCount[i], pctNumber(monthCount[i]), Object.keys(monthSped[i]).length, Object.keys(monthName[i]).length]);
+  });
+
+  var rawRows = [["Datum", "Wochentag", "Jahr", "Monat", "Spediteur Nummer", "Spediteur", "Ober Spedition", "Tour", "LKW", "Zeit", "Quelle"]];
+  rows.slice().sort(function(a,b){ return (a.iso || "").localeCompare(b.iso || "") || (a.gruppe || "").localeCompare(b.gruppe || "", "de") || (a.name || "").localeCompare(b.name || "", "de") || (a.tour || "").localeCompare(b.tour || "", "de"); }).forEach(function(f){
+    rawRows.push([
+      f.datum || "", f.wd || "", f.jahr || "", f.monat || "", f.nr || "", f.name || "", f.gruppe || f.name || "", f.tour || "", f.lkw || "", f.zeit || "", f.quelle || ""
+    ]);
+  });
+
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, spedAoAToSheet(overview, [26, 42]), "Übersicht");
+  XLSX.utils.book_append_sheet(wb, spedAoAToSheet(monthRows, [16, 12, 18, 15, 15]), "Monate");
+  XLSX.utils.book_append_sheet(wb, spedAoAToSheet(addCountRows("Spedition", spedMap), [38, 12, 18]), "Speditionen");
+  XLSX.utils.book_append_sheet(wb, spedAoAToSheet(addCountRows("Untername", nameMap), [48, 12, 18]), "Unternamen");
+  XLSX.utils.book_append_sheet(wb, spedAoAToSheet(addCountRows("Tour", tourMap), [18, 12, 18]), "Touren");
+  XLSX.utils.book_append_sheet(wb, spedAoAToSheet(addCountRows("LKW", lkwMap), [18, 12, 18]), "LKW");
+  XLSX.utils.book_append_sheet(wb, spedAoAToSheet(rawRows, [13, 13, 9, 9, 18, 32, 32, 14, 14, 10, 36]), "Rohdaten");
+
+  var fileName = "Spediteure_Graph_" + spedFilePart(yearLabel) + "_" + spedFilePart(monthLabel) + "_" + spedFilePart(spedLabel) + ".xlsx";
+  XLSX.writeFile(wb, fileName);
+}
+
 function spedRenderGraph() {
   var body = document.getElementById("sped-graph-content");
   var stats = document.getElementById("sped-graph-stats");
@@ -6610,6 +6702,7 @@ iframe.active{{display:block}}
           <select id="sped-graph-year" onchange="spedGraphSetJahr(this.value)" title="Jahr" style="padding:8px 11px;border:1.5px solid #b9cce3;border-radius:8px;font-size:12px;font-weight:800;font-family:inherit;background:#fff;color:#1f3347;outline:none;"></select>
           <select id="sped-graph-month" onchange="spedGraphSetMonat(this.value)" title="Monat" style="padding:8px 11px;border:1.5px solid #b9cce3;border-radius:8px;font-size:12px;font-weight:800;font-family:inherit;background:#fff;color:#1f3347;outline:none;"></select>
           <select id="sped-graph-filter" onchange="spedGraphSetSped(this.value)" title="Spedition" style="padding:8px 11px;border:1.5px solid #b9cce3;border-radius:8px;font-size:12px;font-weight:800;font-family:inherit;background:#fff;color:#1f3347;outline:none;max-width:240px;"></select>
+          <button onclick="spedGraphExportExcel()" title="Aktuellen Spediteursgraphen als Excel exportieren" style="padding:8px 13px;border:1.5px solid #16a34a;border-radius:8px;font-size:12px;font-weight:900;font-family:inherit;background:linear-gradient(180deg,#ecfdf5 0%,#dcfce7 100%);color:#166534;cursor:pointer;box-shadow:0 2px 7px rgba(22,163,74,.12);">&#128190; Excel Export</button>
         </div>
       </div>
       <div id="sped-graph-stats" style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;"></div>
