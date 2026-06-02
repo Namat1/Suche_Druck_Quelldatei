@@ -5827,34 +5827,80 @@ function ddSelectSped(area) {
   document.querySelectorAll(".nav-dd").forEach(function(d){ d.classList.remove("open"); });
 }
 
-var spedGraphState = { jahr: null, monat: "all", sped: "all" };
+var spedGraphState = { jahr: null, jahr2: null, compare: false, monat: "all", sped: "all" };
 var _spedGraphCharts = {};
 
 function spedGraphFiltered() {
   return spedData().fahrten.filter(function(f){
-    if(spedGraphState.jahr && f.jahr !== spedGraphState.jahr) return false;
+    if(spedGraphState.compare) {
+      var allowedYears = {};
+      if(spedGraphState.jahr) allowedYears[spedGraphState.jahr] = 1;
+      if(spedGraphState.jahr2) allowedYears[spedGraphState.jahr2] = 1;
+      if(Object.keys(allowedYears).length && !allowedYears[f.jahr]) return false;
+    } else {
+      if(spedGraphState.jahr && f.jahr !== spedGraphState.jahr) return false;
+    }
     if(spedGraphState.monat !== "all" && f.monat !== spedGraphState.monat) return false;
     if(spedGraphState.sped !== "all" && (f.gruppe || f.name) !== spedGraphState.sped) return false;
     return true;
   });
 }
 
+function spedGraphSelectedYears() {
+  var years = [];
+  if(spedGraphState.jahr) years.push(spedGraphState.jahr);
+  if(spedGraphState.compare && spedGraphState.jahr2 && years.indexOf(spedGraphState.jahr2) === -1) years.push(spedGraphState.jahr2);
+  return years;
+}
+function spedGraphMonthsForSelectedYears() {
+  var ms = {};
+  var selected = spedGraphSelectedYears();
+  spedData().fahrten.forEach(function(f){
+    if(!f.monat) return;
+    if(selected.length && selected.indexOf(f.jahr) === -1) return;
+    ms[f.monat] = 1;
+  });
+  return Object.keys(ms).sort();
+}
+
 function spedGraphPopulateYears() {
   var sel = document.getElementById("sped-graph-year");
-  if(!sel) return;
+  var sel2 = document.getElementById("sped-graph-year-2");
+  var mode = document.getElementById("sped-graph-mode");
   var years = spedAllYears();
-  sel.innerHTML = years.map(function(y){ return "<option value='"+y+"'>"+y+"</option>"; }).join("");
-  if(!years.length) { sel.innerHTML = "<option value=''>—</option>"; spedGraphState.jahr = null; return; }
+
+  if(mode) mode.value = spedGraphState.compare ? "compare" : "single";
+  if(sel2) sel2.style.display = spedGraphState.compare ? "inline-block" : "none";
+
+  if(sel) sel.innerHTML = years.map(function(y){ return "<option value='"+y+"'>"+y+"</option>"; }).join("");
+  if(sel2) sel2.innerHTML = years.map(function(y){ return "<option value='"+y+"'>Vergleich "+y+"</option>"; }).join("");
+
+  if(!years.length) {
+    if(sel) sel.innerHTML = "<option value=''>—</option>";
+    if(sel2) sel2.innerHTML = "<option value=''>—</option>";
+    spedGraphState.jahr = null;
+    spedGraphState.jahr2 = null;
+    return;
+  }
+
   var cur = String(new Date().getFullYear());
-  if(spedGraphState.jahr && years.indexOf(spedGraphState.jahr) !== -1) sel.value = spedGraphState.jahr;
-  else if(years.indexOf(cur) !== -1) sel.value = cur;
-  else sel.value = years[0];
-  spedGraphState.jahr = sel.value;
+  if(!(spedGraphState.jahr && years.indexOf(spedGraphState.jahr) !== -1)) {
+    spedGraphState.jahr = years.indexOf(cur) !== -1 ? cur : years[0];
+  }
+  if(years.length === 1) {
+    spedGraphState.jahr2 = years[0];
+  } else if(!(spedGraphState.jahr2 && years.indexOf(spedGraphState.jahr2) !== -1) || spedGraphState.jahr2 === spedGraphState.jahr) {
+    var idx = years.indexOf(spedGraphState.jahr);
+    spedGraphState.jahr2 = years[(idx + 1) % years.length];
+  }
+
+  if(sel) sel.value = spedGraphState.jahr;
+  if(sel2) sel2.value = spedGraphState.jahr2;
 }
 function spedGraphPopulateMonths() {
   var sel = document.getElementById("sped-graph-month");
   if(!sel) return;
-  var months = spedGraphState.jahr ? spedMonthsForYear(spedGraphState.jahr) : [];
+  var months = spedGraphState.compare ? spedGraphMonthsForSelectedYears() : (spedGraphState.jahr ? spedMonthsForYear(spedGraphState.jahr) : []);
   var opts = "<option value='all'>Alle Monate</option>";
   months.forEach(function(m){ opts += "<option value='"+m+"'>"+(SPED_MONATE[parseInt(m,10)]||m)+"</option>"; });
   sel.innerHTML = opts;
@@ -5875,7 +5921,23 @@ function spedGraphPopulateSped() {
   sel.value = spedGraphState.sped;
   if(sel.value !== spedGraphState.sped) { spedGraphState.sped = "all"; sel.value = "all"; }
 }
-function spedGraphSetJahr(v){ spedGraphState.jahr = v; spedGraphPopulateMonths(); spedRenderGraph(); }
+function spedGraphSetMode(v){
+  spedGraphState.compare = (v === "compare");
+  spedGraphPopulateYears();
+  spedGraphPopulateMonths();
+  spedRenderGraph();
+}
+function spedGraphSetJahr(v){
+  spedGraphState.jahr = v;
+  if(spedGraphState.compare && spedGraphState.jahr2 === v) {
+    var years = spedAllYears();
+    for(var i=0;i<years.length;i++) { if(years[i] !== v) { spedGraphState.jahr2 = years[i]; break; } }
+  }
+  spedGraphPopulateYears();
+  spedGraphPopulateMonths();
+  spedRenderGraph();
+}
+function spedGraphSetJahr2(v){ spedGraphState.jahr2 = v; spedGraphPopulateYears(); spedGraphPopulateMonths(); spedRenderGraph(); }
 function spedGraphSetMonat(v){ spedGraphState.monat = v; spedRenderGraph(); }
 function spedGraphSetSped(v){ spedGraphState.sped = v; spedRenderGraph(); }
 
@@ -5989,21 +6051,28 @@ function spedGraphExportExcel() {
     return;
   }
 
-  var yearLabel = spedGraphState.jahr || "alle Jahre";
+  var compareMode = !!spedGraphState.compare;
+  var selectedYears = spedGraphSelectedYears();
+  var yearLabel = compareMode ? selectedYears.join(" vs ") : (spedGraphState.jahr || "alle Jahre");
   var monthLabel = spedGraphState.monat === "all" ? "alle Monate" : (SPED_MONATE[parseInt(spedGraphState.monat,10)] || spedGraphState.monat);
   var spedLabel = spedGraphState.sped === "all" ? "alle Speditionen" : spedGraphState.sped;
   var total = rows.length;
 
   var spedMap = {}, nameMap = {}, tourMap = {}, lkwMap = {}, monthCount = Array(12).fill(0), monthSped = Array(12).fill(0).map(function(){ return {}; }), monthName = Array(12).fill(0).map(function(){ return {}; });
+  var yearTotals = {}, yearMonthCount = {};
+  selectedYears.forEach(function(y){ yearTotals[y] = 0; yearMonthCount[y] = Array(12).fill(0); });
   rows.forEach(function(f){
     var g = f.gruppe || f.name || "—";
     spedMap[g] = (spedMap[g] || 0) + 1;
     if(f.name) nameMap[(f.nr ? f.nr + " · " : "") + f.name] = (nameMap[(f.nr ? f.nr + " · " : "") + f.name] || 0) + 1;
     if(f.tour) tourMap[f.tour] = (tourMap[f.tour] || 0) + 1;
     if(f.lkw) lkwMap[f.lkw] = (lkwMap[f.lkw] || 0) + 1;
+    if(!yearTotals.hasOwnProperty(f.jahr)) { yearTotals[f.jahr] = 0; yearMonthCount[f.jahr] = Array(12).fill(0); }
+    yearTotals[f.jahr] += 1;
     var mi = parseInt(f.monat, 10);
     if(mi >= 1 && mi <= 12) {
       monthCount[mi - 1] += 1;
+      yearMonthCount[f.jahr][mi - 1] += 1;
       monthSped[mi - 1][g] = 1;
       if(f.name) monthName[mi - 1][f.name] = 1;
     }
@@ -6018,10 +6087,11 @@ function spedGraphExportExcel() {
     return out;
   }
 
-  var months = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+  var monthsLong = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
   var overview = [
     ["Spediteure Graph Export"],
     ["Erstellt am", new Date().toLocaleString("de-DE")],
+    ["Ansicht", compareMode ? "Jahre vergleichen" : "Ein Jahr"],
     ["Jahr", yearLabel],
     ["Monat", monthLabel],
     ["Spedition", spedLabel],
@@ -6031,10 +6101,26 @@ function spedGraphExportExcel() {
     [],
     ["Hinweis", "Exportiert wird die Datenbasis des Graphen mit den aktuell gesetzten Filtern."]
   ];
+  selectedYears.forEach(function(y){ overview.push(["Fahrten " + y, yearTotals[y] || 0]); });
+
   var monthRows = [["Monat", "Fahrten", "Anteil in Prozent", "Speditionen", "Unternamen"]];
-  months.forEach(function(m, i){
+  monthsLong.forEach(function(m, i){
     monthRows.push([m, monthCount[i], pctNumber(monthCount[i]), Object.keys(monthSped[i]).length, Object.keys(monthName[i]).length]);
   });
+
+  var compareRows = [["Monat"].concat(selectedYears).concat(selectedYears.length >= 2 ? ["Differenz " + selectedYears[0] + " zu " + selectedYears[1]] : []).concat(["Gesamt"])];
+  monthsLong.forEach(function(m, i){
+    var values = selectedYears.map(function(y){ return (yearMonthCount[y] || [])[i] || 0; });
+    var sum = values.reduce(function(a,b){ return a + b; }, 0);
+    var row = [m].concat(values);
+    if(selectedYears.length >= 2) row.push(values[0] - values[1]);
+    row.push(sum);
+    compareRows.push(row);
+  });
+  var totalRow = ["Gesamt"].concat(selectedYears.map(function(y){ return yearTotals[y] || 0; }));
+  if(selectedYears.length >= 2) totalRow.push((yearTotals[selectedYears[0]] || 0) - (yearTotals[selectedYears[1]] || 0));
+  totalRow.push(total);
+  compareRows.push(totalRow);
 
   var rawRows = [["Datum", "Wochentag", "Jahr", "Monat", "Spediteur Nummer", "Spediteur", "Ober Spedition", "Tour", "LKW", "Zeit", "Quelle"]];
   rows.slice().sort(function(a,b){ return (a.iso || "").localeCompare(b.iso || "") || (a.gruppe || "").localeCompare(b.gruppe || "", "de") || (a.name || "").localeCompare(b.name || "", "de") || (a.tour || "").localeCompare(b.tour || "", "de"); }).forEach(function(f){
@@ -6045,6 +6131,7 @@ function spedGraphExportExcel() {
 
   var wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, spedAoAToSheet(overview, [26, 42]), "Übersicht");
+  if(compareMode) XLSX.utils.book_append_sheet(wb, spedAoAToSheet(compareRows, [16, 14, 14, 18, 14]), "Jahresvergleich");
   XLSX.utils.book_append_sheet(wb, spedAoAToSheet(monthRows, [16, 12, 18, 15, 15]), "Monate");
   XLSX.utils.book_append_sheet(wb, spedAoAToSheet(addCountRows("Spedition", spedMap), [38, 12, 18]), "Speditionen");
   XLSX.utils.book_append_sheet(wb, spedAoAToSheet(addCountRows("Untername", nameMap), [48, 12, 18]), "Unternamen");
@@ -6074,31 +6161,48 @@ function spedRenderGraph() {
   spedGraphPopulateSped();
 
   var rows = spedGraphFiltered();
-  var yearLabel = spedGraphState.jahr || "alle Jahre";
+  var compareMode = !!spedGraphState.compare;
+  var selectedYears = spedGraphSelectedYears();
+  var yearLabel = compareMode ? selectedYears.join(" vs ") : (spedGraphState.jahr || "alle Jahre");
   var monthLabel = spedGraphState.monat === "all" ? "alle Monate" : (SPED_MONATE[parseInt(spedGraphState.monat,10)] || spedGraphState.monat);
   var spedLabel = spedGraphState.sped === "all" ? "alle Speditionen" : spedGraphState.sped;
   var total = rows.length;
 
   var spedMap = {}, nameMap = {}, tourMap = {}, lkwMap = {}, monthCount = Array(12).fill(0);
+  var yearTotals = {}, yearMonthCount = {};
+  selectedYears.forEach(function(y){ yearTotals[y] = 0; yearMonthCount[y] = Array(12).fill(0); });
+
   rows.forEach(function(f){
     var g = f.gruppe || f.name || "—";
     spedMap[g] = (spedMap[g] || 0) + 1;
     if(f.name) nameMap[(f.nr ? f.nr + " · " : "") + f.name] = (nameMap[(f.nr ? f.nr + " · " : "") + f.name] || 0) + 1;
     if(f.tour) tourMap[f.tour] = (tourMap[f.tour] || 0) + 1;
     if(f.lkw) lkwMap[f.lkw] = (lkwMap[f.lkw] || 0) + 1;
+    if(!yearTotals.hasOwnProperty(f.jahr)) { yearTotals[f.jahr] = 0; yearMonthCount[f.jahr] = Array(12).fill(0); }
+    yearTotals[f.jahr] += 1;
     var mi = parseInt(f.monat, 10);
-    if(mi >= 1 && mi <= 12) monthCount[mi - 1] += 1;
+    if(mi >= 1 && mi <= 12) {
+      monthCount[mi - 1] += 1;
+      yearMonthCount[f.jahr][mi - 1] += 1;
+    }
   });
 
   var topSpeds = spedTopEntries(spedMap, 12);
   var topNames = spedTopEntries(nameMap, 15);
   var months = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+  var monthsLong = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
   var maxMonth = Math.max.apply(null, monthCount.concat([0]));
   var maxMonthName = maxMonth ? months[monthCount.indexOf(maxMonth)] : "—";
   var topSpedName = topSpeds.length ? topSpeds[0][0] + " · " + topSpeds[0][1] : "—";
+  var diffLabel = "—";
+  if(compareMode && selectedYears.length >= 2) {
+    var diff = (yearTotals[selectedYears[0]] || 0) - (yearTotals[selectedYears[1]] || 0);
+    diffLabel = (diff > 0 ? "+" : "") + diff;
+  }
 
   if(stats) {
-    stats.innerHTML = "Jahr <b style='color:#1e6091;'>" + spedEsc(yearLabel) + "</b> &middot; "
+    stats.innerHTML = "Ansicht <b style='color:#1e6091;'>" + (compareMode ? "Jahre vergleichen" : "Ein Jahr") + "</b> &middot; "
+      + "Jahr <b style='color:#1e6091;'>" + spedEsc(yearLabel) + "</b> &middot; "
       + "Monat <b style='color:#1e6091;'>" + spedEsc(monthLabel) + "</b> &middot; "
       + "Spedition <b style='color:#1e6091;'>" + spedEsc(spedLabel) + "</b> &middot; "
       + "<b>" + total + "</b> Fahrten";
@@ -6116,40 +6220,63 @@ function spedRenderGraph() {
   }
 
   html += "<div style='display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:12px;margin-bottom:14px;'>";
-  html += spedGraphKpi("Fahrten", total, "#1e6091", "&#128666;");
-  html += spedGraphKpi("Speditionen", Object.keys(spedMap).length, "#047857", "&#127970;");
-  html += spedGraphKpi("Stärkster Monat", maxMonthName + (maxMonth ? " · " + maxMonth : ""), "#1e3a5f", "&#128197;");
-  html += spedGraphKpi("Top Spedition", spedEsc(topSpedName), "#6b21a8", "&#128202;");
+  if(compareMode && selectedYears.length >= 2) {
+    html += spedGraphKpi("Fahrten " + selectedYears[0], yearTotals[selectedYears[0]] || 0, "#1e6091", "&#128666;");
+    html += spedGraphKpi("Fahrten " + selectedYears[1], yearTotals[selectedYears[1]] || 0, "#047857", "&#128666;");
+    html += spedGraphKpi("Differenz", diffLabel, "#1e3a5f", "&#8644;");
+    html += spedGraphKpi("Top Spedition", spedEsc(topSpedName), "#6b21a8", "&#128202;");
+  } else {
+    html += spedGraphKpi("Fahrten", total, "#1e6091", "&#128666;");
+    html += spedGraphKpi("Speditionen", Object.keys(spedMap).length, "#047857", "&#127970;");
+    html += spedGraphKpi("Stärkster Monat", maxMonthName + (maxMonth ? " · " + maxMonth : ""), "#1e3a5f", "&#128197;");
+    html += spedGraphKpi("Top Spedition", spedEsc(topSpedName), "#6b21a8", "&#128202;");
+  }
   html += "</div>";
 
   html += "<div style='display:grid;grid-template-columns:minmax(0,1.15fr) minmax(420px,.95fr);gap:14px;margin-bottom:14px;align-items:stretch;'>";
-  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:360px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Fahrten nach Monat</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anzahl und Anteil an allen Fahrten</div><div style='height:300px;'><canvas id='sped-chart-month'></canvas></div></div>";
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:360px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>" + (compareMode ? "Jahresvergleich nach Monat" : "Fahrten nach Monat") + "</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>" + (compareMode ? "Die gewählten Jahre werden pro Monat nebeneinander gestellt" : "Anzahl und Anteil an allen Fahrten") + "</div><div style='height:300px;'><canvas id='sped-chart-month'></canvas></div></div>";
   html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:470px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Speditionen</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anteil je Spedition</div><div style='height:410px;'><canvas id='sped-chart-sped'></canvas></div></div>";
   html += "</div>";
 
   html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Top Unternamen nach Fahrten</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anzahl und Anteil an allen Fahrten</div><div style='height:360px;'><canvas id='sped-chart-name'></canvas></div></div>";
 
   html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:14px;'>";
-  html += "<div style='padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:900;color:#0f172a;'>Monatsübersicht " + spedEsc(yearLabel) + "</div>";
+  html += "<div style='padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:900;color:#0f172a;'>" + (compareMode ? "Jahresvergleich " : "Monatsübersicht ") + spedEsc(yearLabel) + "</div>";
   html += "<table style='width:100%;border-collapse:collapse;font-size:12.5px;'><thead><tr style='background:#1e3a5f;color:#fff;'>";
-  ["Monat", "Fahrten", "Anteil", "Speditionen", "Unternamen"].forEach(function(h, i){
-    html += "<th style='padding:10px 12px;text-align:" + (i === 0 ? "left" : "right") + ";font-size:11px;font-weight:800;letter-spacing:.3px;'>" + h + "</th>";
-  });
+  if(compareMode && selectedYears.length >= 2) {
+    ["Monat", selectedYears[0], selectedYears[1], "Differenz", "Gesamt"].forEach(function(h, i){
+      html += "<th style='padding:10px 12px;text-align:" + (i === 0 ? "left" : "right") + ";font-size:11px;font-weight:800;letter-spacing:.3px;'>" + spedEsc(h) + "</th>";
+    });
+  } else {
+    ["Monat", "Fahrten", "Anteil", "Speditionen", "Unternamen"].forEach(function(h, i){
+      html += "<th style='padding:10px 12px;text-align:" + (i === 0 ? "left" : "right") + ";font-size:11px;font-weight:800;letter-spacing:.3px;'>" + h + "</th>";
+    });
+  }
   html += "</tr></thead><tbody>";
   months.forEach(function(m, i){
     var monthNo = String(i + 1).padStart(2, "0");
-    var ms = {}, ns = {};
-    rows.forEach(function(f){
-      if(f.monat !== monthNo) return;
-      if(f.gruppe || f.name) ms[f.gruppe || f.name] = 1;
-      if(f.name) ns[f.name] = 1;
-    });
     html += "<tr style='background:" + (i % 2 ? "#f9fafb" : "#fff") + ";border-bottom:1px solid #f1f5f9;'>";
-    html += "<td style='padding:9px 12px;font-weight:800;color:#0f172a;font-size:13px;'>" + m + "</td>";
-    html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#1e3a5f;font-size:13px;'>" + monthCount[i] + "</td>";
-    html += "<td style='padding:9px 12px;text-align:right;font-weight:800;color:" + (monthCount[i] ? "#1e6091" : "#cbd5e1") + ";'>" + spedPct(monthCount[i], total) + "</td>";
-    html += "<td style='padding:9px 12px;text-align:right;font-weight:700;color:" + (Object.keys(ms).length ? "#047857" : "#cbd5e1") + ";'>" + Object.keys(ms).length + "</td>";
-    html += "<td style='padding:9px 12px;text-align:right;font-weight:700;color:" + (Object.keys(ns).length ? "#6b21a8" : "#cbd5e1") + ";'>" + Object.keys(ns).length + "</td>";
+    html += "<td style='padding:9px 12px;font-weight:800;color:#0f172a;font-size:13px;'>" + (compareMode ? monthsLong[i] : m) + "</td>";
+    if(compareMode && selectedYears.length >= 2) {
+      var v1 = (yearMonthCount[selectedYears[0]] || [])[i] || 0;
+      var v2 = (yearMonthCount[selectedYears[1]] || [])[i] || 0;
+      var d = v1 - v2;
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#1e6091;font-size:13px;'>" + v1 + "</td>";
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#047857;font-size:13px;'>" + v2 + "</td>";
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:" + (d >= 0 ? "#047857" : "#dc2626") + ";font-size:13px;'>" + (d > 0 ? "+" : "") + d + "</td>";
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:800;color:#1e3a5f;'>" + (v1 + v2) + "</td>";
+    } else {
+      var ms = {}, ns = {};
+      rows.forEach(function(f){
+        if(f.monat !== monthNo) return;
+        if(f.gruppe || f.name) ms[f.gruppe || f.name] = 1;
+        if(f.name) ns[f.name] = 1;
+      });
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#1e3a5f;font-size:13px;'>" + monthCount[i] + "</td>";
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:800;color:" + (monthCount[i] ? "#1e6091" : "#cbd5e1") + ";'>" + spedPct(monthCount[i], total) + "</td>";
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:700;color:" + (Object.keys(ms).length ? "#047857" : "#cbd5e1") + ";'>" + Object.keys(ms).length + "</td>";
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:700;color:" + (Object.keys(ns).length ? "#6b21a8" : "#cbd5e1") + ";'>" + Object.keys(ns).length + "</td>";
+    }
     html += "</tr>";
   });
   html += "</tbody></table></div>";
@@ -6158,15 +6285,27 @@ function spedRenderGraph() {
 
   if(typeof Chart === "undefined") return;
 
+  var monthDatasets;
+  var monthPlugins;
+  if(compareMode && selectedYears.length >= 2) {
+    monthDatasets = selectedYears.map(function(y, idx){
+      return { label: "Fahrten " + y, data: yearMonthCount[y] || Array(12).fill(0), backgroundColor: idx === 0 ? "#2f80b7" : "#22a06b", borderRadius: 5 };
+    });
+    monthPlugins = [];
+  } else {
+    monthDatasets = [{ label: "Fahrten", data: monthCount, backgroundColor: "#2f80b7", borderRadius: 5 }];
+    monthPlugins = [spedPctLabelPlugin(total, "bar-x")];
+  }
+
   spedGraphChart("sped-chart-month", {
     type: "bar",
-    data: { labels: months, datasets: [{ label: "Fahrten", data: monthCount, backgroundColor: "#2f80b7", borderRadius: 5 }] },
-    plugins: [spedPctLabelPlugin(total, "bar-x")],
+    data: { labels: months, datasets: monthDatasets },
+    plugins: monthPlugins,
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { top: 18 } },
-      plugins: { legend: { display: false }, tooltip: spedTooltipPct(total, "y") },
+      layout: { padding: { top: compareMode ? 4 : 18 } },
+      plugins: { legend: { display: compareMode, position: "bottom", labels: { boxWidth: 10, padding: 10, font: { size: 10 } } }, tooltip: spedTooltipPct(total, "y") },
       scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
     }
   });
@@ -6699,7 +6838,12 @@ iframe.active{{display:block}}
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:8px;">
-          <select id="sped-graph-year" onchange="spedGraphSetJahr(this.value)" title="Jahr" style="padding:8px 11px;border:1.5px solid #b9cce3;border-radius:8px;font-size:12px;font-weight:800;font-family:inherit;background:#fff;color:#1f3347;outline:none;"></select>
+          <select id="sped-graph-mode" onchange="spedGraphSetMode(this.value)" title="Ansicht" style="padding:8px 11px;border:1.5px solid #b9cce3;border-radius:8px;font-size:12px;font-weight:900;font-family:inherit;background:#fff;color:#1f3347;outline:none;">
+            <option value="single">Ein Jahr</option>
+            <option value="compare">Jahre vergleichen</option>
+          </select>
+          <select id="sped-graph-year" onchange="spedGraphSetJahr(this.value)" title="Jahr 1" style="padding:8px 11px;border:1.5px solid #b9cce3;border-radius:8px;font-size:12px;font-weight:800;font-family:inherit;background:#fff;color:#1f3347;outline:none;"></select>
+          <select id="sped-graph-year-2" onchange="spedGraphSetJahr2(this.value)" title="Jahr 2" style="display:none;padding:8px 11px;border:1.5px solid #b9cce3;border-radius:8px;font-size:12px;font-weight:800;font-family:inherit;background:#fff;color:#1f3347;outline:none;"></select>
           <select id="sped-graph-month" onchange="spedGraphSetMonat(this.value)" title="Monat" style="padding:8px 11px;border:1.5px solid #b9cce3;border-radius:8px;font-size:12px;font-weight:800;font-family:inherit;background:#fff;color:#1f3347;outline:none;"></select>
           <select id="sped-graph-filter" onchange="spedGraphSetSped(this.value)" title="Spedition" style="padding:8px 11px;border:1.5px solid #b9cce3;border-radius:8px;font-size:12px;font-weight:800;font-family:inherit;background:#fff;color:#1f3347;outline:none;max-width:240px;"></select>
           <button onclick="spedGraphExportExcel()" title="Aktuellen Spediteursgraphen als Excel exportieren" style="padding:8px 13px;border:1.5px solid #16a34a;border-radius:8px;font-size:12px;font-weight:900;font-family:inherit;background:linear-gradient(180deg,#ecfdf5 0%,#dcfce7 100%);color:#166534;cursor:pointer;box-shadow:0 2px 7px rgba(22,163,74,.12);">&#128190; Excel Export</button>
