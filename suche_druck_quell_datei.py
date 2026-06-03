@@ -6708,6 +6708,126 @@ function busPDF(){
 }
 """
 
+    arzt_js_code = r"""
+// ── Infos & Aushänge: Dropdown-Menü ───────────────────────────────────────────
+// Zentrale Liste aller statischen Aushänge. Neue Aushänge einfach hier ergänzen
+// (id muss zu einem panel-<id> + showArea-Zweig passen).
+var INFOS_ITEMS = [
+  { id:"tel",  label:"&#9742;&#65039; Telefonliste" },
+  { id:"bus",  label:"&#128652; Busfahrplan" },
+  { id:"arzt", label:"&#129658; Betriebsärztin" }
+];
+
+function buildInfosDdMenu(){
+  var menu = document.getElementById("ddmenu-infos");
+  if(!menu) return;
+  menu.innerHTML = INFOS_ITEMS.map(function(it){
+    var active = (typeof currentArea !== "undefined" && currentArea === it.id) ? " active" : "";
+    return "<div class='dd-item" + active + "' onclick='ddSelectInfos(\"" + it.id + "\")'>" + it.label + "</div>";
+  }).join("");
+}
+
+function ddSelectInfos(area){
+  showArea(area);
+  document.querySelectorAll(".nav-dd").forEach(function(d){ d.classList.remove("open"); });
+}
+
+// ── Betriebsärztin (hardcoded Aushang) ────────────────────────────────────────
+var ARZT_INFO = {
+  name:    "Frau Dr. med. Heike Struve",
+  firma:   "Arbeitsmedizin Nord Ost GmbH",
+  strasse: "Geesthachter Straße 34",
+  ort:     "21502 Geesthacht",
+  telefon: "041522178",
+  email:   "h.struve@arbeitsmedizin-nordost.de",
+  grundlagen: [
+    "Arbeitssicherheitsgesetz (ASIG)",
+    "Arbeitsschutzgesetz (ArbSchG)",
+    "Deutsche Gesetzliche Unfallversicherung (DGUV) Vorschrift 2"
+  ],
+  aufgaben: [
+    "Unterstützt und berät unser Unternehmen in allen Fragen des betrieblichen Gesundheitsschutzes und der Organisation der Ersten Hilfe.",
+    "Untersucht und berät im Bedarfsfall die Beschäftigten in Fragen des betrieblichen Gesundheitsschutzes.",
+    "Hat nicht die Aufgabe, Krankmeldungen der Arbeitnehmer auf ihre Berechtigung zu prüfen."
+  ]
+};
+
+function arztEsc(v){ return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function arztRender(){
+  var el = document.getElementById("arzt-content");
+  if(!el) return;
+  var a = ARZT_INFO;
+  var html = "";
+
+  // ── Karte: Bestellung / Rechtsgrundlagen ──
+  html += "<div style='background:#fff;border:1px solid #cad7e8;border-radius:12px;box-shadow:0 2px 10px rgba(30,96,145,.07);overflow:hidden;margin-bottom:18px'>";
+  html += "<div style='display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#f8fbff 0%,#ffffff 100%)'>";
+  html += "<div style='width:32px;height:32px;border-radius:8px;background:#ecfeff;color:#0e7490;display:flex;align-items:center;justify-content:center;font-size:16px'>&#9878;&#65039;</div>";
+  html += "<div><div style='font-size:13px;font-weight:900;color:#0f172a'>Bestellung &amp; Rechtsgrundlagen</div><div style='font-size:11px;color:#64748b;margin-top:1px'>Für das Unternehmen beauftragt gemäß</div></div>";
+  html += "</div>";
+  html += "<div style='display:flex;flex-wrap:wrap;gap:8px;padding:16px 20px'>";
+  a.grundlagen.forEach(function(g){
+    html += "<span style='background:#ecfeff;border:1px solid #a5f3fc;color:#0e7490;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700'>"+arztEsc(g)+"</span>";
+  });
+  html += "</div></div>";
+
+  // ── Karte: Kontakt ──
+  html += "<div style='background:#fff;border:1px solid #cad7e8;border-radius:12px;box-shadow:0 2px 10px rgba(30,96,145,.07);overflow:hidden;margin-bottom:18px'>";
+  html += "<div style='display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#f8fbff 0%,#ffffff 100%)'>";
+  html += "<div style='width:32px;height:32px;border-radius:8px;background:#ecfeff;color:#0e7490;display:flex;align-items:center;justify-content:center;font-size:16px'>&#129658;</div>";
+  html += "<div><div style='font-size:13px;font-weight:900;color:#0f172a'>Beauftragte Betriebsärztin</div><div style='font-size:11px;color:#64748b;margin-top:1px'>Ansprechpartnerin &amp; Kontaktdaten</div></div>";
+  html += "</div>";
+  html += "<div style='padding:18px 20px'>";
+  html += "<div style='font-size:19px;font-weight:900;color:#0f172a;margin-bottom:14px'>"+arztEsc(a.name)+"</div>";
+  html += "<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px'>";
+  function row(label, valHtml){
+    return "<div style='border:1px solid #dbe6f3;border-radius:9px;padding:11px 14px;background:#fbfdff'>" +
+      "<div style='font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px'>"+label+"</div>" +
+      "<div style='font-size:13.5px;font-weight:700;color:#0f172a'>"+valHtml+"</div></div>";
+  }
+  html += row("Anschrift", arztEsc(a.firma)+"<br>"+arztEsc(a.strasse)+"<br>"+arztEsc(a.ort));
+  html += row("Telefon", "<a href='tel:"+a.telefon.replace(/[^0-9+]/g,"")+"' style='color:#0e7490;text-decoration:none;font-weight:900;font-variant-numeric:tabular-nums'>"+arztEsc(a.telefon)+"</a>");
+  html += row("E-Mail", "<a href='mailto:"+arztEsc(a.email)+"' style='color:#0e7490;text-decoration:none;font-weight:800;word-break:break-all'>"+arztEsc(a.email)+"</a>");
+  html += "</div></div></div>";
+
+  // ── Karte: Aufgaben ──
+  html += "<div style='background:#fff;border:1px solid #cad7e8;border-radius:12px;box-shadow:0 2px 10px rgba(30,96,145,.07);padding:18px 20px'>";
+  html += "<div style='font-size:12px;font-weight:900;color:#0f172a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:12px'>Die Betriebsärztin</div>";
+  a.aufgaben.forEach(function(t){
+    html += "<div style='display:flex;gap:10px;margin-bottom:10px'>";
+    html += "<span style='flex-shrink:0;width:20px;height:20px;border-radius:50%;background:#ecfeff;color:#0e7490;font-weight:900;font-size:12px;display:flex;align-items:center;justify-content:center;margin-top:1px'>&#10003;</span>";
+    html += "<span style='font-size:13px;color:#334155;line-height:1.5'>"+arztEsc(t)+"</span></div>";
+  });
+  html += "</div>";
+
+  el.innerHTML = html;
+}
+
+function arztPDF(){
+  var a = ARZT_INFO;
+  var css = "@page{size:A4 portrait;margin:16mm 18mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;font-size:10pt}.cover{text-align:center;border-bottom:3px solid #0e7490;padding-bottom:5mm;margin-bottom:7mm}.cover h1{font-size:24pt;color:#334155;font-weight:900}.cover .sub{font-size:10pt;color:#64748b;margin-top:3mm}.grund{text-align:center;margin-bottom:8mm}.grund div{font-size:11pt;color:#334155;margin-bottom:1.5mm}.lead{text-align:center;font-weight:900;font-size:12pt;margin-bottom:6mm}.kontakt{margin:0 auto 8mm;max-width:120mm}.kontakt tr td{padding:1.5mm 3mm;font-size:11pt;vertical-align:top}.kontakt td.lbl{font-weight:900;color:#0e7490;white-space:nowrap;width:32mm}.sec{font-size:11pt;font-weight:900;color:#0e7490;margin-bottom:3mm}ul{margin-left:6mm}li{font-size:10.5pt;margin-bottom:2.5mm;line-height:1.4}.ft{margin-top:10mm;text-align:right;color:#94a3b8;font-size:8pt;border-top:1px solid #e2e8f0;padding-top:2mm}";
+  var b = "<div class='cover'><h1>Betriebsärztin</h1><div class='sub'>Fleischwerk EDEKA Nord GmbH &middot; NORDfrische Center</div></div>";
+  b += "<div class='grund'><div style='font-weight:700;margin-bottom:3mm'>gemäß</div>";
+  a.grundlagen.forEach(function(g){ b += "<div>"+arztEsc(g)+"</div>"; });
+  b += "</div>";
+  b += "<div class='lead'>Ist für unser Unternehmen beauftragt:</div>";
+  b += "<table class='kontakt'>";
+  b += "<tr><td class='lbl'>Frau</td><td><b>"+arztEsc(a.name)+"</b></td></tr>";
+  b += "<tr><td class='lbl'>Anschrift</td><td>"+arztEsc(a.firma)+"<br>"+arztEsc(a.strasse)+"<br>"+arztEsc(a.ort)+"</td></tr>";
+  b += "<tr><td class='lbl'>Telefon</td><td>"+arztEsc(a.telefon)+"</td></tr>";
+  b += "<tr><td class='lbl'>E-Mail</td><td>"+arztEsc(a.email)+"</td></tr>";
+  b += "</table>";
+  b += "<div class='sec'>Die Betriebsärztin</div><ul>";
+  a.aufgaben.forEach(function(t){ b += "<li>"+arztEsc(t)+"</li>"; });
+  b += "</ul>";
+  b += "<div class='ft'>NordFrischeCenter &middot; Aushang Betriebsärztin</div>";
+  var w = window.open("","_blank","width=900,height=800");
+  w.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Betriebsärztin</title><style>"+css+"</style></head><body>"+b+"</body></html>");
+  w.document.close(); w.focus(); setTimeout(function(){ w.print(); }, 500);
+}
+"""
+
     return f"""<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -6830,18 +6950,22 @@ iframe.active{{display:block}}
     </button>
     <div class="dd-menu" id="ddmenu-verstoss"></div>
   </div>
-  <button class="nav-btn" id="btn-tel" onclick="showArea('tel')">&#128222; Telefonliste</button>
   <button class="nav-btn" id="btn-sam" onclick="showArea('sam')">&#128664; Sa + So Einsätze</button>
   <button class="nav-btn" id="btn-fa" onclick="showArea('fa')">&#128101; Fahrerauswertung</button>
   <button class="nav-btn" id="btn-zulage" onclick="showArea('zulage')">&#128176; Zulagen</button>
   <button class="nav-btn" id="btn-spesen" onclick="showArea('spesen')">&#128181; Spesen</button>
   <button class="nav-btn" id="btn-gk" onclick="showArea('gk')">&#127970; Gro&#223;kunden</button>
-  <button class="nav-btn" id="btn-bus" onclick="showArea('bus')">&#128652; Busfahrplan</button>
   <div class="nav-dd" id="dd-sped">
     <button class="nav-dd-btn" id="btn-sped" onclick="ddToggle('sped',event)">
       &#128666; Spediteure <span class="dd-arrow">&#9660;</span>
     </button>
     <div class="dd-menu" id="ddmenu-sped"></div>
+  </div>
+  <div class="nav-dd" id="dd-infos">
+    <button class="nav-dd-btn" id="btn-infos" onclick="ddToggle('infos',event)">
+      &#128203; Infos &amp; Aush&#228;nge <span class="dd-arrow">&#9660;</span>
+    </button>
+    <div class="dd-menu" id="ddmenu-infos"></div>
   </div>
   </div>
   <span class="topnav-stamp">{last_updated}</span>
@@ -6973,6 +7097,20 @@ iframe.active{{display:block}}
         <button onclick="busPDF()" style="padding:10px 18px;background:linear-gradient(180deg,#ef4444 0%,#dc2626 100%);color:#fff;border:none;border-radius:8px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;box-shadow:0 2px 6px rgba(220,38,38,.28);display:inline-flex;align-items:center;gap:7px;white-space:nowrap">&#128196; PDF / Drucken</button>
       </div>
       <div id="bus-content"></div>
+    </div>
+  </div>
+
+  <div id="panel-arzt" style="display:none;flex:1;overflow-y:auto;padding:18px 18px 28px;background:linear-gradient(180deg,#f3f7fb 0%,#e8f0f7 100%);font-family:'Segoe UI',Arial,sans-serif">
+    <div style="width:100%;max-width:880px;margin:0 auto">
+      <div style="background:#fff;border:1px solid #cad7e8;border-radius:12px;padding:18px 22px;box-shadow:0 2px 10px rgba(30,96,145,.08);margin-bottom:18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#0e7490 0%,#0891b2 100%);display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 2px 7px rgba(8,145,178,.25);flex-shrink:0">&#129658;</div>
+        <div style="min-width:0;flex:1">
+          <h2 style="color:#0f172a;font-size:18px;font-weight:900;margin:0;letter-spacing:-.2px">Betriebs&#228;rztin</h2>
+          <p style="color:#64748b;font-size:12px;margin:2px 0 0 0;font-weight:500">Aushang &middot; ASIG / ArbSchG / DGUV Vorschrift 2</p>
+        </div>
+        <button onclick="arztPDF()" style="padding:10px 18px;background:linear-gradient(180deg,#ef4444 0%,#dc2626 100%);color:#fff;border:none;border-radius:8px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;box-shadow:0 2px 6px rgba(220,38,38,.28);display:inline-flex;align-items:center;gap:7px;white-space:nowrap">&#128196; PDF / Drucken</button>
+      </div>
+      <div id="arzt-content"></div>
     </div>
   </div>
 
@@ -7278,6 +7416,7 @@ function ddToggle(area, e) {{
   if(!wasOpen) {{
     if(area === "verstoss") buildVerstossDdMenu();
     else if(area === "sped") buildSpedDdMenu();
+    else if(area === "infos") buildInfosDdMenu();
     else buildDdMenu(area);
     dd.classList.add("open");
     // Position unter dem Button berechnen (fixed, ignoriert iframe)
@@ -7387,6 +7526,12 @@ function showArea(s) {{
   var busBtn = document.getElementById("btn-bus");
   if(busBtn) busBtn.className = "nav-btn" + (s==="bus" ? " active" : "");
   if(s==="bus" && busPanel && !busPanel.dataset.loaded) {{ busRender(); busPanel.dataset.loaded="1"; }}
+  var arztPanel = document.getElementById("panel-arzt");
+  if(arztPanel) arztPanel.style.display = (s==="arzt") ? "block" : "none";
+  if(s==="arzt" && arztPanel && !arztPanel.dataset.loaded) {{ arztRender(); arztPanel.dataset.loaded="1"; }}
+  var infosBtn = document.getElementById("btn-infos");
+  if(infosBtn) infosBtn.className = "nav-dd-btn" + ((s==="tel" || s==="bus" || s==="arzt") ? " active" : "");
+  if(typeof buildInfosDdMenu === "function") buildInfosDdMenu();
   var spedPanel = document.getElementById("panel-sped");
   if(spedPanel) spedPanel.style.display = (s==="sped") ? "flex" : "none";
   var spedGraphPanel = document.getElementById("panel-sped-graph");
@@ -8559,6 +8704,8 @@ function samToggle(el) {{
 {fa_js_code}
 
 {bus_js_code}
+
+{arzt_js_code}
 
 // ── Fahrerauswertung: Schichten-Tab (Tachograph-Daten) ─────────────────────────
 (function() {{
