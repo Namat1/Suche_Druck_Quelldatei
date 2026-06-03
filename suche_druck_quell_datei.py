@@ -6540,6 +6540,174 @@ function spedInit() {
 
 """
 
+    bus_js_code = r"""
+// ── Busfahrplan + Notfallplan (hardcoded, gültig ab KW 23) ────────────────────
+var BUS_FAHRTEN = [
+  { stops:[["NFC","00:30"],["Dodow","00:55"],["Kogel","01:10"],["Granzin","01:20"],["Greven","01:25"],["NFC","01:35"]] },
+  { stops:[["NFC","02:30"],["Dodow","02:55"],["Kogel","03:10"],["Granzin","03:20"],["Greven","03:25"],["NFC","03:35"]] },
+  { stops:[["NFC","04:30"],["Dodow","04:55"],["Kogel","05:10"],["Granzin","05:20"],["Greven","05:25"],["NFC","05:35"]] },
+  { stops:[["NFC","07:30"],["Dodow","07:55"],["Kogel","08:10"],["Granzin","08:20"],["Greven","08:25"],["NFC","08:35"]] },
+  { stops:[["NFC","13:30"],["Dodow","13:55"],["Kogel","14:10"],["Granzin","14:20"],["Greven","14:25"],["NFC","14:35"]] },
+  { hinweis:"Fahrtwegänderung", stops:[["NFC","16:45"],["Greven","16:55"],["Granzin","17:00"],["Kogel","17:10"],["Dodow","17:25"],["NFC","17:50"]] },
+  { hinweis:"Fahrtwegänderung", stops:[["NFC","19:30"],["Greven","19:40"],["Granzin","19:45"],["Kogel","19:55"],["Dodow","20:10"],["NFC","20:35"]] },
+  { hinweis:"nur am Freitag", freitag:true, stops:[["NFC","23:00"],["Kogel","23:15"],["Dodow","23:25"],["NFC","23:50"]] }
+];
+
+var BUS_KONTAKTE = [
+  { label:"Empfang Notfallnummer 24/h Hotline", nummer:"0171-8115780" },
+  { label:"Becker Tours (Chef)", nummer:"0172-5825596" },
+  { label:"Fuhrpark Philipp Matha", nummer:"0151-52737267" }
+];
+
+var BUS_NOTFALL = [
+  {
+    titel:"Busfahrer ist nicht gekommen",
+    farbe:"#dc2626", bg:"#fef2f2", border:"#fecaca",
+    schritte:[
+      { kopf:"Empfang Notfallnummer 24/h Hotline wählen", nummer:"0171-8115780", punkte:["falls niemand erreicht wurde","Fuhrpark-Dispo über Ausfall informieren"] },
+      { kopf:"Handynummer Chef Becker Tours", nummer:"0172-5825596", punkte:["Fuhrpark informiert Firma Becker Tours","falls niemand erreicht wurde"] },
+      { kopf:"Handynummer Fuhrpark Philipp Matha", nummer:"0151-52737267", punkte:["nach Erhalt von Informationen"] },
+      { kopf:"Abteilungen informieren", punkte:["der Fuhrpark informiert alle Abteilungen über die Verspätungen","ab wann sind wir wieder im normalen Fahrplan?"] }
+    ]
+  },
+  {
+    titel:"Bus hat Unfall / Panne",
+    farbe:"#b45309", bg:"#fffbeb", border:"#fde68a",
+    schritte:[
+      { kopf:"Firma Becker Tours informieren", nummer:"0172-5825596", punkte:["Fuhrpark informiert Firma Becker Tours","falls niemand erreicht wurde"] },
+      { kopf:"Handynummer Fuhrpark Philipp Matha", nummer:"0151-52737267", punkte:["Informationen von Becker Tours oder Philipp Matha durch Fuhrpark weiterleiten"] },
+      { kopf:"Abteilungen informieren durch Fuhrpark", punkte:["ab wann kommt ein neuer Bus","ab wann können wir den Fahrplan wieder einhalten"] }
+    ]
+  },
+  {
+    titel:"Mitarbeiter fehlen in Abteilung",
+    farbe:"#1e6091", bg:"#eff6ff", border:"#bfdbfe",
+    schritte:[
+      { kopf:"Einsatzplan von Busfahrer prüfen", punkte:["Schichtplan inkl. Handynummern wird immer am Donnerstag für die Folgewoche zur Verfügung gestellt","Differenzen aus den Abteilungen werden an Fuhrpark gemeldet"] },
+      { kopf:"Busfahrer anrufen und Abweichungen erfragen", nummer:"0151-52737267", punkte:["Fuhrpark erfragt telefonisch beim Busfahrer, ob es Abweichungen im Fahrplan gegeben hat","Fuhrpark informiert entsprechende Abteilung"] }
+    ]
+  }
+];
+
+var BUS_HINWEISE = [
+  "Diese Übersicht dient zur Handlungserleichterung für den Fuhrpark und Empfang! Die angegebenen Rufnummern sind vertraulich zu behandeln. Sollte es Probleme oder Ausfälle geben, dann ist die Reihenfolge einzuhalten. Allgemein gilt, dass nur im Ernstfall oder Problemfall die Notfallnummer gewählt werden soll.",
+  "Informationsaustausch zwischen Empfang und Fuhrpark telefonisch halten. Sollte der Fuhrpark nicht besetzt sein, dann muss der Empfang sich direkt an Phillip Matha wenden!",
+  "Im Mehrverteiler immer bitte alle Abteilungen von Produktion und Logistik informieren. Zusätzlich bitte Hr. Biermann, Hr. Brockmüller und Hr. Matha."
+];
+
+function busEsc(v){ return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function busTel(v){ return String(v==null?"":v).replace(/[^0-9+]/g,""); }
+
+function busRender(){
+  var el = document.getElementById("bus-content");
+  if(!el) return;
+  var html = "";
+
+  // ── Fahrplan ──
+  html += "<div style='background:#fff;border:1px solid #cad7e8;border-radius:12px;box-shadow:0 2px 10px rgba(30,96,145,.07);overflow:hidden;margin-bottom:18px'>";
+  html += "<div style='display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#f8fbff 0%,#ffffff 100%)'>";
+  html += "<div style='width:32px;height:32px;border-radius:8px;background:#e7f1fb;color:#1e6091;display:flex;align-items:center;justify-content:center;font-size:16px'>&#128338;</div>";
+  html += "<div><div style='font-size:13px;font-weight:900;color:#0f172a'>Fahrplan</div><div style='font-size:11px;color:#64748b;margin-top:1px'>Haltestellen &amp; Abfahrtszeiten je Fahrt</div></div>";
+  html += "</div>";
+  html += "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;padding:18px 20px'>";
+  BUS_FAHRTEN.forEach(function(f, idx){
+    var head = f.freitag ? "linear-gradient(180deg,#a3a35c 0%,#8a8a3f 100%)" : (f.hinweis ? "linear-gradient(180deg,#7ba05b 0%,#5e8443 100%)" : "linear-gradient(180deg,#2f80b7 0%,#1e6091 100%)");
+    html += "<div style='border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.05)'>";
+    html += "<div style='background:"+head+";color:#fff;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px'>";
+    html += "<span style='font-size:12px;font-weight:900'>Fahrt "+(idx+1)+"</span>";
+    if(f.hinweis) html += "<span style='font-size:9.5px;font-weight:800;background:rgba(255,255,255,.25);padding:2px 8px;border-radius:20px;white-space:nowrap'>"+busEsc(f.hinweis)+"</span>";
+    html += "</div><table style='width:100%;border-collapse:collapse;font-size:12.5px'>";
+    f.stops.forEach(function(s,i){
+      html += "<tr style='background:"+(i%2===0?"#ffffff":"#f8fafc")+"'>";
+      html += "<td style='padding:6px 12px;font-weight:700;color:#0f172a;border-bottom:1px solid #f1f5f9'>"+busEsc(s[0])+"</td>";
+      html += "<td style='padding:6px 12px;text-align:right;font-weight:800;color:#1e6091;font-variant-numeric:tabular-nums;border-bottom:1px solid #f1f5f9'>"+busEsc(s[1])+"</td>";
+      html += "</tr>";
+    });
+    html += "</table></div>";
+  });
+  html += "</div></div>";
+
+  // ── Notfallplan ──
+  html += "<div style='background:#fff;border:1px solid #cad7e8;border-radius:12px;box-shadow:0 2px 10px rgba(30,96,145,.07);overflow:hidden;margin-bottom:18px'>";
+  html += "<div style='display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#f8fbff 0%,#ffffff 100%)'>";
+  html += "<div style='width:32px;height:32px;border-radius:8px;background:#fef2f2;color:#dc2626;display:flex;align-items:center;justify-content:center;font-size:16px'>&#9888;&#65039;</div>";
+  html += "<div><div style='font-size:13px;font-weight:900;color:#0f172a'>Notfallplan Mitarbeiterbus</div><div style='font-size:11px;color:#64748b;margin-top:1px'>Reaktion bei Ausfall des Busses &ndash; Reihenfolge einhalten</div></div>";
+  html += "</div>";
+  html += "<div style='display:flex;flex-wrap:wrap;gap:10px;padding:16px 20px;border-bottom:1px solid #eef2f7;background:#fbfcfd'>";
+  BUS_KONTAKTE.forEach(function(k){
+    html += "<div style='flex:1;min-width:200px;border:1px solid #dbe6f3;border-radius:9px;padding:10px 14px;background:#fff'>";
+    html += "<div style='font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px'>"+busEsc(k.label)+"</div>";
+    html += "<a href='tel:"+busTel(k.nummer)+"' style='font-size:17px;font-weight:900;color:#1e6091;text-decoration:none;font-variant-numeric:tabular-nums'>"+busEsc(k.nummer)+"</a>";
+    html += "</div>";
+  });
+  html += "</div>";
+  html += "<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;padding:18px 20px'>";
+  BUS_NOTFALL.forEach(function(sz){
+    html += "<div style='border:1.5px solid "+sz.border+";border-radius:11px;overflow:hidden;background:"+sz.bg+"'>";
+    html += "<div style='background:"+sz.farbe+";color:#fff;padding:10px 14px;font-size:13px;font-weight:900'>"+busEsc(sz.titel)+"</div>";
+    html += "<div style='padding:12px 14px'>";
+    sz.schritte.forEach(function(st,i){
+      html += "<div style='display:flex;gap:10px;margin-bottom:"+(i===sz.schritte.length-1?"0":"12px")+"'>";
+      html += "<div style='flex-shrink:0;width:22px;height:22px;border-radius:50%;background:"+sz.farbe+";color:#fff;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center'>"+(i+1)+"</div>";
+      html += "<div style='flex:1;min-width:0'>";
+      html += "<div style='font-size:12.5px;font-weight:800;color:#0f172a'>"+busEsc(st.kopf)+"</div>";
+      if(st.nummer) html += "<a href='tel:"+busTel(st.nummer)+"' style='display:inline-block;margin-top:3px;font-size:13px;font-weight:900;color:"+sz.farbe+";text-decoration:none;font-variant-numeric:tabular-nums'>"+busEsc(st.nummer)+"</a>";
+      if(st.punkte && st.punkte.length){
+        html += "<ul style='margin:5px 0 0 0;padding-left:16px'>";
+        st.punkte.forEach(function(p){ html += "<li style='font-size:11.5px;color:#475569;margin-bottom:2px'>"+busEsc(p)+"</li>"; });
+        html += "</ul>";
+      }
+      html += "</div></div>";
+    });
+    html += "</div></div>";
+  });
+  html += "</div></div>";
+
+  // ── Hinweise ──
+  html += "<div style='background:#fff;border:1px solid #cad7e8;border-radius:12px;box-shadow:0 2px 10px rgba(30,96,145,.07);padding:18px 20px'>";
+  html += "<div style='font-size:12px;font-weight:900;color:#0f172a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px'>Wichtige Hinweise</div>";
+  BUS_HINWEISE.forEach(function(t){
+    html += "<div style='display:flex;gap:8px;margin-bottom:8px'><span style='color:#1e6091;font-weight:900;flex-shrink:0'>&middot;</span><span style='font-size:12px;color:#334155;line-height:1.5'>"+busEsc(t)+"</span></div>";
+  });
+  html += "<div style='margin-top:6px;font-size:12.5px;font-weight:800;color:#1e6091'>Vielen Dank!</div></div>";
+
+  el.innerHTML = html;
+}
+
+function busPDF(){
+  var css = "@page{size:A4 portrait;margin:10mm 9mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;font-size:8pt}.cover{text-align:center;padding:6mm 0;border-bottom:3px solid #1e6091;margin-bottom:5mm}.cover h1{font-size:18pt;color:#1e6091;font-weight:900}.kw{display:inline-block;margin-top:2mm;background:#facc15;color:#713f12;font-weight:900;font-size:9pt;padding:1.5mm 4mm;border-radius:3px}.sec{font-size:11pt;font-weight:900;color:#1e6091;margin:5mm 0 2mm;border-left:3px solid #1e6091;padding-left:3mm}.grid{display:flex;flex-wrap:wrap;gap:3mm}.trip{border:1px solid #cbd5e1;border-radius:2mm;overflow:hidden;width:calc(25% - 2.3mm)}.tph{background:#1e6091;color:#fff;padding:1.5mm 2mm;font-size:8pt;font-weight:900;display:flex;justify-content:space-between;gap:2mm}.tph.alt{background:#5e8443}.tph.fr{background:#8a8a3f}.tph small{font-weight:700;font-size:6pt}table{width:100%;border-collapse:collapse}td{padding:1mm 2mm;font-size:7.5pt;border-bottom:.3pt solid #eef2f7}td.t{text-align:right;font-weight:800;color:#1e6091}.kc{display:flex;gap:3mm;flex-wrap:wrap;margin-bottom:3mm}.kc div{border:1px solid #cbd5e1;border-radius:2mm;padding:2mm 3mm;flex:1;min-width:45mm}.kc b{display:block;font-size:6.5pt;color:#64748b;text-transform:uppercase}.kc span{font-size:11pt;font-weight:900;color:#1e6091}.sz{border:1px solid #cbd5e1;border-radius:2mm;overflow:hidden;margin-bottom:3mm;page-break-inside:avoid}.szh{color:#fff;padding:1.5mm 3mm;font-size:9pt;font-weight:900}.szb{padding:2mm 3mm}.st{margin-bottom:2mm}.st b{font-size:8pt}.st .num{font-size:8.5pt;font-weight:900}ul{margin:.5mm 0 0 4mm}li{font-size:7pt;color:#475569}.hint{font-size:7.5pt;color:#334155;line-height:1.4;margin-bottom:1.5mm}";
+  var b = "<div class='cover'><h1>&#128652; Busfahrplan Mitarbeiterbus</h1><div class='kw'>gültig ab KW 23</div></div>";
+  b += "<div class='sec'>Fahrplan</div><div class='grid'>";
+  BUS_FAHRTEN.forEach(function(f,idx){
+    var cls = f.freitag ? "tph fr" : (f.hinweis ? "tph alt" : "tph");
+    b += "<div class='trip'><div class='"+cls+"'><span>Fahrt "+(idx+1)+"</span>"+(f.hinweis?"<small>"+busEsc(f.hinweis)+"</small>":"")+"</div><table>";
+    f.stops.forEach(function(s){ b += "<tr><td>"+busEsc(s[0])+"</td><td class='t'>"+busEsc(s[1])+"</td></tr>"; });
+    b += "</table></div>";
+  });
+  b += "</div>";
+  b += "<div class='sec'>Notfallplan &ndash; Kontakte</div><div class='kc'>";
+  BUS_KONTAKTE.forEach(function(k){ b += "<div><b>"+busEsc(k.label)+"</b><span>"+busEsc(k.nummer)+"</span></div>"; });
+  b += "</div>";
+  b += "<div class='sec'>Notfallplan &ndash; Handlungsweise</div>";
+  BUS_NOTFALL.forEach(function(sz){
+    b += "<div class='sz'><div class='szh' style='background:"+sz.farbe+"'>"+busEsc(sz.titel)+"</div><div class='szb'>";
+    sz.schritte.forEach(function(st,i){
+      b += "<div class='st'><b>"+(i+1)+". "+busEsc(st.kopf)+"</b>";
+      if(st.nummer) b += " <span class='num' style='color:"+sz.farbe+"'>"+busEsc(st.nummer)+"</span>";
+      if(st.punkte && st.punkte.length){ b += "<ul>"; st.punkte.forEach(function(p){ b += "<li>"+busEsc(p)+"</li>"; }); b += "</ul>"; }
+      b += "</div>";
+    });
+    b += "</div></div>";
+  });
+  b += "<div class='sec'>Wichtige Hinweise</div>";
+  BUS_HINWEISE.forEach(function(t){ b += "<div class='hint'>&middot; "+busEsc(t)+"</div>"; });
+  b += "<div class='hint' style='font-weight:900;color:#1e6091'>Vielen Dank!</div>";
+  var w = window.open("","_blank","width=900,height=800");
+  w.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Busfahrplan ab KW23</title><style>"+css+"</style></head><body>"+b+"</body></html>");
+  w.document.close(); w.focus(); setTimeout(function(){ w.print(); }, 500);
+}
+"""
+
     return f"""<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -6668,6 +6836,7 @@ iframe.active{{display:block}}
   <button class="nav-btn" id="btn-zulage" onclick="showArea('zulage')">&#128176; Zulagen</button>
   <button class="nav-btn" id="btn-spesen" onclick="showArea('spesen')">&#128181; Spesen</button>
   <button class="nav-btn" id="btn-gk" onclick="showArea('gk')">&#127970; Gro&#223;kunden</button>
+  <button class="nav-btn" id="btn-bus" onclick="showArea('bus')">&#128652; Busfahrplan</button>
   <div class="nav-dd" id="dd-sped">
     <button class="nav-dd-btn" id="btn-sped" onclick="ddToggle('sped',event)">
       &#128666; Spediteure <span class="dd-arrow">&#9660;</span>
@@ -6789,6 +6958,21 @@ iframe.active{{display:block}}
         </button>
       </div>
       <div id="tel-content"></div>
+    </div>
+  </div>
+
+  <div id="panel-bus" style="display:none;flex:1;overflow-y:auto;padding:18px 18px 28px;background:linear-gradient(180deg,#f3f7fb 0%,#e8f0f7 100%);font-family:'Segoe UI',Arial,sans-serif">
+    <div style="width:100%;max-width:1180px;margin:0 auto">
+      <div style="background:#fff;border:1px solid #cad7e8;border-radius:12px;padding:18px 22px;box-shadow:0 2px 10px rgba(30,96,145,.08);margin-bottom:18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#1e6091 0%,#2f80b7 100%);display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 2px 7px rgba(30,96,145,.25);flex-shrink:0">&#128652;</div>
+        <div style="min-width:0;flex:1">
+          <h2 style="color:#0f172a;font-size:18px;font-weight:900;margin:0;letter-spacing:-.2px">Busfahrplan Mitarbeiterbus</h2>
+          <p style="color:#64748b;font-size:12px;margin:2px 0 0 0;font-weight:500">Fahrplan &amp; Notfallplan &middot; Becker Tours</p>
+        </div>
+        <span style="background:linear-gradient(180deg,#fde047 0%,#facc15 100%);color:#713f12;font-weight:900;font-size:12px;padding:7px 14px;border-radius:8px;border:1px solid #eab308;box-shadow:0 2px 6px rgba(234,179,8,.25);white-space:nowrap">g&uuml;ltig ab KW&nbsp;23</span>
+        <button onclick="busPDF()" style="padding:10px 18px;background:linear-gradient(180deg,#ef4444 0%,#dc2626 100%);color:#fff;border:none;border-radius:8px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;box-shadow:0 2px 6px rgba(220,38,38,.28);display:inline-flex;align-items:center;gap:7px;white-space:nowrap">&#128196; PDF / Drucken</button>
+      </div>
+      <div id="bus-content"></div>
     </div>
   </div>
 
@@ -7198,6 +7382,11 @@ function showArea(s) {{
   var gkBtn = document.getElementById("btn-gk");
   if(gkBtn) gkBtn.className = "nav-btn" + (s==="gk" ? " active" : "");
   if(s==="gk" && gkPanel && !gkPanel.dataset.loaded) {{ gkRender(); gkPanel.dataset.loaded="1"; }}
+  var busPanel = document.getElementById("panel-bus");
+  if(busPanel) busPanel.style.display = (s==="bus") ? "block" : "none";
+  var busBtn = document.getElementById("btn-bus");
+  if(busBtn) busBtn.className = "nav-btn" + (s==="bus" ? " active" : "");
+  if(s==="bus" && busPanel && !busPanel.dataset.loaded) {{ busRender(); busPanel.dataset.loaded="1"; }}
   var spedPanel = document.getElementById("panel-sped");
   if(spedPanel) spedPanel.style.display = (s==="sped") ? "flex" : "none";
   var spedGraphPanel = document.getElementById("panel-sped-graph");
@@ -8368,6 +8557,8 @@ function samToggle(el) {{
 }}
 
 {fa_js_code}
+
+{bus_js_code}
 
 // ── Fahrerauswertung: Schichten-Tab (Tachograph-Daten) ─────────────────────────
 (function() {{
