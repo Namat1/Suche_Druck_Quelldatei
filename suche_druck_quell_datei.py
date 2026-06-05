@@ -6804,7 +6804,7 @@ var INFOS_ITEMS = [
   { id:"tel",   label:"&#9742;&#65039; Telefonliste" },
   { id:"bus",   label:"&#128652; Busfahrplan" },
   { id:"arzt",  label:"&#129658; Betriebsärztin" },
-  { id:"versp", label:"&#9201;&#65039; Verspätungstabelle" }
+  { id:"versp", label:"&#9201;&#65039; Verspätung" }
 ];
 
 function buildInfosDdMenu(){
@@ -7162,7 +7162,7 @@ html,body{{height:100%;font-family:'Segoe UI',Arial,sans-serif}}
 .topnav{{
   height:56px;
   background:linear-gradient(180deg,#eef2f6 0%,#dde4eb 100%);
-  display:flex;align-items:center;padding:0 12px;gap:6px;
+  display:flex;align-items:center;padding:0 12px;gap:4px;
   box-shadow:0 2px 10px rgba(15,23,42,.08);
   border-bottom:1px solid #c5ced8;
   flex-shrink:0;
@@ -7184,7 +7184,7 @@ html,body{{height:100%;font-family:'Segoe UI',Arial,sans-serif}}
   width:1px;height:22px;background:#c8d1db;flex-shrink:0;margin:0 4px;
 }}
 .nav-btn{{
-  padding:7px 12px;border-radius:8px;
+  padding:6px 9px;border-radius:8px;
   border:1px solid #bcc8d6;
   cursor:pointer;font-weight:800;font-size:12px;
   transition:all .15s ease;background:linear-gradient(180deg,#f9fbfd 0%,#edf2f7 100%);color:#334155;
@@ -7200,11 +7200,11 @@ html,body{{height:100%;font-family:'Segoe UI',Arial,sans-serif}}
 /* ── Dropdown ── */
 .nav-dd{{position:relative;flex-shrink:0}}
 .nav-dd-btn{{
-  padding:7px 14px;border-radius:8px;
+  padding:6px 9px;border-radius:8px;
   border:1px solid #bcc8d6;
   cursor:pointer;font-weight:800;font-size:12px;
   transition:all .15s ease;background:linear-gradient(180deg,#f9fbfd 0%,#edf2f7 100%);color:#334155;
-  white-space:nowrap;display:flex;align-items:center;gap:6px;
+  white-space:nowrap;display:flex;align-items:center;gap:4px;
   box-shadow:0 1px 2px rgba(15,23,42,.05);
 }}
 .nav-dd-btn:hover{{background:linear-gradient(180deg,#ffffff 0%,#eef3f8 100%);border-color:#aeb9c8}}
@@ -7212,7 +7212,7 @@ html,body{{height:100%;font-family:'Segoe UI',Arial,sans-serif}}
 #btn-suche.active{{background:linear-gradient(180deg,#f6dc67 0%,#e6be22 100%);border-color:#d5ac10;color:#334155;box-shadow:0 3px 10px rgba(214,172,16,.28)}}
 #btn-suche.active .dd-arrow{{filter:none;opacity:.9}}
 .dd-arrow{{font-size:9px;opacity:.75;transition:transform .15s}}
-.inst-label{{font-size:10px;font-weight:700;opacity:1;background:#dbe5f0;border:1px solid #c0cad8;border-radius:5px;padding:1px 6px;margin:0 4px 0 5px;white-space:nowrap;color:#4b5d73}}
+.inst-label{{font-size:9px;font-weight:700;opacity:1;background:#dbe5f0;border:1px solid #c0cad8;border-radius:5px;padding:1px 5px;margin:0 2px 0 4px;white-space:nowrap;color:#4b5d73}}
 .nav-dd.open .dd-arrow{{transform:rotate(180deg)}}
 .dd-menu{{
   display:none;
@@ -7233,7 +7233,10 @@ html,body{{height:100%;font-family:'Segoe UI',Arial,sans-serif}}
 .dd-item.active{{background:linear-gradient(180deg,#2f80b7 0%,#1e6091 100%);color:#fff}}
 .topnav-stamp{{
   margin-left:auto;font-size:11px;font-weight:800;
-  color:#5b6b80;white-space:nowrap;padding-left:10px;
+  color:#5b6b80;white-space:nowrap;
+  position:sticky;right:0;flex-shrink:0;
+  padding:0 2px 0 14px;
+  background:linear-gradient(90deg,rgba(228,233,239,0) 0%,#e4e9ef 14px,#e4e9ef 100%);
 }}
 .frame-wrap{{height:calc(100vh - 56px);display:flex;flex-direction:column}}
 iframe{{flex:1;width:100%;border:none;display:none}}
