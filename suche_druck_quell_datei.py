@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "spediteure-gruppen-2026-06-03-v26-kundenart-absetzer-rampe"
+APP_CACHE_VERSION = "spediteure-gruppen-2026-06-06-v27-verspaetung-tourenplan-spalte-a"
 
 
 # =============================================================================
@@ -3280,14 +3280,17 @@ def parse_spediteure_excel(dateien: list) -> str:
 
 
 def parse_versp_abfahrt_excel(dateien: list) -> str:
-    """Liest die reguläre Abfahrtszeit (Spalte I) je Tour aus den Touren-Excel.
+    """Liest die reguläre Abfahrtszeit je Tour direkt aus dem Tourenplan.
 
     Touren-Blatt, Daten ab Zeile 6:
-      Spalte I (Index 8)  = Abfahrtszeit (Zeit)
+      Spalte A (Index 0)  = Tournummer
+      Spalte I (Index 8)  = Abfahrtszeit
       Spalte O (Index 14) = Datum  -> Wochentag
-      Spalte P (Index 15) = Tour
-    Ergebnis-JSON: {Wochentag: {Tournummer(digits): "HH:MM"}}.
-    Pro (Wochentag, Tour) wird die häufigste Zeit gewählt (robust gegen Ausreißer).
+
+    Wichtig: Die Verspätungstabelle nutzt bewusst den Tourenplan und keine
+    Kisoft-/Rahmentour-Nummer. Pro (Wochentag, Tour) wird die häufigste Zeit
+    gewählt. Einen allgemeinen "irgendein Tag"-Fallback gibt es nicht mehr,
+    damit keine falsche Abfahrt von einem anderen Wochentag gezogen wird.
     """
     import json as _json
     from io import BytesIO
@@ -3311,12 +3314,34 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
                     return f"{int(p[0]):02d}:{int(p[1]):02d}"
                 except Exception:
                     return ""
+            # Excel-/CSV-Export kann Zeiten auch als 1500, 15, 1530 liefern.
+            digits = "".join(ch for ch in v if ch.isdigit())
+            if len(digits) in (1, 2):
+                h = int(digits)
+                if 0 <= h <= 23:
+                    return f"{h:02d}:00"
+            if len(digits) in (3, 4):
+                h = int(digits[:-2])
+                m = int(digits[-2:])
+                if 0 <= h <= 23 and 0 <= m <= 59:
+                    return f"{h:02d}:{m:02d}"
             return ""
-        if isinstance(val, float) and val > 0:
-            total_min = int(round(val * 24 * 60))
-            h = (total_min // 60) % 24
-            m = total_min % 60
-            return f"{h:02d}:{m:02d}"
+        if isinstance(val, (int, float)) and val > 0:
+            # Excel-Zeit als Tagesbruchteil, z. B. 0,625 = 15:00
+            if isinstance(val, float) and val < 1:
+                total_min = int(round(val * 24 * 60))
+                h = (total_min // 60) % 24
+                m = total_min % 60
+                return f"{h:02d}:{m:02d}"
+            # Export als Zahl, z. B. 1500 oder 15
+            iv = int(val)
+            if 0 <= iv <= 23:
+                return f"{iv:02d}:00"
+            h = iv // 100
+            m = iv % 100
+            if 0 <= h <= 23 and 0 <= m <= 59:
+                return f"{h:02d}:{m:02d}"
+            return ""
         if isinstance(val, (_dt.datetime, _pd.Timestamp)):
             return val.strftime("%H:%M")
         if isinstance(val, _dt.time):
@@ -3351,7 +3376,7 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
             datum = _pd.to_datetime(row[14] if len(row) > 14 else None, errors="coerce")
             if _pd.isna(datum):
                 continue
-            tour = _tour_digits(row[15] if len(row) > 15 else "")
+            tour = _tour_digits(row[0] if len(row) > 0 else "")
             zeit = _zeit(row[8] if len(row) > 8 else None)
             if not tour or not zeit:
                 continue
@@ -3359,7 +3384,6 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
             agg.setdefault(wd, {}).setdefault(tour, Counter())[zeit] += 1
 
     out: dict = {}
-    overall: dict = {}  # tour -> Counter über alle Tage (Fallback)
     for wd, tours in agg.items():
         out[wd] = {}
         for tour, counter in tours.items():
@@ -3367,15 +3391,6 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
             best = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
             if best:
                 out[wd][tour] = best[0][0]
-            overall.setdefault(tour, Counter()).update(counter)
-
-    # Fallback je Tour über alle Wochentage (für Abendtouren, deren Abfahrt
-    # unter dem Vortag steht, bzw. abweichende Datumskonventionen).
-    out["_any"] = {}
-    for tour, counter in overall.items():
-        best = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
-        if best:
-            out["_any"][tour] = best[0][0]
 
     return _json.dumps(out, ensure_ascii=False)
 
@@ -7020,8 +7035,6 @@ function verspCollectRows(day) {
             var prev = PREV[day];
             if(prev && VERSP_ABFAHRT[prev] && VERSP_ABFAHRT[prev][td]) {
               soll = VERSP_ABFAHRT[prev][td];                    // Abendtour: Abfahrt am Vortag
-            } else if(VERSP_ABFAHRT["_any"] && VERSP_ABFAHRT["_any"][td]) {
-              soll = VERSP_ABFAHRT["_any"][td];                  // Fallback: häufigste Zeit der Tour
             }
           }
         }
