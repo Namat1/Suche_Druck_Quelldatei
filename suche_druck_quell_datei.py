@@ -3182,7 +3182,10 @@ def parse_spediteure_excel(dateien: list) -> str:
                     return ""
             return ""
         if isinstance(val, float) and val > 0:
-            return f"{int(val * 24):02d}:{int((val * 1440) % 60):02d}"
+            total_min = int(round(val * 24 * 60))
+            h = (total_min // 60) % 24
+            m = total_min % 60
+            return f"{h:02d}:{m:02d}"
         if isinstance(val, (_dt.datetime, _pd.Timestamp)):
             return val.strftime("%H:%M")
         if isinstance(val, _dt.time):
@@ -3310,7 +3313,10 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
                     return ""
             return ""
         if isinstance(val, float) and val > 0:
-            return f"{int(val * 24):02d}:{int((val * 1440) % 60):02d}"
+            total_min = int(round(val * 24 * 60))
+            h = (total_min // 60) % 24
+            m = total_min % 60
+            return f"{h:02d}:{m:02d}"
         if isinstance(val, (_dt.datetime, _pd.Timestamp)):
             return val.strftime("%H:%M")
         if isinstance(val, _dt.time):
@@ -3353,6 +3359,7 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
             agg.setdefault(wd, {}).setdefault(tour, Counter())[zeit] += 1
 
     out: dict = {}
+    overall: dict = {}  # tour -> Counter über alle Tage (Fallback)
     for wd, tours in agg.items():
         out[wd] = {}
         for tour, counter in tours.items():
@@ -3360,6 +3367,15 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
             best = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
             if best:
                 out[wd][tour] = best[0][0]
+            overall.setdefault(tour, Counter()).update(counter)
+
+    # Fallback je Tour über alle Wochentage (für Abendtouren, deren Abfahrt
+    # unter dem Vortag steht, bzw. abweichende Datumskonventionen).
+    out["_any"] = {}
+    for tour, counter in overall.items():
+        best = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
+        if best:
+            out["_any"][tour] = best[0][0]
 
     return _json.dumps(out, ensure_ascii=False)
 
@@ -6994,8 +7010,20 @@ function verspCollectRows(day) {
       var soll = "";
       try {
         var td = String(tour).replace(/\D/g, "");
-        if(typeof VERSP_ABFAHRT !== "undefined" && VERSP_ABFAHRT[day] && VERSP_ABFAHRT[day][td]) {
-          soll = VERSP_ABFAHRT[day][td];
+        if(td && typeof VERSP_ABFAHRT !== "undefined") {
+          var PREV = { "Montag":"Sonntag", "Dienstag":"Montag", "Mittwoch":"Dienstag",
+                       "Donnerstag":"Mittwoch", "Freitag":"Donnerstag", "Samstag":"Freitag",
+                       "Sonntag":"Samstag" };
+          if(VERSP_ABFAHRT[day] && VERSP_ABFAHRT[day][td]) {
+            soll = VERSP_ABFAHRT[day][td];                       // Abfahrt am Liefertag
+          } else {
+            var prev = PREV[day];
+            if(prev && VERSP_ABFAHRT[prev] && VERSP_ABFAHRT[prev][td]) {
+              soll = VERSP_ABFAHRT[prev][td];                    // Abendtour: Abfahrt am Vortag
+            } else if(VERSP_ABFAHRT["_any"] && VERSP_ABFAHRT["_any"][td]) {
+              soll = VERSP_ABFAHRT["_any"][td];                  // Fallback: häufigste Zeit der Tour
+            }
+          }
         }
       } catch(e) {}
       rows.push({ tour: tour, sap: sap, name: name, soll: soll });
