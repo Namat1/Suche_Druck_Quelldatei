@@ -3276,6 +3276,94 @@ def parse_spediteure_excel(dateien: list) -> str:
     return _json.dumps({"katalog": katalog, "fahrten": fahrten}, ensure_ascii=False)
 
 
+def parse_versp_abfahrt_excel(dateien: list) -> str:
+    """Liest die reguläre Abfahrtszeit (Spalte I) je Tour aus den Touren-Excel.
+
+    Touren-Blatt, Daten ab Zeile 6:
+      Spalte I (Index 8)  = Abfahrtszeit (Zeit)
+      Spalte O (Index 14) = Datum  -> Wochentag
+      Spalte P (Index 15) = Tour
+    Ergebnis-JSON: {Wochentag: {Tournummer(digits): "HH:MM"}}.
+    Pro (Wochentag, Tour) wird die häufigste Zeit gewählt (robust gegen Ausreißer).
+    """
+    import json as _json
+    from io import BytesIO
+    import datetime as _dt
+    import pandas as _pd
+    from collections import Counter
+
+    WOCHENTAGE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+
+    def _zeit(val):
+        try:
+            if _pd.isna(val):
+                return ""
+        except Exception:
+            pass
+        if isinstance(val, str):
+            v = val.strip()
+            if ":" in v:
+                p = v.split(":")
+                try:
+                    return f"{int(p[0]):02d}:{int(p[1]):02d}"
+                except Exception:
+                    return ""
+            return ""
+        if isinstance(val, float) and val > 0:
+            return f"{int(val * 24):02d}:{int((val * 1440) % 60):02d}"
+        if isinstance(val, (_dt.datetime, _pd.Timestamp)):
+            return val.strftime("%H:%M")
+        if isinstance(val, _dt.time):
+            return val.strftime("%H:%M")
+        return ""
+
+    def _tour_digits(val):
+        try:
+            if _pd.isna(val):
+                return ""
+        except Exception:
+            pass
+        if isinstance(val, float) and val.is_integer():
+            val = int(val)
+        s = str(val).strip()
+        if s.lower() in ("nan", "none", "nat"):
+            return ""
+        return "".join(ch for ch in s if ch.isdigit())
+
+    # {wochentag: {tour: Counter(zeiten)}}
+    agg: dict = {}
+
+    for datei in dateien:
+        try:
+            datei.seek(0)
+            df = _pd.read_excel(BytesIO(datei.read()), sheet_name="Touren", header=None)
+            df = df.iloc[5:].reset_index(drop=True)
+        except Exception:
+            continue
+
+        for row in df.itertuples(index=False, name=None):
+            datum = _pd.to_datetime(row[14] if len(row) > 14 else None, errors="coerce")
+            if _pd.isna(datum):
+                continue
+            tour = _tour_digits(row[15] if len(row) > 15 else "")
+            zeit = _zeit(row[8] if len(row) > 8 else None)
+            if not tour or not zeit:
+                continue
+            wd = WOCHENTAGE[datum.weekday()]
+            agg.setdefault(wd, {}).setdefault(tour, Counter())[zeit] += 1
+
+    out: dict = {}
+    for wd, tours in agg.items():
+        out[wd] = {}
+        for tour, counter in tours.items():
+            # häufigste Zeit; bei Gleichstand die früheste
+            best = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
+            if best:
+                out[wd][tour] = best[0][0]
+
+    return _json.dumps(out, ensure_ascii=False)
+
+
 def parse_timerecording_csv(uploaded_file) -> str:
     """Liest die Tachograph-Schicht-Datei (CSV oder XLSX) und liefert JSON
     pro Fahrer:
@@ -3428,7 +3516,7 @@ def parse_timerecording_csv(uploaded_file) -> str:
     return _json.dumps(by_driver, ensure_ascii=False)
 
 
-def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', spesen_json: str = '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}', grosskunden_json: str = "[]", timerec_json: str = "{}", spediteure_json: str = '{"katalog":[],"fahrten":[]}', last_updated: str = "") -> str:
+def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', spesen_json: str = '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}', grosskunden_json: str = "[]", timerec_json: str = "{}", spediteure_json: str = '{"katalog":[],"fahrten":[]}', versp_abfahrt_json: str = "{}", last_updated: str = "") -> str:
     try:
         _logo_up = st.session_state.get("g_logo")
     except Exception:
@@ -6903,7 +6991,14 @@ function verspCollectRows(day) {
       var key = tour + "|" + sap + "|" + name;
       if(seen[key]) return;
       seen[key] = 1;
-      rows.push({ tour: tour, sap: sap, name: name });
+      var soll = "";
+      try {
+        var td = String(tour).replace(/\D/g, "");
+        if(typeof VERSP_ABFAHRT !== "undefined" && VERSP_ABFAHRT[day] && VERSP_ABFAHRT[day][td]) {
+          soll = VERSP_ABFAHRT[day][td];
+        }
+      } catch(e) {}
+      rows.push({ tour: tour, sap: sap, name: name, soll: soll });
     });
   });
   rows.sort(function(a, b) {
@@ -6946,7 +7041,10 @@ function verspRenderPreview(rows) {
     h += "<td style='" + td + "'>" + tourCell + "</td>";
     h += "<td style='" + td + ";color:#475569;font-variant-numeric:tabular-nums'>" + verspEsc(r.sap) + "</td>";
     h += "<td style='" + td + ";font-weight:700'>" + verspEsc(r.name) + "</td>";
-    h += "<td style='" + td + ";text-align:center;color:#cbd5e1'>—</td>";
+    var sollCell = r.soll
+      ? "<span style='font-weight:800;color:#1e6091;font-variant-numeric:tabular-nums'>" + verspEsc(r.soll) + "</span>"
+      : "<span style='color:#cbd5e1'>—</span>";
+    h += "<td style='" + td + ";text-align:center'>" + sollCell + "</td>";
     h += "<td style='" + td + ";text-align:center;color:#cbd5e1'>—</td>";
     h += "</tr>";
   });
@@ -6977,7 +7075,9 @@ function verspUpdateInfo() {
     return;
   }
   var rows = verspCollectRows(verspSelectedDay);
-  info.innerHTML = "<b>" + verspEsc(verspSelectedDay) + "</b>: " + rows.length + " Kunden / Touren";
+  var withSoll = rows.filter(function(r){ return r.soll; }).length;
+  info.innerHTML = "<b>" + verspEsc(verspSelectedDay) + "</b>: " + rows.length +
+    " Kunden / Touren &middot; " + withSoll + " mit reg. Abfahrt";
   verspRenderPreview(rows);
   if(rows.length > 0) enable(); else disable();
 }
@@ -6992,7 +7092,7 @@ function verspDownload() {
 
   var headers = ["Tournummer", "SAP Nummer", "Name", "reguläre Abfahrtszeit", "reale Abfahrtszeit"];
   var aoa = [headers];
-  rows.forEach(function(r) { aoa.push([r.tour, r.sap, r.name, "", ""]); });
+  rows.forEach(function(r) { aoa.push([r.tour, r.sap, r.name, r.soll || "", ""]); });
 
   var ws = X.utils.aoa_to_sheet(aoa);
   ws["!cols"] = [{wch:12},{wch:14},{wch:40},{wch:22},{wch:20}];
@@ -8965,6 +9065,7 @@ function samToggle(el) {{
 
 {arzt_js_code}
 
+var VERSP_ABFAHRT = {versp_abfahrt_json};
 {versp_js_code}
 
 // ── Fahrerauswertung: Schichten-Tab (Tachograph-Daten) ─────────────────────────
@@ -12299,6 +12400,7 @@ with tab_extra:
                 "drittkunden_json": parse_drittkunden_excel,
                 "fa_json":          parse_fahrer_excel,
                 "spediteure_json":  parse_spediteure_excel,
+                "versp_abfahrt_json": parse_versp_abfahrt_excel,
             },
             summary_fn=_touren_summary,
         )
@@ -12401,6 +12503,7 @@ with tab_dl:
                 grosskunden_json=st.session_state.get("grosskunden_json", "[]"),
                 timerec_json=st.session_state.get("timerec_json", "{}"),
                 spediteure_json=st.session_state.get("spediteure_json", '{"katalog":[],"fahrten":[]}'),
+                versp_abfahrt_json=st.session_state.get("versp_abfahrt_json", "{}"),
                 last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
             )
         st.download_button(
