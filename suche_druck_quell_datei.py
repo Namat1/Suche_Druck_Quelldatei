@@ -6831,15 +6831,48 @@ function arztPDF(){
 
     versp_js_code = r"""
 // ── Verspätungstabelle (Infos & Aushänge) ─────────────────────────────────────
-// Kunden + Touren je Liefertag aus der Quelldatei (normalInstData), Excel-Export
-// mit leeren Spalten für reguläre/reale Abfahrtszeit zum Eintragen.
+// Kunden + Touren je Liefertag aus der Quelldatei. Wochen-/Instanz-Auswahl,
+// hübsche Vorschau und gestylter Excel-Export (Spalten Soll-/Ist-Abfahrt leer).
 var verspSelectedDay = null;
+var verspInstCache = {};   // instIdx -> ALL_DATA (pro Woche)
+
+function verspEsc(v){ return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function verspGetData() {
+  if(verspInstCache.hasOwnProperty(currentInst)) return verspInstCache[currentInst];
+  if(typeof vzAllData !== "undefined" && vzAllData) return vzAllData;
+  if(currentInst === 0 && normalInstData) return normalInstData;
+  return null;
+}
+
+function verspRequestData() {
+  try { document.getElementById("frame-druck").contentWindow.postMessage({type:"request-vz-data"}, "*"); } catch(e) {}
+}
+
+function verspBuildInstSel() {
+  var wrap = document.getElementById("versp-inst-wrap");
+  var sel  = document.getElementById("versp-inst-sel");
+  if(!wrap || !sel) return;
+  if(!INSTANCES || INSTANCES.length <= 1) { wrap.style.display = "none"; return; }
+  wrap.style.display = "";
+  sel.innerHTML = INSTANCES.map(function(inst, i){
+    return "<option value='" + i + "'" + (i===currentInst ? " selected" : "") + ">" + verspEsc(inst.name) + "</option>";
+  }).join("");
+}
+
+function verspSelectInst(idx) {
+  idx = parseInt(idx, 10);
+  if(isNaN(idx) || idx === currentInst) { verspUpdateInfo(); return; }
+  loadInst(idx);
+  if(typeof updateInstLabels === "function") updateInstLabels();
+  verspBuildInstSel();
+  // Falls schon gecached → sofort; sonst kommt es async über vz-init-data.
+  verspUpdateInfo();
+}
 
 function verspInit() {
-  // Daten der Normalwochen anfordern, falls noch nicht da (gleicher Weg wie Fzg.-Wäsche).
-  if(!normalInstData) {
-    try { document.getElementById("frame-druck").contentWindow.postMessage({type:"request-vz-data"}, "*"); } catch(e) {}
-  }
+  verspBuildInstSel();
+  if(!verspGetData()) verspRequestData();
   verspUpdateInfo();
 }
 
@@ -6852,7 +6885,7 @@ function verspSelectDay(day) {
 }
 
 function verspCollectRows(day) {
-  var data = normalInstData;
+  var data = verspGetData();
   if(!data) return [];
   var AREAS = ["direkt","mk","nms","malchow"];
   var seen = {};
@@ -6884,47 +6917,129 @@ function verspCollectRows(day) {
   return rows;
 }
 
+function verspRenderPreview(rows) {
+  var box = document.getElementById("versp-preview");
+  if(!box) return;
+  if(!rows || !rows.length) { box.innerHTML = ""; return; }
+
+  var th = "padding:9px 12px;font-size:11px;font-weight:900;color:#fff;text-align:left;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;position:sticky;top:0;background:linear-gradient(180deg,#2f80b7 0%,#1e6091 100%)";
+  var h  = "<div style='border:1px solid #cad7e8;border-radius:10px;overflow:hidden;box-shadow:0 1px 6px rgba(30,96,145,.08)'>";
+  h += "<div style='max-height:440px;overflow:auto'>";
+  h += "<table style='border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px;color:#0f172a'>";
+  h += "<thead><tr>";
+  h += "<th style='" + th + "'>Tournummer</th>";
+  h += "<th style='" + th + "'>SAP</th>";
+  h += "<th style='" + th + "'>Name</th>";
+  h += "<th style='" + th + ";text-align:center'>reguläre Abfahrt</th>";
+  h += "<th style='" + th + ";text-align:center'>reale Abfahrt</th>";
+  h += "</tr></thead><tbody>";
+
+  var lastTour = null;
+  rows.forEach(function(r, i) {
+    var zebra = (i % 2 === 0) ? "#ffffff" : "#f4f8fc";
+    var tourCell = (r.tour !== lastTour)
+      ? "<span style='display:inline-block;min-width:42px;text-align:center;background:#eaf3fb;border:1px solid #bcd6ef;border-radius:6px;padding:2px 8px;font-weight:900;color:#1e6091;font-variant-numeric:tabular-nums'>" + verspEsc(r.tour) + "</span>"
+      : "<span style='color:#b6c4d6;font-variant-numeric:tabular-nums'>" + verspEsc(r.tour) + "</span>";
+    lastTour = r.tour;
+    var td  = "padding:7px 12px;border-bottom:1px solid #eef2f7;vertical-align:middle";
+    h += "<tr style='background:" + zebra + "'>";
+    h += "<td style='" + td + "'>" + tourCell + "</td>";
+    h += "<td style='" + td + ";color:#475569;font-variant-numeric:tabular-nums'>" + verspEsc(r.sap) + "</td>";
+    h += "<td style='" + td + ";font-weight:700'>" + verspEsc(r.name) + "</td>";
+    h += "<td style='" + td + ";text-align:center;color:#cbd5e1'>—</td>";
+    h += "<td style='" + td + ";text-align:center;color:#cbd5e1'>—</td>";
+    h += "</tr>";
+  });
+  h += "</tbody></table></div></div>";
+  box.innerHTML = h;
+}
+
 function verspUpdateInfo() {
   var info = document.getElementById("versp-info");
   var btn  = document.getElementById("versp-dl-btn");
+  var box  = document.getElementById("versp-preview");
   if(!info || !btn) return;
+
+  function disable(){ btn.disabled = true; btn.style.opacity = ".5"; btn.style.cursor = "default"; }
+  function enable(){ btn.disabled = false; btn.style.opacity = "1"; btn.style.cursor = "pointer"; }
+
   if(!verspSelectedDay) {
     info.textContent = "Bitte einen Tag auswählen.";
-    btn.disabled = true; btn.style.opacity = ".5"; btn.style.cursor = "default";
+    if(box) box.innerHTML = "";
+    disable();
     return;
   }
-  if(!normalInstData) {
-    info.textContent = "Daten werden geladen … bitte kurz warten und Tag erneut wählen.";
-    btn.disabled = true; btn.style.opacity = ".5"; btn.style.cursor = "default";
-    try { document.getElementById("frame-druck").contentWindow.postMessage({type:"request-vz-data"}, "*"); } catch(e) {}
+  if(!verspGetData()) {
+    info.textContent = "Daten werden geladen … bitte kurz warten.";
+    if(box) box.innerHTML = "";
+    disable();
+    verspRequestData();
     return;
   }
   var rows = verspCollectRows(verspSelectedDay);
-  info.innerHTML = "<b>" + verspSelectedDay + "</b>: " + rows.length + " Kunden / Touren gefunden.";
-  var has = rows.length > 0;
-  btn.disabled = !has; btn.style.opacity = has ? "1" : ".5"; btn.style.cursor = has ? "pointer" : "default";
+  info.innerHTML = "<b>" + verspEsc(verspSelectedDay) + "</b>: " + rows.length + " Kunden / Touren";
+  verspRenderPreview(rows);
+  if(rows.length > 0) enable(); else disable();
 }
 
 function verspDownload() {
   if(!verspSelectedDay) { alert("Bitte zuerst einen Tag auswählen."); return; }
-  if(!normalInstData) { alert("Die Wochendaten sind noch nicht bereit. Bitte kurz warten und erneut versuchen."); verspInit(); return; }
-  if(typeof XLSX === "undefined") { alert("Excel-Bibliothek ist nicht geladen."); return; }
+  if(!verspGetData()) { alert("Die Wochendaten sind noch nicht bereit. Bitte kurz warten und erneut versuchen."); verspRequestData(); return; }
+  var X = window.XLSXStyle || window.XLSX;
+  if(typeof X === "undefined") { alert("Excel-Bibliothek ist nicht geladen."); return; }
   var rows = verspCollectRows(verspSelectedDay);
   if(!rows.length) { alert("Für " + verspSelectedDay + " wurden keine Kunden/Touren gefunden."); return; }
 
-  var aoa = [["Tournummer", "SAP Nummer", "Name", "reguläre Abfahrtszeit", "reale Abfahrtszeit"]];
+  var headers = ["Tournummer", "SAP Nummer", "Name", "reguläre Abfahrtszeit", "reale Abfahrtszeit"];
+  var aoa = [headers];
   rows.forEach(function(r) { aoa.push([r.tour, r.sap, r.name, "", ""]); });
 
-  var ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws["!cols"] = [{wch:12},{wch:14},{wch:38},{wch:20},{wch:18}];
-  var wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, verspSelectedDay);
+  var ws = X.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = [{wch:12},{wch:14},{wch:40},{wch:22},{wch:20}];
+  ws["!rows"] = [{hpt:24}];
+  ws["!autofilter"] = { ref: "A1:E" + (rows.length + 1) };
+
+  var thin = { style:"thin", color:{ rgb:"D5DEE9" } };
+  var border = { top:thin, bottom:thin, left:thin, right:thin };
+
+  var headStyle = {
+    font: { bold:true, color:{ rgb:"FFFFFF" }, sz:11 },
+    fill: { fgColor:{ rgb:"1E6091" } },
+    alignment: { horizontal:"center", vertical:"center", wrapText:true },
+    border: border
+  };
+  for(var c = 0; c < headers.length; c++) {
+    var hr = X.utils.encode_cell({ r:0, c:c });
+    if(ws[hr]) ws[hr].s = headStyle;
+  }
+
+  for(var i = 0; i < rows.length; i++) {
+    var rIdx = i + 1;
+    var even = (i % 2 === 0);
+    var fillRgb = even ? "FFFFFF" : "F4F8FC";
+    for(var col = 0; col < headers.length; col++) {
+      var ref = X.utils.encode_cell({ r:rIdx, c:col });
+      if(!ws[ref]) ws[ref] = { t:"s", v:"" };
+      var center = (col === 0 || col === 1 || col >= 3);
+      ws[ref].s = {
+        font: { sz:11, bold: (col === 0), color:{ rgb: col === 0 ? "1E6091" : "0F172A" } },
+        fill: { fgColor:{ rgb:fillRgb } },
+        alignment: { horizontal: center ? "center" : "left", vertical:"center" },
+        border: border
+      };
+    }
+  }
+
+  var wb = X.utils.book_new();
+  X.utils.book_append_sheet(wb, ws, verspSelectedDay);
 
   var now = new Date();
   var stamp = now.getFullYear() + "-" +
     String(now.getMonth() + 1).padStart(2, "0") + "-" +
     String(now.getDate()).padStart(2, "0");
-  XLSX.writeFile(wb, "Verspaetung_" + verspSelectedDay + "_" + stamp + ".xlsx");
+  var instName = (INSTANCES[currentInst] && INSTANCES[currentInst].name) ? ("_" + INSTANCES[currentInst].name) : "";
+  instName = instName.replace(/[^0-9A-Za-zÄÖÜäöüß _-]/g, "").replace(/\s+/g, "-");
+  X.writeFile(wb, "Verspaetung_" + verspSelectedDay + instName + "_" + stamp + ".xlsx");
 }
 """
 
@@ -6935,6 +7050,9 @@ function verspDownload() {
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Fuhrpark NFC</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>window.__XLSX_CE__ = window.XLSX;</script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<script>window.XLSXStyle = window.XLSX; if(window.__XLSX_CE__) window.XLSX = window.__XLSX_CE__;</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -7224,6 +7342,11 @@ iframe.active{{display:block}}
         </div>
       </div>
       <div style="background:#fff;border:1px solid #cad7e8;border-radius:12px;padding:18px 22px;box-shadow:0 2px 10px rgba(30,96,145,.07)">
+        <div id="versp-inst-wrap" style="display:none;margin-bottom:16px">
+          <div style="font-size:12px;font-weight:900;color:#0f172a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Woche / Quelldatei</div>
+          <select id="versp-inst-sel" onchange="verspSelectInst(this.value)"
+            style="padding:8px 12px;border:2px solid #1e6091;border-radius:7px;font-size:13px;font-weight:700;color:#1e6091;cursor:pointer;font-family:inherit;outline:none;background:#fff;min-width:220px"></select>
+        </div>
         <div style="font-size:12px;font-weight:900;color:#0f172a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Liefertag</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px" id="versp-day-btns">
           <button class="vz-day-btn" onclick="verspSelectDay('Montag')">Montag</button>
@@ -7233,9 +7356,12 @@ iframe.active{{display:block}}
           <button class="vz-day-btn" onclick="verspSelectDay('Freitag')">Freitag</button>
           <button class="vz-day-btn" onclick="verspSelectDay('Samstag')">Samstag</button>
         </div>
-        <div id="versp-info" style="font-size:13px;color:#64748b;margin-bottom:16px">Bitte einen Tag auswählen.</div>
-        <button id="versp-dl-btn" onclick="verspDownload()" disabled
-          style="padding:11px 20px;background:linear-gradient(180deg,#16a34a 0%,#15803d 100%);color:#fff;border:none;border-radius:8px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;box-shadow:0 2px 6px rgba(21,128,61,.28);display:inline-flex;align-items:center;gap:8px;white-space:nowrap;opacity:.5">&#11015;&#65039; Excel herunterladen</button>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+          <button id="versp-dl-btn" onclick="verspDownload()" disabled
+            style="padding:11px 20px;background:linear-gradient(180deg,#16a34a 0%,#15803d 100%);color:#fff;border:none;border-radius:8px;font-weight:800;font-size:13px;cursor:default;font-family:inherit;box-shadow:0 2px 6px rgba(21,128,61,.28);display:inline-flex;align-items:center;gap:8px;white-space:nowrap;opacity:.5">&#11015;&#65039; Excel herunterladen</button>
+          <div id="versp-info" style="font-size:13px;color:#64748b">Bitte einen Tag auswählen.</div>
+        </div>
+        <div id="versp-preview"></div>
       </div>
     </div>
   </div>
@@ -7656,7 +7782,7 @@ function showArea(s) {{
   if(arztPanel) arztPanel.style.display = (s==="arzt") ? "block" : "none";
   if(s==="arzt" && arztPanel && !arztPanel.dataset.loaded) {{ arztRender(); arztPanel.dataset.loaded="1"; }}
   var verspPanel = document.getElementById("panel-versp");
-  if(verspPanel) verspPanel.style.display = (s==="versp") ? "flex" : "none";
+  if(verspPanel) verspPanel.style.display = (s==="versp") ? "block" : "none";
   if(s==="versp" && verspPanel && !verspPanel.dataset.loaded) {{ verspInit(); verspPanel.dataset.loaded="1"; }}
   var infosBtn = document.getElementById("btn-infos");
   if(infosBtn) infosBtn.className = "nav-dd-btn" + ((s==="tel" || s==="bus" || s==="arzt" || s==="versp") ? " active" : "");
@@ -7693,6 +7819,9 @@ window.addEventListener("message", function(e) {{
     vzAllData = e.data.data;
     // Erste Instanz = Normalwochen → als Referenz speichern
     if(currentInst === 0) normalInstData = e.data.data;
+    // Pro Woche/Instanz cachen, damit die Verspätungstabelle ohne Neuladen wechseln kann
+    try {{ verspInstCache[currentInst] = e.data.data; }} catch(err) {{}}
+    if(typeof currentArea !== "undefined" && currentArea === "versp" && typeof verspUpdateInfo === "function") verspUpdateInfo();
   }}
   if (e.data && e.data.type === "request-normal-data") {{
     // Druck-iframe fragt nach Normalwochen-Daten
