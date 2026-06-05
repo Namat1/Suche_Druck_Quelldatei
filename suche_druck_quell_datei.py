@@ -6713,9 +6713,10 @@ function busPDF(){
 // Zentrale Liste aller statischen Aushänge. Neue Aushänge einfach hier ergänzen
 // (id muss zu einem panel-<id> + showArea-Zweig passen).
 var INFOS_ITEMS = [
-  { id:"tel",  label:"&#9742;&#65039; Telefonliste" },
-  { id:"bus",  label:"&#128652; Busfahrplan" },
-  { id:"arzt", label:"&#129658; Betriebsärztin" }
+  { id:"tel",   label:"&#9742;&#65039; Telefonliste" },
+  { id:"bus",   label:"&#128652; Busfahrplan" },
+  { id:"arzt",  label:"&#129658; Betriebsärztin" },
+  { id:"versp", label:"&#9201;&#65039; Verspätungstabelle" }
 ];
 
 function buildInfosDdMenu(){
@@ -6825,6 +6826,105 @@ function arztPDF(){
   var w = window.open("","_blank","width=900,height=800");
   w.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Betriebsärztin</title><style>"+css+"</style></head><body>"+b+"</body></html>");
   w.document.close(); w.focus(); setTimeout(function(){ w.print(); }, 500);
+}
+"""
+
+    versp_js_code = r"""
+// ── Verspätungstabelle (Infos & Aushänge) ─────────────────────────────────────
+// Kunden + Touren je Liefertag aus der Quelldatei (normalInstData), Excel-Export
+// mit leeren Spalten für reguläre/reale Abfahrtszeit zum Eintragen.
+var verspSelectedDay = null;
+
+function verspInit() {
+  // Daten der Normalwochen anfordern, falls noch nicht da (gleicher Weg wie Fzg.-Wäsche).
+  if(!normalInstData) {
+    try { document.getElementById("frame-druck").contentWindow.postMessage({type:"request-vz-data"}, "*"); } catch(e) {}
+  }
+  verspUpdateInfo();
+}
+
+function verspSelectDay(day) {
+  verspSelectedDay = day;
+  document.querySelectorAll("#versp-day-btns .vz-day-btn").forEach(function(b) {
+    b.classList.toggle("active", b.textContent.trim() === day);
+  });
+  verspUpdateInfo();
+}
+
+function verspCollectRows(day) {
+  var data = normalInstData;
+  if(!data) return [];
+  var AREAS = ["direkt","mk","nms","malchow"];
+  var seen = {};
+  var rows = [];
+  AREAS.forEach(function(area) {
+    var areaData = data[area] || {};
+    Object.keys(areaData).forEach(function(knr) {
+      var c = areaData[knr];
+      if(!c || !c.tours || !c.tours[day]) return;
+      var tour = String(c.tours[day]).trim();
+      if(!tour || tour === "\u2014" || tour === "-") return;
+      if(typeof fwIsExcludedNumber === "function" && fwIsExcludedNumber(tour)) return;
+      var sap  = String(c.sap_nummer || "").trim();
+      var name = String(c.name || "").trim();
+      var key = tour + "|" + sap + "|" + name;
+      if(seen[key]) return;
+      seen[key] = 1;
+      rows.push({ tour: tour, sap: sap, name: name });
+    });
+  });
+  rows.sort(function(a, b) {
+    var na = parseInt(String(a.tour).replace(/\D/g, ""), 10);
+    var nb = parseInt(String(b.tour).replace(/\D/g, ""), 10);
+    if(isNaN(na)) na = 1e15;
+    if(isNaN(nb)) nb = 1e15;
+    if(na !== nb) return na - nb;
+    return String(a.name).localeCompare(String(b.name), "de");
+  });
+  return rows;
+}
+
+function verspUpdateInfo() {
+  var info = document.getElementById("versp-info");
+  var btn  = document.getElementById("versp-dl-btn");
+  if(!info || !btn) return;
+  if(!verspSelectedDay) {
+    info.textContent = "Bitte einen Tag auswählen.";
+    btn.disabled = true; btn.style.opacity = ".5"; btn.style.cursor = "default";
+    return;
+  }
+  if(!normalInstData) {
+    info.textContent = "Daten werden geladen … bitte kurz warten und Tag erneut wählen.";
+    btn.disabled = true; btn.style.opacity = ".5"; btn.style.cursor = "default";
+    try { document.getElementById("frame-druck").contentWindow.postMessage({type:"request-vz-data"}, "*"); } catch(e) {}
+    return;
+  }
+  var rows = verspCollectRows(verspSelectedDay);
+  info.innerHTML = "<b>" + verspSelectedDay + "</b>: " + rows.length + " Kunden / Touren gefunden.";
+  var has = rows.length > 0;
+  btn.disabled = !has; btn.style.opacity = has ? "1" : ".5"; btn.style.cursor = has ? "pointer" : "default";
+}
+
+function verspDownload() {
+  if(!verspSelectedDay) { alert("Bitte zuerst einen Tag auswählen."); return; }
+  if(!normalInstData) { alert("Die Wochendaten sind noch nicht bereit. Bitte kurz warten und erneut versuchen."); verspInit(); return; }
+  if(typeof XLSX === "undefined") { alert("Excel-Bibliothek ist nicht geladen."); return; }
+  var rows = verspCollectRows(verspSelectedDay);
+  if(!rows.length) { alert("Für " + verspSelectedDay + " wurden keine Kunden/Touren gefunden."); return; }
+
+  var aoa = [["Tournummer", "SAP Nummer", "Name", "reguläre Abfahrtszeit", "reale Abfahrtszeit"]];
+  rows.forEach(function(r) { aoa.push([r.tour, r.sap, r.name, "", ""]); });
+
+  var ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = [{wch:12},{wch:14},{wch:38},{wch:20},{wch:18}];
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, verspSelectedDay);
+
+  var now = new Date();
+  var stamp = now.getFullYear() + "-" +
+    String(now.getMonth() + 1).padStart(2, "0") + "-" +
+    String(now.getDate()).padStart(2, "0");
+  XLSX.writeFile(wb, "Verspaetung_" + verspSelectedDay + "_" + stamp + ".xlsx");
 }
 """
 
@@ -7111,6 +7211,32 @@ iframe.active{{display:block}}
         <button onclick="arztPDF()" style="padding:10px 18px;background:linear-gradient(180deg,#ef4444 0%,#dc2626 100%);color:#fff;border:none;border-radius:8px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit;box-shadow:0 2px 6px rgba(220,38,38,.28);display:inline-flex;align-items:center;gap:7px;white-space:nowrap">&#128196; PDF / Drucken</button>
       </div>
       <div id="arzt-content"></div>
+    </div>
+  </div>
+
+  <div id="panel-versp" style="display:none;flex:1;overflow-y:auto;padding:18px 18px 28px;background:linear-gradient(180deg,#f3f7fb 0%,#e8f0f7 100%);font-family:'Segoe UI',Arial,sans-serif">
+    <div style="width:100%;max-width:880px;margin:0 auto">
+      <div style="background:#fff;border:1px solid #cad7e8;border-radius:12px;padding:18px 22px;box-shadow:0 2px 10px rgba(30,96,145,.08);margin-bottom:18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#2f80b7 0%,#1e6091 100%);display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 2px 7px rgba(30,96,145,.25);flex-shrink:0">&#9201;&#65039;</div>
+        <div style="min-width:0;flex:1">
+          <h2 style="color:#0f172a;font-size:18px;font-weight:900;margin:0;letter-spacing:-.2px">Verspätungstabelle</h2>
+          <p style="color:#64748b;font-size:12px;margin:2px 0 0 0;font-weight:500">Tag wählen &middot; Excel mit Kunden &amp; Touren zum Eintragen der Abfahrtszeiten</p>
+        </div>
+      </div>
+      <div style="background:#fff;border:1px solid #cad7e8;border-radius:12px;padding:18px 22px;box-shadow:0 2px 10px rgba(30,96,145,.07)">
+        <div style="font-size:12px;font-weight:900;color:#0f172a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Liefertag</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px" id="versp-day-btns">
+          <button class="vz-day-btn" onclick="verspSelectDay('Montag')">Montag</button>
+          <button class="vz-day-btn" onclick="verspSelectDay('Dienstag')">Dienstag</button>
+          <button class="vz-day-btn" onclick="verspSelectDay('Mittwoch')">Mittwoch</button>
+          <button class="vz-day-btn" onclick="verspSelectDay('Donnerstag')">Donnerstag</button>
+          <button class="vz-day-btn" onclick="verspSelectDay('Freitag')">Freitag</button>
+          <button class="vz-day-btn" onclick="verspSelectDay('Samstag')">Samstag</button>
+        </div>
+        <div id="versp-info" style="font-size:13px;color:#64748b;margin-bottom:16px">Bitte einen Tag auswählen.</div>
+        <button id="versp-dl-btn" onclick="verspDownload()" disabled
+          style="padding:11px 20px;background:linear-gradient(180deg,#16a34a 0%,#15803d 100%);color:#fff;border:none;border-radius:8px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;box-shadow:0 2px 6px rgba(21,128,61,.28);display:inline-flex;align-items:center;gap:8px;white-space:nowrap;opacity:.5">&#11015;&#65039; Excel herunterladen</button>
+      </div>
     </div>
   </div>
 
@@ -7529,8 +7655,11 @@ function showArea(s) {{
   var arztPanel = document.getElementById("panel-arzt");
   if(arztPanel) arztPanel.style.display = (s==="arzt") ? "block" : "none";
   if(s==="arzt" && arztPanel && !arztPanel.dataset.loaded) {{ arztRender(); arztPanel.dataset.loaded="1"; }}
+  var verspPanel = document.getElementById("panel-versp");
+  if(verspPanel) verspPanel.style.display = (s==="versp") ? "flex" : "none";
+  if(s==="versp" && verspPanel && !verspPanel.dataset.loaded) {{ verspInit(); verspPanel.dataset.loaded="1"; }}
   var infosBtn = document.getElementById("btn-infos");
-  if(infosBtn) infosBtn.className = "nav-dd-btn" + ((s==="tel" || s==="bus" || s==="arzt") ? " active" : "");
+  if(infosBtn) infosBtn.className = "nav-dd-btn" + ((s==="tel" || s==="bus" || s==="arzt" || s==="versp") ? " active" : "");
   if(typeof buildInfosDdMenu === "function") buildInfosDdMenu();
   var spedPanel = document.getElementById("panel-sped");
   if(spedPanel) spedPanel.style.display = (s==="sped") ? "flex" : "none";
@@ -8706,6 +8835,8 @@ function samToggle(el) {{
 {bus_js_code}
 
 {arzt_js_code}
+
+{versp_js_code}
 
 // ── Fahrerauswertung: Schichten-Tab (Tachograph-Daten) ─────────────────────────
 (function() {{
