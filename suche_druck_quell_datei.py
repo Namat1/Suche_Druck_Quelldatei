@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "spediteure-gruppen-2026-06-06-v28-verspaetung-tourenplan-tagesblock-zeiten"
+APP_CACHE_VERSION = "spediteure-gruppen-2026-06-06-v29-verspaetung-tournummer-spalte-a"
 
 
 # =============================================================================
@@ -3419,8 +3419,12 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
             return ""
         return WD_BY_LOWER.get(m.group(1).lower(), "")
 
-    # {wochentag: {tour: Counter(zeiten)}}
+    # {wochentag: {tour: Counter(zeiten)}} plus exakter Tournummer-Index.
+    # Der exakte Index ist für die Verspätungstabelle entscheidend: Im Tourenplan
+    # stehen Abendtouren für den Liefertag oft im Block des Vortages
+    # (zum Beispiel Tour 1006 am Sonntag 20:00 für Liefertag Montag).
     agg: dict = {}
+    flat_agg: dict = {}
 
     for datei in dateien:
         try:
@@ -3437,8 +3441,11 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
                 current_wd = header_wd
                 continue
 
-            # Wenn Spalte O wirklich ein Datum pro Zeile enthält, hat das Vorrang.
-            wd = _weekday_from_date_cell(row[14] if len(row) > 14 else None) or current_wd
+            # Den Tag ausschließlich aus der Blocküberschrift nehmen.
+            # Spalte O wird bewusst NICHT mehr ausgewertet: in exportierten
+            # Tourenplänen können dort andere Werte/Formatierungen stehen und
+            # dadurch wurden Abfahrtszeiten falschen Tagesblöcken zugeordnet.
+            wd = current_wd
             if not wd:
                 continue
 
@@ -3451,8 +3458,18 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
                 continue
 
             agg.setdefault(wd, {}).setdefault(tour, Counter())[zeit] += 1
+            flat_agg.setdefault(tour, Counter())[zeit] += 1
 
     out: dict = {}
+    # Flacher exakter Tournummer-Index: Tournummer aus Spalte A -> Uhrzeit aus Spalte I.
+    # Dieser Index wird im Browser zuerst genutzt und verhindert, dass 1006/1007
+    # versehentlich aus einem falschen Tagesblock oder Fallback gelesen werden.
+    out["__by_tour"] = {}
+    for tour, counter in flat_agg.items():
+        best = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
+        if best:
+            out["__by_tour"][tour] = best[0][0]
+
     for wd, tours in agg.items():
         out[wd] = {}
         for tour, counter in tours.items():
@@ -7094,15 +7111,21 @@ function verspCollectRows(day) {
       try {
         var td = String(tour).replace(/\D/g, "");
         if(td && typeof VERSP_ABFAHRT !== "undefined") {
-          var PREV = { "Montag":"Sonntag", "Dienstag":"Montag", "Mittwoch":"Dienstag",
-                       "Donnerstag":"Mittwoch", "Freitag":"Donnerstag", "Samstag":"Freitag",
-                       "Sonntag":"Samstag" };
-          if(VERSP_ABFAHRT[day] && VERSP_ABFAHRT[day][td]) {
-            soll = VERSP_ABFAHRT[day][td];                       // Abfahrt am Liefertag
+          // Wichtig: zuerst die exakte Tournummer aus Spalte A des Tourenplans verwenden.
+          // Dadurch werden Abendtouren korrekt gelesen, auch wenn sie im Block des Vortages stehen.
+          if(VERSP_ABFAHRT.__by_tour && VERSP_ABFAHRT.__by_tour[td]) {
+            soll = VERSP_ABFAHRT.__by_tour[td];
           } else {
-            var prev = PREV[day];
-            if(prev && VERSP_ABFAHRT[prev] && VERSP_ABFAHRT[prev][td]) {
-              soll = VERSP_ABFAHRT[prev][td];                    // Abendtour: Abfahrt am Vortag
+            var PREV = { "Montag":"Sonntag", "Dienstag":"Montag", "Mittwoch":"Dienstag",
+                         "Donnerstag":"Mittwoch", "Freitag":"Donnerstag", "Samstag":"Freitag",
+                         "Sonntag":"Samstag" };
+            if(VERSP_ABFAHRT[day] && VERSP_ABFAHRT[day][td]) {
+              soll = VERSP_ABFAHRT[day][td];
+            } else {
+              var prev = PREV[day];
+              if(prev && VERSP_ABFAHRT[prev] && VERSP_ABFAHRT[prev][td]) {
+                soll = VERSP_ABFAHRT[prev][td];
+              }
             }
           }
         }
