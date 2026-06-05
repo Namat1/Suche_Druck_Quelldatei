@@ -20,7 +20,8 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "spediteure-gruppen-2026-06-06-v29-verspaetung-tournummer-spalte-a"
+APP_CACHE_VERSION = "spediteure-gruppen-2026-06-06-v30-verspaetung-tourplan-cache-fix"
+EXTRA_CACHE_VERSION = "extra-parser-2026-06-06-v30-verspaetung-tourplan-cache-fix"
 
 
 # =============================================================================
@@ -3286,17 +3287,17 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
       Spalte A (Index 0) = Tournummer
       Spalte I (Index 8) = Abfahrtszeit
 
-    Wichtig:
-    - Der Wochentag wird primär aus den Tages-Überschriften im Blatt gelesen,
-      zum Beispiel "Montag, 1. Juni 2026". Diese Überschrift gilt dann für die
-      folgenden Zeilen bis zur nächsten Tages-Überschrift.
-    - Falls eine Datei zusätzlich je Zeile ein Datum in Spalte O enthält, wird
-      dieses Datum ebenfalls akzeptiert.
-    - Nur echte numerische Tournummern aus Spalte A werden übernommen. Texte wie
-      "z.b.v.", "Hoffahrer", "Werkstatt", "Picnic", "Azubitour" oder leere
-      Zeilen werden für die Verspätungstabelle nicht als Tour interpretiert.
-    - Zeiten wie 0:00, 20.00, 7.00, 09:00 und echte Excel-Zeitwerte werden sauber
-      normalisiert.
+    Die Verspätungstabelle braucht die Abfahrt zur Tournummer, nicht zur
+    Kundenzeile. Deshalb wird ein flacher Index aufgebaut:
+      {"__by_tour": {"1006": "20:00", ...}}
+
+    Wichtig für die Tourenpläne:
+    - Tage stehen oft als Blocküberschrift, nicht sauber je Zeile in einer Datumsspalte.
+    - Abendtouren für Montag stehen im Sonntag-Block. Für die Verspätung wird daher
+      zuerst exakt nach Tournummer gesucht, unabhängig vom Tagesblock.
+    - Zeiten können als 20:00, 20.00, 7.00, 09:00, Excel-Zeitwert oder 0 stehen.
+      0 beziehungsweise 0:00 ist eine gültige Uhrzeit und darf nicht als leer gelten.
+    - Es werden alle Blätter gelesen, falls das Blatt nicht exakt "Touren" heißt.
     """
     import json as _json
     from io import BytesIO
@@ -3336,17 +3337,17 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
                 return ""
             if f < 0:
                 return ""
-            # Excel-Zeit als Tagesbruchteil, z. B. 0,625 = 15:00.
-            # Wichtig: 0,0 ist 00:00 und darf nicht verworfen werden.
-            if f < 1:
+            # Excel speichert Uhrzeiten als Tagesbruchteil: 0,8333 = 20:00.
+            # 0,0 ist 00:00 und bleibt gültig.
+            if 0 <= f < 1:
                 total_min = int(round(f * 24 * 60)) % (24 * 60)
                 h = total_min // 60
                 m = total_min % 60
                 return f"{h:02d}:{m:02d}"
-            # Zahl als Stunde, z. B. 7 oder 15.
+            # Zahl als Stunde, zum Beispiel 7 oder 15.
             if float(f).is_integer() and 0 <= int(f) <= 23:
                 return f"{int(f):02d}:00"
-            # Zahl als HHMM, z. B. 700, 1530 oder 2000.
+            # Zahl als HHMM, zum Beispiel 700, 1530 oder 2000.
             iv = int(round(f))
             h = iv // 100
             m = iv % 100
@@ -3361,7 +3362,6 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
         if low in ("n.a.", "n.a", "na", "nan", "none", "elternzeit"):
             return ""
 
-        # Punkt und Doppelpunkt als Zeittrenner akzeptieren: 20.00, 7.00, 09:00.
         m = _re.match(r"^\s*(\d{1,2})\s*[:\.]\s*(\d{1,2})(?:\s*:\s*\d{1,2})?\s*$", v)
         if m:
             h = int(m.group(1))
@@ -3370,7 +3370,6 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
                 return f"{h:02d}:{mi:02d}"
             return ""
 
-        # Excel-/CSV-Export kann Zeiten auch als 1500, 15, 1530 liefern.
         digits = "".join(ch for ch in v if ch.isdigit())
         if len(digits) in (1, 2):
             h = int(digits)
@@ -3384,7 +3383,7 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
         return ""
 
     def _tour_code(val):
-        """Nur echte Tournummern aus Spalte A übernehmen, keine Zahlen aus Freitext ziehen."""
+        """Nur echte Tournummern übernehmen, keine Zahlen aus Namen/Freitext ziehen."""
         if _is_empty(val):
             return ""
         if isinstance(val, (int, float)):
@@ -3402,82 +3401,127 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
             return s.split(".", 1)[0]
         return ""
 
-    def _weekday_from_date_cell(val):
+    def _tour_code_from_text(val):
+        """Nur für Sonderfälle wie 'NMS-Shuttle Tour 5045' als Fallback."""
         if _is_empty(val):
             return ""
-        dt = _pd.to_datetime(val, errors="coerce", dayfirst=True)
-        if _pd.isna(dt):
-            return ""
-        return WOCHENTAGE[int(dt.weekday())]
+        s = str(val).strip()
+        m = _re.search(r"\bTour\s+(\d{3,6})\b", s, flags=_re.IGNORECASE)
+        if m:
+            return m.group(1)
+        return ""
 
     def _weekday_from_header_row(row) -> str:
-        # Tageszeilen stehen im Tourenplan als Abschnittsüberschrift,
-        # zum Beispiel in Spalte B: "Montag, 1. Juni 2026".
-        joined = " ".join(str(x).strip() for x in row[: min(len(row), 6)] if not _is_empty(x))
+        joined = " ".join(str(x).strip() for x in row[: min(len(row), 8)] if not _is_empty(x))
         m = DAY_HEADER_RE.search(joined)
         if not m:
             return ""
         return WD_BY_LOWER.get(m.group(1).lower(), "")
 
-    # {wochentag: {tour: Counter(zeiten)}} plus exakter Tournummer-Index.
-    # Der exakte Index ist für die Verspätungstabelle entscheidend: Im Tourenplan
-    # stehen Abendtouren für den Liefertag oft im Block des Vortages
-    # (zum Beispiel Tour 1006 am Sonntag 20:00 für Liefertag Montag).
+    def _read_sheets(raw: bytes):
+        """Liest bevorzugt das Blatt 'Touren', fällt aber robust auf alle Blätter zurück."""
+        if not raw:
+            return []
+        frames = []
+        try:
+            xl = _pd.ExcelFile(BytesIO(raw), engine=EXCEL_READ_ENGINE)
+            names = list(xl.sheet_names or [])
+        except Exception:
+            try:
+                xl = _pd.ExcelFile(BytesIO(raw))
+                names = list(xl.sheet_names or [])
+            except Exception:
+                return []
+
+        # Erst Touren-Blätter, danach alle übrigen. So funktioniert es auch,
+        # wenn das Blatt anders heißt oder mehrere Tourenpläne enthalten sind.
+        ordered = []
+        for n in names:
+            if str(n).strip().lower() == "touren":
+                ordered.append(n)
+        for n in names:
+            if n not in ordered:
+                ordered.append(n)
+
+        for sheet in ordered:
+            try:
+                df = _pd.read_excel(BytesIO(raw), sheet_name=sheet, header=None, engine=EXCEL_READ_ENGINE)
+            except Exception:
+                try:
+                    df = _pd.read_excel(BytesIO(raw), sheet_name=sheet, header=None)
+                except Exception:
+                    continue
+            if df is not None and not df.empty:
+                frames.append((str(sheet), df))
+        return frames
+
+    # {wochentag: {tour: Counter(zeiten)}} und flacher Index tour -> Counter(zeiten)
     agg: dict = {}
     flat_agg: dict = {}
+    source_rows = 0
 
-    for datei in dateien:
+    for datei in dateien or []:
         try:
             datei.seek(0)
-            df = _pd.read_excel(BytesIO(datei.read()), sheet_name="Touren", header=None)
-            df = df.iloc[5:].reset_index(drop=True)
         except Exception:
-            continue
+            pass
+        try:
+            raw = datei.read()
+        except Exception:
+            raw = b""
+        if isinstance(raw, str):
+            raw = raw.encode("utf-8", errors="ignore")
 
-        current_wd = ""
-        for row in df.itertuples(index=False, name=None):
-            header_wd = _weekday_from_header_row(row)
-            if header_wd:
-                current_wd = header_wd
-                continue
+        for _sheet_name, df in _read_sheets(raw):
+            current_wd = ""
+            # nicht pauschal Zeilen wegschneiden; Überschriften werden sowieso übersprungen.
+            for row in df.itertuples(index=False, name=None):
+                header_wd = _weekday_from_header_row(row)
+                if header_wd:
+                    current_wd = header_wd
+                    continue
 
-            # Den Tag ausschließlich aus der Blocküberschrift nehmen.
-            # Spalte O wird bewusst NICHT mehr ausgewertet: in exportierten
-            # Tourenplänen können dort andere Werte/Formatierungen stehen und
-            # dadurch wurden Abfahrtszeiten falschen Tagesblöcken zugeordnet.
-            wd = current_wd
-            if not wd:
-                continue
+                tour = _tour_code(row[0] if len(row) > 0 else "")
+                # Sonderfall: wenn in A ein Strich steht, aber in B 'NMS-Shuttle Tour 5045'.
+                if not tour:
+                    tour = _tour_code_from_text(row[1] if len(row) > 1 else "")
+                if not tour:
+                    continue
 
-            tour = _tour_code(row[0] if len(row) > 0 else "")
-            if not tour:
-                continue
+                zeit = _zeit(row[8] if len(row) > 8 else None)
+                if not zeit:
+                    continue
 
-            zeit = _zeit(row[8] if len(row) > 8 else None)
-            if not zeit:
-                continue
+                source_rows += 1
+                flat_agg.setdefault(tour, Counter())[zeit] += 1
+                if current_wd:
+                    agg.setdefault(current_wd, {}).setdefault(tour, Counter())[zeit] += 1
 
-            agg.setdefault(wd, {}).setdefault(tour, Counter())[zeit] += 1
-            flat_agg.setdefault(tour, Counter())[zeit] += 1
-
-    out: dict = {}
-    # Flacher exakter Tournummer-Index: Tournummer aus Spalte A -> Uhrzeit aus Spalte I.
-    # Dieser Index wird im Browser zuerst genutzt und verhindert, dass 1006/1007
-    # versehentlich aus einem falschen Tagesblock oder Fallback gelesen werden.
-    out["__by_tour"] = {}
-    for tour, counter in flat_agg.items():
+    def _best(counter):
+        if not counter:
+            return ""
+        # häufigste Zeit; bei Gleichstand früheste Uhrzeit
         best = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
-        if best:
-            out["__by_tour"][tour] = best[0][0]
+        return best[0][0] if best else ""
+
+    out: dict = {"__by_tour": {}}
+    for tour, counter in flat_agg.items():
+        z = _best(counter)
+        if z:
+            out["__by_tour"][tour] = z
 
     for wd, tours in agg.items():
         out[wd] = {}
         for tour, counter in tours.items():
-            # häufigste Zeit; bei Gleichstand die früheste
-            best = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
-            if best:
-                out[wd][tour] = best[0][0]
+            z = _best(counter)
+            if z:
+                out[wd][tour] = z
 
+    # Diagnose im JSON, damit man im Browser/Quelltext sofort sieht, ob etwas geladen wurde.
+    out["__meta"] = {
+        "touren_mit_abfahrt": len(out.get("__by_tour", {})),
+        "gelesene_zeilen": source_rows,
+    }
     return _json.dumps(out, ensure_ascii=False)
 
 def parse_timerecording_csv(uploaded_file) -> str:
@@ -12379,7 +12423,7 @@ def _extra_multi_upload(label, types, key_prefix, parsers, summary_fn=None,
                            key=f"{key_prefix}_widget")
     sig_key = f"{key_prefix}_sig"
     if ups:
-        sig = uploads_signature(ups)
+        sig = combine_signatures(EXTRA_CACHE_VERSION, key_prefix, uploads_signature(ups))
         if st.session_state.get(sig_key) != sig:
             with st.spinner(spinner_text):
                 for state_key, parser in parsers.items():
@@ -12527,9 +12571,12 @@ with tab_extra:
             _dkd = json.loads(st.session_state.drittkunden_json)
             _fan = len(json.loads(st.session_state.fa_json))
             _spd = json.loads(st.session_state.get("spediteure_json", '{"katalog":[],"fahrten":[]}'))
+            _vsp = json.loads(st.session_state.get("versp_abfahrt_json", '{}'))
+            _vsp_n = len((_vsp.get("__by_tour") or {})) if isinstance(_vsp, dict) else 0
             return (f"{len(ups)} Dateien: Samstag {_sn}, Sonder {_zns}, "
                     f"Fuengers {_znf}, Drittkunden {len(_dkd)}, Fahrer {_fan}, "
-                    f"Spediteure {len(_spd.get('katalog', []))} ({len(_spd.get('fahrten', []))} Fahrten)")
+                    f"Spediteure {len(_spd.get('katalog', []))} ({len(_spd.get('fahrten', []))} Fahrten), "
+                    f"Abfahrten {_vsp_n}")
         _extra_multi_upload(
             "Touren-Dateien (Samstag, Zulagen, Drittkunden, Fahrerauswertung)",
             ["xlsx"], "touren",
