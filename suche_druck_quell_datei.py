@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "spediteure-gruppen-2026-06-06-v27-verspaetung-tourenplan-spalte-a"
+APP_CACHE_VERSION = "spediteure-gruppen-2026-06-06-v28-verspaetung-tourenplan-tagesblock-zeiten"
 
 
 # =============================================================================
@@ -3282,84 +3282,142 @@ def parse_spediteure_excel(dateien: list) -> str:
 def parse_versp_abfahrt_excel(dateien: list) -> str:
     """Liest die reguläre Abfahrtszeit je Tour direkt aus dem Tourenplan.
 
-    Touren-Blatt, Daten ab Zeile 6:
-      Spalte A (Index 0)  = Tournummer
-      Spalte I (Index 8)  = Abfahrtszeit
-      Spalte O (Index 14) = Datum  -> Wochentag
+    Grundlage im Tourenplan:
+      Spalte A (Index 0) = Tournummer
+      Spalte I (Index 8) = Abfahrtszeit
 
-    Wichtig: Die Verspätungstabelle nutzt bewusst den Tourenplan und keine
-    Kisoft-/Rahmentour-Nummer. Pro (Wochentag, Tour) wird die häufigste Zeit
-    gewählt. Einen allgemeinen "irgendein Tag"-Fallback gibt es nicht mehr,
-    damit keine falsche Abfahrt von einem anderen Wochentag gezogen wird.
+    Wichtig:
+    - Der Wochentag wird primär aus den Tages-Überschriften im Blatt gelesen,
+      zum Beispiel "Montag, 1. Juni 2026". Diese Überschrift gilt dann für die
+      folgenden Zeilen bis zur nächsten Tages-Überschrift.
+    - Falls eine Datei zusätzlich je Zeile ein Datum in Spalte O enthält, wird
+      dieses Datum ebenfalls akzeptiert.
+    - Nur echte numerische Tournummern aus Spalte A werden übernommen. Texte wie
+      "z.b.v.", "Hoffahrer", "Werkstatt", "Picnic", "Azubitour" oder leere
+      Zeilen werden für die Verspätungstabelle nicht als Tour interpretiert.
+    - Zeiten wie 0:00, 20.00, 7.00, 09:00 und echte Excel-Zeitwerte werden sauber
+      normalisiert.
     """
     import json as _json
     from io import BytesIO
     import datetime as _dt
+    import re as _re
     import pandas as _pd
     from collections import Counter
 
     WOCHENTAGE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+    WD_BY_LOWER = {w.lower(): w for w in WOCHENTAGE}
+    DAY_HEADER_RE = _re.compile(
+        r"\b(Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag|Sonntag)\b\s*,?\s*\d{1,2}\.",
+        _re.IGNORECASE,
+    )
 
-    def _zeit(val):
+    def _is_empty(val) -> bool:
         try:
             if _pd.isna(val):
-                return ""
+                return True
         except Exception:
             pass
-        if isinstance(val, str):
-            v = val.strip()
-            if ":" in v:
-                p = v.split(":")
-                try:
-                    return f"{int(p[0]):02d}:{int(p[1]):02d}"
-                except Exception:
-                    return ""
-            # Excel-/CSV-Export kann Zeiten auch als 1500, 15, 1530 liefern.
-            digits = "".join(ch for ch in v if ch.isdigit())
-            if len(digits) in (1, 2):
-                h = int(digits)
-                if 0 <= h <= 23:
-                    return f"{h:02d}:00"
-            if len(digits) in (3, 4):
-                h = int(digits[:-2])
-                m = int(digits[-2:])
-                if 0 <= h <= 23 and 0 <= m <= 59:
-                    return f"{h:02d}:{m:02d}"
+        return str(val).strip().lower() in ("", "nan", "none", "nat")
+
+    def _zeit(val):
+        if _is_empty(val):
             return ""
-        if isinstance(val, (int, float)) and val > 0:
-            # Excel-Zeit als Tagesbruchteil, z. B. 0,625 = 15:00
-            if isinstance(val, float) and val < 1:
-                total_min = int(round(val * 24 * 60))
-                h = (total_min // 60) % 24
+
+        if isinstance(val, (_dt.datetime, _pd.Timestamp)):
+            return val.strftime("%H:%M")
+        if isinstance(val, _dt.time):
+            return val.strftime("%H:%M")
+
+        if isinstance(val, (int, float)):
+            try:
+                f = float(val)
+            except Exception:
+                return ""
+            if f < 0:
+                return ""
+            # Excel-Zeit als Tagesbruchteil, z. B. 0,625 = 15:00.
+            # Wichtig: 0,0 ist 00:00 und darf nicht verworfen werden.
+            if f < 1:
+                total_min = int(round(f * 24 * 60)) % (24 * 60)
+                h = total_min // 60
                 m = total_min % 60
                 return f"{h:02d}:{m:02d}"
-            # Export als Zahl, z. B. 1500 oder 15
-            iv = int(val)
-            if 0 <= iv <= 23:
-                return f"{iv:02d}:00"
+            # Zahl als Stunde, z. B. 7 oder 15.
+            if float(f).is_integer() and 0 <= int(f) <= 23:
+                return f"{int(f):02d}:00"
+            # Zahl als HHMM, z. B. 700, 1530 oder 2000.
+            iv = int(round(f))
             h = iv // 100
             m = iv % 100
             if 0 <= h <= 23 and 0 <= m <= 59:
                 return f"{h:02d}:{m:02d}"
             return ""
-        if isinstance(val, (_dt.datetime, _pd.Timestamp)):
-            return val.strftime("%H:%M")
-        if isinstance(val, _dt.time):
-            return val.strftime("%H:%M")
+
+        v = str(val).strip()
+        if not v:
+            return ""
+        low = v.lower().replace(" ", "")
+        if low in ("n.a.", "n.a", "na", "nan", "none", "elternzeit"):
+            return ""
+
+        # Punkt und Doppelpunkt als Zeittrenner akzeptieren: 20.00, 7.00, 09:00.
+        m = _re.match(r"^\s*(\d{1,2})\s*[:\.]\s*(\d{1,2})(?:\s*:\s*\d{1,2})?\s*$", v)
+        if m:
+            h = int(m.group(1))
+            mi = int(m.group(2))
+            if 0 <= h <= 23 and 0 <= mi <= 59:
+                return f"{h:02d}:{mi:02d}"
+            return ""
+
+        # Excel-/CSV-Export kann Zeiten auch als 1500, 15, 1530 liefern.
+        digits = "".join(ch for ch in v if ch.isdigit())
+        if len(digits) in (1, 2):
+            h = int(digits)
+            if 0 <= h <= 23:
+                return f"{h:02d}:00"
+        if len(digits) in (3, 4):
+            h = int(digits[:-2])
+            mi = int(digits[-2:])
+            if 0 <= h <= 23 and 0 <= mi <= 59:
+                return f"{h:02d}:{mi:02d}"
         return ""
 
-    def _tour_digits(val):
-        try:
-            if _pd.isna(val):
-                return ""
-        except Exception:
-            pass
-        if isinstance(val, float) and val.is_integer():
-            val = int(val)
-        s = str(val).strip()
-        if s.lower() in ("nan", "none", "nat"):
+    def _tour_code(val):
+        """Nur echte Tournummern aus Spalte A übernehmen, keine Zahlen aus Freitext ziehen."""
+        if _is_empty(val):
             return ""
-        return "".join(ch for ch in s if ch.isdigit())
+        if isinstance(val, (int, float)):
+            try:
+                f = float(val)
+            except Exception:
+                return ""
+            if f.is_integer() and f >= 0:
+                return str(int(f))
+            return ""
+        s = str(val).strip()
+        if _re.fullmatch(r"\d+", s):
+            return s
+        if _re.fullmatch(r"\d+\.0+", s):
+            return s.split(".", 1)[0]
+        return ""
+
+    def _weekday_from_date_cell(val):
+        if _is_empty(val):
+            return ""
+        dt = _pd.to_datetime(val, errors="coerce", dayfirst=True)
+        if _pd.isna(dt):
+            return ""
+        return WOCHENTAGE[int(dt.weekday())]
+
+    def _weekday_from_header_row(row) -> str:
+        # Tageszeilen stehen im Tourenplan als Abschnittsüberschrift,
+        # zum Beispiel in Spalte B: "Montag, 1. Juni 2026".
+        joined = " ".join(str(x).strip() for x in row[: min(len(row), 6)] if not _is_empty(x))
+        m = DAY_HEADER_RE.search(joined)
+        if not m:
+            return ""
+        return WD_BY_LOWER.get(m.group(1).lower(), "")
 
     # {wochentag: {tour: Counter(zeiten)}}
     agg: dict = {}
@@ -3372,15 +3430,26 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
         except Exception:
             continue
 
+        current_wd = ""
         for row in df.itertuples(index=False, name=None):
-            datum = _pd.to_datetime(row[14] if len(row) > 14 else None, errors="coerce")
-            if _pd.isna(datum):
+            header_wd = _weekday_from_header_row(row)
+            if header_wd:
+                current_wd = header_wd
                 continue
-            tour = _tour_digits(row[0] if len(row) > 0 else "")
+
+            # Wenn Spalte O wirklich ein Datum pro Zeile enthält, hat das Vorrang.
+            wd = _weekday_from_date_cell(row[14] if len(row) > 14 else None) or current_wd
+            if not wd:
+                continue
+
+            tour = _tour_code(row[0] if len(row) > 0 else "")
+            if not tour:
+                continue
+
             zeit = _zeit(row[8] if len(row) > 8 else None)
-            if not tour or not zeit:
+            if not zeit:
                 continue
-            wd = WOCHENTAGE[datum.weekday()]
+
             agg.setdefault(wd, {}).setdefault(tour, Counter())[zeit] += 1
 
     out: dict = {}
@@ -3393,7 +3462,6 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
                 out[wd][tour] = best[0][0]
 
     return _json.dumps(out, ensure_ascii=False)
-
 
 def parse_timerecording_csv(uploaded_file) -> str:
     """Liest die Tachograph-Schicht-Datei (CSV oder XLSX) und liefert JSON
