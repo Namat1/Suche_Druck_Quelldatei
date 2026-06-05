@@ -7492,6 +7492,10 @@ iframe.active{{display:block}}
             style="padding:11px 20px;background:linear-gradient(180deg,#16a34a 0%,#15803d 100%);color:#fff;border:none;border-radius:8px;font-weight:800;font-size:13px;cursor:default;font-family:inherit;box-shadow:0 2px 6px rgba(21,128,61,.28);display:inline-flex;align-items:center;gap:8px;white-space:nowrap;opacity:.5">&#11015;&#65039; Excel herunterladen</button>
           <div id="versp-info" style="font-size:13px;color:#64748b">Bitte einen Tag auswählen.</div>
         </div>
+        <div style="display:flex;align-items:flex-start;gap:9px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 13px;margin-bottom:16px;font-size:12.5px;color:#92400e;line-height:1.45">
+          <span style="font-size:15px;line-height:1.2;flex-shrink:0">&#9888;&#65039;</span>
+          <span>Die <b>reguläre Abfahrtszeit</b> wird automatisch aus den Tourenplänen ermittelt (Abendtouren über den Vortag). Bitte trotzdem einmal <b>logisch überprüfen</b>, bevor die Tabelle weiterverwendet wird.</span>
+        </div>
         <div id="versp-preview"></div>
       </div>
     </div>
