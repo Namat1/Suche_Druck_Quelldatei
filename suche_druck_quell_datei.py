@@ -20,8 +20,8 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "spediteure-gruppen-2026-06-06-v31-verspaetung-tourplan-only"
-EXTRA_CACHE_VERSION = "extra-parser-2026-06-06-v31-verspaetung-tourplan-only"
+APP_CACHE_VERSION = "spediteure-gruppen-2026-06-06-v32-verspaetung-datum-header-fix"
+EXTRA_CACHE_VERSION = "extra-parser-2026-06-06-v32-verspaetung-datum-header-fix"
 
 
 # =============================================================================
@@ -3414,11 +3414,78 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
         return ""
 
     def _weekday_from_header_row(row) -> str:
-        joined = " ".join(str(x).strip() for x in row[: min(len(row), 8)] if not _is_empty(x))
+        """Erkennt den Tagesblock im Tourenplan.
+
+        Wichtig: In echten Excel-Tourenplänen ist die Tagesüberschrift oft kein
+        Text wie "Montag, 1. Juni 2026", sondern ein echter Datumswert mit
+        Zellformat. Beim Lesen mit pandas/calamine kommt dann zum Beispiel
+        Timestamp(2026-06-01) an. Genau deshalb waren zuletzt alle Abfahrten leer:
+        das Blatt wurde als "ohne Tagesblock" verworfen.
+        """
+        cells = list(row[: min(len(row), 10)])
+
+        # 1) Echte Excel-/pandas-Datumswerte erkennen.
+        for x in cells:
+            if _is_empty(x):
+                continue
+            try:
+                if isinstance(x, (_pd.Timestamp, _dt.datetime)):
+                    if getattr(x, "year", 0) >= 2020:
+                        return WOCHENTAGE[int(x.weekday())]
+                elif isinstance(x, _dt.date):
+                    if getattr(x, "year", 0) >= 2020:
+                        return WOCHENTAGE[int(x.weekday())]
+            except Exception:
+                pass
+
+            # 2) Excel-Seriendatum als Zahl, falls der Reader nicht in Datum wandelt.
+            try:
+                if isinstance(x, (int, float)) and 40000 <= float(x) <= 60000:
+                    d = _dt.datetime(1899, 12, 30) + _dt.timedelta(days=float(x))
+                    if d.year >= 2020:
+                        return WOCHENTAGE[int(d.weekday())]
+            except Exception:
+                pass
+
+        joined = " ".join(str(x).strip() for x in cells if not _is_empty(x))
+
+        # 3) Anzeigeformat mit ausgeschriebenem Wochentag.
         m = DAY_HEADER_RE.search(joined)
-        if not m:
-            return ""
-        return WD_BY_LOWER.get(m.group(1).lower(), "")
+        if m:
+            return WD_BY_LOWER.get(m.group(1).lower(), "")
+
+        # 4) Datums-Text ohne Wochentag, zum Beispiel 01.06.2026.
+        m = _re.search(r"\b(\d{1,2})[\./-](\d{1,2})[\./-](\d{2,4})\b", joined)
+        if m:
+            try:
+                dd = int(m.group(1)); mm = int(m.group(2)); yy = int(m.group(3))
+                if yy < 100:
+                    yy += 2000
+                if yy >= 2020:
+                    d = _dt.date(yy, mm, dd)
+                    return WOCHENTAGE[int(d.weekday())]
+            except Exception:
+                pass
+
+        # 5) Deutscher Datums-Text ohne Wochentag, zum Beispiel 1. Juni 2026.
+        month_map = {
+            "januar": 1, "februar": 2, "märz": 3, "maerz": 3, "april": 4,
+            "mai": 5, "juni": 6, "juli": 7, "august": 8, "september": 9,
+            "oktober": 10, "november": 11, "dezember": 12,
+        }
+        m = _re.search(r"\b(\d{1,2})\.\s*(Januar|Februar|März|Maerz|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)\s+(\d{4})\b", joined, _re.IGNORECASE)
+        if m:
+            try:
+                dd = int(m.group(1))
+                mm = month_map.get(m.group(2).lower(), 0)
+                yy = int(m.group(3))
+                if mm and yy >= 2020:
+                    d = _dt.date(yy, mm, dd)
+                    return WOCHENTAGE[int(d.weekday())]
+            except Exception:
+                pass
+
+        return ""
 
     def _read_sheets(raw: bytes):
         """Liest bevorzugt das Blatt 'Touren', fällt aber robust auf alle Blätter zurück."""
