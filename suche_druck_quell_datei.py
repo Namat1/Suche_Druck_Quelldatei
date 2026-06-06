@@ -20,8 +20,8 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "spediteure-gruppen-2026-06-06-v32-verspaetung-datum-header-fix"
-EXTRA_CACHE_VERSION = "extra-parser-2026-06-06-v32-verspaetung-datum-header-fix"
+APP_CACHE_VERSION = "spediteure-gruppen-2026-06-06-v33-tourenstart-csv"
+EXTRA_CACHE_VERSION = "extra-parser-2026-06-06-v33-tourenstart-csv"
 
 
 # =============================================================================
@@ -3625,6 +3625,172 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
     }
     return _json.dumps(out, ensure_ascii=False)
 
+
+def parse_versp_abfahrt_csv(uploaded_file) -> str:
+    """Liest Tourenstart-Zeiten fuer die Verspaetungstabelle aus einer CSV.
+
+    Standard ohne Kopfzeile:
+        Tournummer;Uhrzeit
+        1005;1:00
+        1006;20:00
+
+    Optional mit Kopfzeile:
+        Wochentag;Tour;Uhrzeit
+        Montag;1005;01:00
+    """
+    import csv as _csv
+    import json as _json
+    import datetime as _dt
+    import re as _re
+    from io import StringIO
+
+    raw = read_upload_bytes(uploaded_file)
+    if isinstance(raw, str):
+        raw = raw.encode("utf-8", errors="ignore")
+    if not raw:
+        return "{}"
+
+    text = ""
+    for enc in ("utf-8-sig", "cp1252", "latin1"):
+        try:
+            text = raw.decode(enc)
+            break
+        except Exception:
+            pass
+    if not text:
+        text = raw.decode("utf-8", errors="replace")
+
+    def _is_empty(v) -> bool:
+        return str(v or "").strip().lower() in ("", "nan", "none", "nat")
+
+    def _zeit(val):
+        if _is_empty(val):
+            return ""
+        if isinstance(val, (_dt.datetime, _dt.time)):
+            return val.strftime("%H:%M")
+        v = str(val).strip()
+        low = v.lower().replace(" ", "")
+        if low in ("n.a.", "n.a", "na", "nan", "none", "elternzeit"):
+            return ""
+        m = _re.match(r"^\s*(\d{1,2})\s*[:\.]\s*(\d{1,2})(?:\s*:\s*\d{1,2})?\s*$", v)
+        if m:
+            h = int(m.group(1)); mi = int(m.group(2))
+            if 0 <= h <= 23 and 0 <= mi <= 59:
+                return f"{h:02d}:{mi:02d}"
+            return ""
+        digits = "".join(ch for ch in v if ch.isdigit())
+        if len(digits) in (1, 2):
+            h = int(digits)
+            if 0 <= h <= 23:
+                return f"{h:02d}:00"
+        if len(digits) in (3, 4):
+            h = int(digits[:-2]); mi = int(digits[-2:])
+            if 0 <= h <= 23 and 0 <= mi <= 59:
+                return f"{h:02d}:{mi:02d}"
+        return ""
+
+    WD = {
+        "mo":"Montag", "montag":"Montag",
+        "di":"Dienstag", "dienstag":"Dienstag",
+        "mi":"Mittwoch", "mittwoch":"Mittwoch",
+        "do":"Donnerstag", "donnerstag":"Donnerstag",
+        "fr":"Freitag", "freitag":"Freitag",
+        "sa":"Samstag", "samstag":"Samstag",
+        "so":"Sonntag", "sonntag":"Sonntag",
+    }
+
+    def _day(v):
+        k = str(v or "").strip().lower().rstrip(".")
+        return WD.get(k, "")
+
+    def _tour(v):
+        s = str(v or "").strip().replace("\ufeff", "")
+        if not s or s.lower() in ("nan", "none"):
+            return ""
+        if _re.fullmatch(r"\d+\.0+", s):
+            s = s.split(".", 1)[0]
+        return _re.sub(r"\s+", " ", s)
+
+    sample = "\n".join(text.splitlines()[:20])
+    try:
+        dialect = _csv.Sniffer().sniff(sample, delimiters=";,\t|")
+    except Exception:
+        class _Dialect(_csv.excel):
+            delimiter = ";" if text.count(";") >= max(text.count(","), text.count("\t")) else ","
+        dialect = _Dialect
+
+    rows = []
+    for row in _csv.reader(StringIO(text), dialect):
+        if not row or all(_is_empty(c) for c in row):
+            continue
+        rows.append([str(c).strip() for c in row])
+    if not rows:
+        return "{}"
+
+    first = [c.lower().strip().replace("ä", "ae") for c in rows[0]]
+    has_header = any(("tour" in c or "uhr" in c or "zeit" in c or "abfahrt" in c or "wochentag" in c or c == "tag") for c in first)
+
+    tour_col = 0
+    time_col = 1 if len(rows[0]) > 1 else 0
+    day_col = None
+    start_idx = 0
+    if has_header:
+        start_idx = 1
+        for idx, c in enumerate(first):
+            if day_col is None and ("wochentag" in c or c == "tag" or c.endswith("tag")):
+                day_col = idx
+            if "tour" in c:
+                tour_col = idx
+            if "uhr" in c or "start" in c or "abfahrt" in c or c in ("zeit", "uhrzeit"):
+                time_col = idx
+    elif len(rows[0]) >= 3 and _day(rows[0][0]):
+        day_col = 0
+        tour_col = 1
+        time_col = 2
+
+    out = {"__by_tour": {}}
+    loaded = 0
+    skipped = 0
+    duplicates = 0
+    for row in rows[start_idx:]:
+        if len(row) <= max(tour_col, time_col):
+            skipped += 1
+            continue
+        tour = _tour(row[tour_col])
+        zeit = _zeit(row[time_col])
+        if not tour or not zeit:
+            skipped += 1
+            continue
+        key = tour if not _re.fullmatch(r"\d+\.0+", tour) else tour.split(".", 1)[0]
+        if key in out["__by_tour"]:
+            if out["__by_tour"][key] != zeit:
+                duplicates += 1
+            # Bei mehrfacher Tour bleibt bewusst die erste Zeile der CSV gültig.
+            # So kann die CSV-Reihenfolge steuern, welche Startzeit für Sammel-/HUPA-Touren gilt.
+        else:
+            out["__by_tour"][key] = zeit
+        digits = "".join(ch for ch in key if ch.isdigit())
+        if digits and digits != key and digits not in out["__by_tour"]:
+            out["__by_tour"][digits] = zeit
+        if day_col is not None and len(row) > day_col:
+            wd = _day(row[day_col])
+            if wd:
+                bucket = out.setdefault(wd, {})
+                if key not in bucket:
+                    bucket[key] = zeit
+                if digits and digits != key and digits not in bucket:
+                    bucket[digits] = zeit
+        loaded += 1
+
+    out["__meta"] = {
+        "quelle": getattr(uploaded_file, "name", "") or "Tourenstart CSV",
+        "touren_mit_abfahrt": len(out.get("__by_tour", {})),
+        "gelesene_zeilen": loaded,
+        "uebersprungene_zeilen": skipped,
+        "abweichende_dubletten": duplicates,
+    }
+    return _json.dumps(out, ensure_ascii=False)
+
 def parse_timerecording_csv(uploaded_file) -> str:
     """Liest die Tachograph-Schicht-Datei (CSV oder XLSX) und liefert JSON
     pro Fahrer:
@@ -5956,17 +6122,37 @@ function verstossPdfOne(name) {
         return ",\n".join(f'"{c}"' for c in chunks)
 
     # Alle Instanzen als JS-Array vorbereiten
+    def _safe_json_obj(value: str) -> str:
+        try:
+            obj = json.loads(value or "{}")
+            if not isinstance(obj, dict):
+                obj = {}
+        except Exception:
+            obj = {}
+        return json.dumps(obj, ensure_ascii=False)
+
+    normal_versp_start_json = "{}"
+    if instances and isinstance(instances[0], dict):
+        normal_versp_start_json = instances[0].get("versp_start_json") or "{}"
+
     inst_js_parts = []
-    for inst in instances:
+    for idx, inst in enumerate(instances):
         s_b64 = base64.b64encode(zlib.compress(inst["suche_html"].encode("utf-8"), 9)).decode("ascii")
         d_b64 = base64.b64encode(zlib.compress(inst["druck_html"].encode("utf-8"), 9)).decode("ascii")
         s_js  = to_js_array(s_b64)
         d_js  = to_js_array(d_b64)
         name_escaped = inst["name"].replace('"', '&quot;').replace("'", "&#39;")
+        # Sonderwochen nutzen ihre eigene CSV. Wenn keine hochgeladen ist,
+        # wird die Normaltouren-CSV als Fallback verwendet.
+        versp_json = inst.get("versp_start_json") or "{}"
+        if idx > 0 and versp_json in ("{}", "", None):
+            versp_json = normal_versp_start_json
+        versp_js = _safe_json_obj(versp_json)
         inst_js_parts.append(
             f'{{name:"{name_escaped}",'
             f's:[{s_js}],'
-            f'd:[{d_js}]}}'
+            f'd:[{d_js}],'
+            f'versp:{versp_js}}}'
         )
     instances_js = ",\n".join(inst_js_parts)
 
@@ -7187,6 +7373,36 @@ var verspInstCache = {};   // instIdx -> ALL_DATA (pro Woche)
 
 function verspEsc(v){ return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
+function verspGetAbfahrtMap() {
+  try {
+    var inst = (typeof INSTANCES !== "undefined" && INSTANCES[currentInst]) ? INSTANCES[currentInst] : null;
+    if(inst && inst.versp && inst.versp.__by_tour) return inst.versp;
+  } catch(e) {}
+  if(typeof VERSP_ABFAHRT !== "undefined" && VERSP_ABFAHRT) return VERSP_ABFAHRT;
+  return {};
+}
+
+function verspFindSollAbfahrt(tour, day) {
+  var map = verspGetAbfahrtMap();
+  if(!map) return "";
+  var raw = String(tour || "").trim();
+  var digits = raw.replace(/\D/g, "");
+  var keys = [];
+  if(digits) keys.push(digits);
+  if(raw && keys.indexOf(raw) < 0) keys.push(raw);
+  var PREV = { "Montag":"Sonntag", "Dienstag":"Montag", "Mittwoch":"Dienstag",
+               "Donnerstag":"Mittwoch", "Freitag":"Donnerstag", "Samstag":"Freitag",
+               "Sonntag":"Samstag" };
+  function lookup(bucket) {
+    if(!bucket) return "";
+    for(var i=0; i<keys.length; i++) {
+      if(bucket[keys[i]]) return bucket[keys[i]];
+    }
+    return "";
+  }
+  return lookup(map[day]) || lookup(map[PREV[day]]) || lookup(map.__by_tour);
+}
+
 function verspGetData() {
   if(verspInstCache.hasOwnProperty(currentInst)) return verspInstCache[currentInst];
   if(typeof vzAllData !== "undefined" && vzAllData) return vzAllData;
@@ -7253,27 +7469,7 @@ function verspCollectRows(day) {
       if(seen[key]) return;
       seen[key] = 1;
       var soll = "";
-      try {
-        var td = String(tour).replace(/\D/g, "");
-        if(td && typeof VERSP_ABFAHRT !== "undefined") {
-          // Erst den ausgewählten Liefertag, dann den Vortagsblock prüfen.
-          // Viele Nachttouren für Montag stehen im Sonntag-Abendblock.
-          // Der flache Tourindex ist nur der letzte Fallback.
-          var PREV = { "Montag":"Sonntag", "Dienstag":"Montag", "Mittwoch":"Dienstag",
-                       "Donnerstag":"Mittwoch", "Freitag":"Donnerstag", "Samstag":"Freitag",
-                       "Sonntag":"Samstag" };
-          if(VERSP_ABFAHRT[day] && VERSP_ABFAHRT[day][td]) {
-            soll = VERSP_ABFAHRT[day][td];
-          } else {
-            var prev = PREV[day];
-            if(prev && VERSP_ABFAHRT[prev] && VERSP_ABFAHRT[prev][td]) {
-              soll = VERSP_ABFAHRT[prev][td];
-            } else if(VERSP_ABFAHRT.__by_tour && VERSP_ABFAHRT.__by_tour[td]) {
-              soll = VERSP_ABFAHRT.__by_tour[td];
-            }
-          }
-        }
-      } catch(e) {}
+      try { soll = verspFindSollAbfahrt(tour, day); } catch(e) {}
       rows.push({ tour: tour, sap: sap, name: name, soll: soll });
     });
   });
@@ -12474,7 +12670,7 @@ def parse_grosskunden_excel(uploaded_file) -> str:
 # =============================================================================
 
 def _empty_inst(name="Normalwochen"):
-    return {"name": name, "suche_html": None, "druck_html": None, "source_sig": None}
+    return {"name": name, "suche_html": None, "druck_html": None, "source_sig": None, "versp_start_json": "{}", "versp_start_sig": None}
 
 # Session-State robust initialisieren.
 # Wichtig: nicht per Attributzugriff lesen, bevor der Key sicher existiert.
@@ -12589,8 +12785,36 @@ with tab_wochen:
             new_name = st.text_input("Bezeichnung", value=inst["name"], key=f"inst_name_{i}")
             st.session_state["instances"][i]["name"] = new_name
 
+            # Bestehende Instanzen aus alten Sessions haben diese Keys eventuell noch nicht.
+            st.session_state["instances"][i].setdefault("versp_start_json", "{}")
+            st.session_state["instances"][i].setdefault("versp_start_sig", None)
+
             _excel_label = "Normalwochen-Excel (Pflicht)" if _is_normal else "Wochen-Excel (Pflicht)"
             excel = st.file_uploader(_excel_label, type=["xlsx"], key=f"excel_{i}")
+
+            _start_label = "Normaltouren-Start CSV (für Verspätung)" if _is_normal else "Sonderwochen-Tourenstart CSV (optional, sonst Normaltouren)"
+            start_csv = st.file_uploader(_start_label, type=["csv"], key=f"versp_start_csv_{i}")
+            if start_csv:
+                _start_sig = combine_signatures(EXTRA_CACHE_VERSION, "versp_start_csv", upload_signature(start_csv))
+                if st.session_state["instances"][i].get("versp_start_sig") != _start_sig:
+                    with st.spinner("Lese Tourenstart-CSV ..."):
+                        st.session_state["instances"][i]["versp_start_json"] = parse_versp_abfahrt_csv(start_csv)
+                        st.session_state["instances"][i]["versp_start_sig"] = _start_sig
+                try:
+                    _vsp_obj = json.loads(st.session_state["instances"][i].get("versp_start_json") or "{}")
+                    _vsp_n = len((_vsp_obj.get("__by_tour") or {})) if isinstance(_vsp_obj, dict) else 0
+                    st.caption(f"Tourenstart: {_vsp_n} Abfahrten geladen")
+                except Exception:
+                    st.caption("Tourenstart-CSV geladen")
+            elif st.session_state["instances"][i].get("versp_start_json") not in (None, "", "{}"):
+                try:
+                    _vsp_obj = json.loads(st.session_state["instances"][i].get("versp_start_json") or "{}")
+                    _vsp_n = len((_vsp_obj.get("__by_tour") or {})) if isinstance(_vsp_obj, dict) else 0
+                    st.caption(f"Tourenstart: {_vsp_n} Abfahrten geladen")
+                except Exception:
+                    st.caption("Tourenstart-CSV geladen")
+            elif (not _is_normal) and st.session_state["instances"][0].get("versp_start_json") not in (None, "", "{}"):
+                st.caption("Tourenstart: nutzt Normaltouren-CSV als Fallback")
 
             _logo       = st.session_state.get("g_logo")
             _key        = st.session_state.get("g_key")
@@ -12671,12 +12895,9 @@ with tab_extra:
             _dkd = json.loads(st.session_state.drittkunden_json)
             _fan = len(json.loads(st.session_state.fa_json))
             _spd = json.loads(st.session_state.get("spediteure_json", '{"katalog":[],"fahrten":[]}'))
-            _vsp = json.loads(st.session_state.get("versp_abfahrt_json", '{}'))
-            _vsp_n = len((_vsp.get("__by_tour") or {})) if isinstance(_vsp, dict) else 0
             return (f"{len(ups)} Dateien: Samstag {_sn}, Sonder {_zns}, "
                     f"Fuengers {_znf}, Drittkunden {len(_dkd)}, Fahrer {_fan}, "
-                    f"Spediteure {len(_spd.get('katalog', []))} ({len(_spd.get('fahrten', []))} Fahrten), "
-                    f"Abfahrten {_vsp_n}")
+                    f"Spediteure {len(_spd.get('katalog', []))} ({len(_spd.get('fahrten', []))} Fahrten)")
         _extra_multi_upload(
             "Touren-Dateien (Samstag, Zulagen, Drittkunden, Fahrerauswertung)",
             ["xlsx"], "touren",
@@ -12686,7 +12907,6 @@ with tab_extra:
                 "drittkunden_json": parse_drittkunden_excel,
                 "fa_json":          parse_fahrer_excel,
                 "spediteure_json":  parse_spediteure_excel,
-                "versp_abfahrt_json": parse_versp_abfahrt_excel,
             },
             summary_fn=_touren_summary,
         )
@@ -12789,7 +13009,7 @@ with tab_dl:
                 grosskunden_json=st.session_state.get("grosskunden_json", "[]"),
                 timerec_json=st.session_state.get("timerec_json", "{}"),
                 spediteure_json=st.session_state.get("spediteure_json", '{"katalog":[],"fahrten":[]}'),
-                versp_abfahrt_json=st.session_state.get("versp_abfahrt_json", "{}"),
+                versp_abfahrt_json="{}",
                 last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
             )
         st.download_button(
