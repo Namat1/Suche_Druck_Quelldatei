@@ -20,8 +20,8 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "spediteure-gruppen-2026-06-06-v30-verspaetung-tourplan-cache-fix"
-EXTRA_CACHE_VERSION = "extra-parser-2026-06-06-v30-verspaetung-tourplan-cache-fix"
+APP_CACHE_VERSION = "spediteure-gruppen-2026-06-06-v31-verspaetung-tourplan-only"
+EXTRA_CACHE_VERSION = "extra-parser-2026-06-06-v31-verspaetung-tourplan-only"
 
 
 # =============================================================================
@@ -3297,7 +3297,9 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
       zuerst exakt nach Tournummer gesucht, unabhängig vom Tagesblock.
     - Zeiten können als 20:00, 20.00, 7.00, 09:00, Excel-Zeitwert oder 0 stehen.
       0 beziehungsweise 0:00 ist eine gültige Uhrzeit und darf nicht als leer gelten.
-    - Es werden alle Blätter gelesen, falls das Blatt nicht exakt "Touren" heißt.
+    - Es werden nur echte Tourenplan-Blätter gelesen. Kundendaten-/Tourkundenlisten
+      werden bewusst ignoriert, weil dort ebenfalls Tournummern und Uhrzeiten stehen
+      und sonst Lieferzeiten statt Abfahrtszeiten übernommen würden.
     """
     import json as _json
     from io import BytesIO
@@ -3455,10 +3457,33 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
                 frames.append((str(sheet), df))
         return frames
 
+    def _sheet_has_day_headers(df) -> bool:
+        """Echte Tourenpläne haben Tagesüberschriften wie 'Montag, 1. Juni 2026'.
+
+        Kundendaten-/Tourkundenlisten können ebenfalls in Spalte A Tournummern und
+        in Spalte I Uhrzeiten enthalten. Diese Listen dürfen für die Verspätungstabelle
+        nicht als Quelle dienen, weil das Liefer-/Kundenzeiten sind und keine
+        Abfahrtszeiten. Deshalb akzeptieren wir nur Blätter mit Tagesblöcken.
+        """
+        hits = 0
+        try:
+            rows_iter = df.itertuples(index=False, name=None)
+            for i, row in enumerate(rows_iter):
+                if i > 500:
+                    break
+                if _weekday_from_header_row(row):
+                    hits += 1
+                    if hits >= 1:
+                        return True
+        except Exception:
+            return False
+        return False
+
     # {wochentag: {tour: Counter(zeiten)}} und flacher Index tour -> Counter(zeiten)
     agg: dict = {}
     flat_agg: dict = {}
     source_rows = 0
+    skipped_sheets = 0
 
     for datei in dateien or []:
         try:
@@ -3473,12 +3498,21 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
             raw = raw.encode("utf-8", errors="ignore")
 
         for _sheet_name, df in _read_sheets(raw):
+            if not _sheet_has_day_headers(df):
+                skipped_sheets += 1
+                continue
+
             current_wd = ""
             # nicht pauschal Zeilen wegschneiden; Überschriften werden sowieso übersprungen.
             for row in df.itertuples(index=False, name=None):
                 header_wd = _weekday_from_header_row(row)
                 if header_wd:
                     current_wd = header_wd
+                    continue
+
+                # Vor der ersten Tagesüberschrift nichts übernehmen. So vermeiden wir,
+                # dass Kopfzeilen oder fremde Tabellen als Tourenplan gewertet werden.
+                if not current_wd:
                     continue
 
                 tour = _tour_code(row[0] if len(row) > 0 else "")
@@ -3494,8 +3528,7 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
 
                 source_rows += 1
                 flat_agg.setdefault(tour, Counter())[zeit] += 1
-                if current_wd:
-                    agg.setdefault(current_wd, {}).setdefault(tour, Counter())[zeit] += 1
+                agg.setdefault(current_wd, {}).setdefault(tour, Counter())[zeit] += 1
 
     def _best(counter):
         if not counter:
@@ -3521,6 +3554,7 @@ def parse_versp_abfahrt_excel(dateien: list) -> str:
     out["__meta"] = {
         "touren_mit_abfahrt": len(out.get("__by_tour", {})),
         "gelesene_zeilen": source_rows,
+        "ignorierte_blaetter_ohne_tagesblock": skipped_sheets,
     }
     return _json.dumps(out, ensure_ascii=False)
 
@@ -7155,21 +7189,20 @@ function verspCollectRows(day) {
       try {
         var td = String(tour).replace(/\D/g, "");
         if(td && typeof VERSP_ABFAHRT !== "undefined") {
-          // Wichtig: zuerst die exakte Tournummer aus Spalte A des Tourenplans verwenden.
-          // Dadurch werden Abendtouren korrekt gelesen, auch wenn sie im Block des Vortages stehen.
-          if(VERSP_ABFAHRT.__by_tour && VERSP_ABFAHRT.__by_tour[td]) {
-            soll = VERSP_ABFAHRT.__by_tour[td];
+          // Erst den ausgewählten Liefertag, dann den Vortagsblock prüfen.
+          // Viele Nachttouren für Montag stehen im Sonntag-Abendblock.
+          // Der flache Tourindex ist nur der letzte Fallback.
+          var PREV = { "Montag":"Sonntag", "Dienstag":"Montag", "Mittwoch":"Dienstag",
+                       "Donnerstag":"Mittwoch", "Freitag":"Donnerstag", "Samstag":"Freitag",
+                       "Sonntag":"Samstag" };
+          if(VERSP_ABFAHRT[day] && VERSP_ABFAHRT[day][td]) {
+            soll = VERSP_ABFAHRT[day][td];
           } else {
-            var PREV = { "Montag":"Sonntag", "Dienstag":"Montag", "Mittwoch":"Dienstag",
-                         "Donnerstag":"Mittwoch", "Freitag":"Donnerstag", "Samstag":"Freitag",
-                         "Sonntag":"Samstag" };
-            if(VERSP_ABFAHRT[day] && VERSP_ABFAHRT[day][td]) {
-              soll = VERSP_ABFAHRT[day][td];
-            } else {
-              var prev = PREV[day];
-              if(prev && VERSP_ABFAHRT[prev] && VERSP_ABFAHRT[prev][td]) {
-                soll = VERSP_ABFAHRT[prev][td];
-              }
+            var prev = PREV[day];
+            if(prev && VERSP_ABFAHRT[prev] && VERSP_ABFAHRT[prev][td]) {
+              soll = VERSP_ABFAHRT[prev][td];
+            } else if(VERSP_ABFAHRT.__by_tour && VERSP_ABFAHRT.__by_tour[td]) {
+              soll = VERSP_ABFAHRT.__by_tour[td];
             }
           }
         }
