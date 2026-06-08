@@ -5191,7 +5191,7 @@ function fwExportLkwPdf(lkwName) {
     # ── Fahrzeugwäsche Graph (eigener raw-string, analog zur Verstoßauswertung) ─
     fw_graph_js_code = r"""
 // ── Fahrzeugwäsche Graph pro Jahr ────────────────────────────────────────────
-var _fwGraphYear = "";
+var _fwGraphState = { jahr: null, jahr2: null, compare: false };
 var _fwGraphCharts = {};
 
 function fwGraphEsc(v) {
@@ -5250,24 +5250,63 @@ function fwGraphGetYears() {
   return Object.keys(seen).sort().reverse();
 }
 
-function fwPopulateGraphYears() {
-  var sel = document.getElementById("fw-graph-year");
-  if (!sel) return;
-  var years = fwGraphGetYears();
-  var keep = sel.value || _fwGraphYear;
-  sel.innerHTML = "<option value='all'>Alle Jahre</option>" + years.map(function(y) {
-    return "<option value='" + y + "'>" + y + "</option>";
-  }).join("");
-  if (keep && (keep === "all" || years.indexOf(keep) !== -1)) _fwGraphYear = keep;
-  else if (years.length) _fwGraphYear = years[0];
-  else _fwGraphYear = "all";
-  sel.value = _fwGraphYear;
+function fwGraphSelectedYears() {
+  var years = [];
+  if (_fwGraphState.jahr) years.push(_fwGraphState.jahr);
+  if (_fwGraphState.compare && _fwGraphState.jahr2 && years.indexOf(_fwGraphState.jahr2) === -1) years.push(_fwGraphState.jahr2);
+  return years;
 }
 
-function fwGraphYearChange(y) {
-  _fwGraphYear = y || "all";
+function fwGraphPopulateYears() {
+  var sel = document.getElementById("fw-graph-year");
+  var sel2 = document.getElementById("fw-graph-year-2");
+  var mode = document.getElementById("fw-graph-mode");
+  var years = fwGraphGetYears();
+
+  if (mode) mode.value = _fwGraphState.compare ? "compare" : "single";
+  if (sel2) sel2.style.display = _fwGraphState.compare ? "inline-block" : "none";
+
+  if (sel) sel.innerHTML = years.map(function(y) { return "<option value='" + y + "'>" + y + "</option>"; }).join("");
+  if (sel2) sel2.innerHTML = years.map(function(y) { return "<option value='" + y + "'>Vergleich " + y + "</option>"; }).join("");
+
+  if (!years.length) {
+    if (sel) sel.innerHTML = "<option value=''>\u2014</option>";
+    if (sel2) sel2.innerHTML = "<option value=''>\u2014</option>";
+    _fwGraphState.jahr = null;
+    _fwGraphState.jahr2 = null;
+    return;
+  }
+
+  var cur = String(new Date().getFullYear());
+  if (!(_fwGraphState.jahr && years.indexOf(_fwGraphState.jahr) !== -1)) {
+    _fwGraphState.jahr = years.indexOf(cur) !== -1 ? cur : years[0];
+  }
+  if (years.length === 1) {
+    _fwGraphState.jahr2 = years[0];
+  } else if (!(_fwGraphState.jahr2 && years.indexOf(_fwGraphState.jahr2) !== -1) || _fwGraphState.jahr2 === _fwGraphState.jahr) {
+    var idx = years.indexOf(_fwGraphState.jahr);
+    _fwGraphState.jahr2 = years[(idx + 1) % years.length];
+  }
+
+  if (sel) sel.value = _fwGraphState.jahr;
+  if (sel2) sel2.value = _fwGraphState.jahr2;
+}
+
+function fwGraphSetMode(v) {
+  _fwGraphState.compare = (v === "compare");
+  fwGraphPopulateYears();
   fwRenderGraph();
 }
+function fwGraphSetJahr(v) {
+  _fwGraphState.jahr = v;
+  if (_fwGraphState.compare && _fwGraphState.jahr2 === v) {
+    var years = fwGraphGetYears();
+    for (var i = 0; i < years.length; i++) { if (years[i] !== v) { _fwGraphState.jahr2 = years[i]; break; } }
+  }
+  fwGraphPopulateYears();
+  fwRenderGraph();
+}
+function fwGraphSetJahr2(v) { _fwGraphState.jahr2 = v; fwGraphPopulateYears(); fwRenderGraph(); }
 
 function fwGraphChart(id, cfg) {
   var canvas = document.getElementById(id);
@@ -5275,11 +5314,16 @@ function fwGraphChart(id, cfg) {
   if (_fwGraphCharts[id]) { try { _fwGraphCharts[id].destroy(); } catch (e) {} }
   _fwGraphCharts[id] = new Chart(canvas, cfg);
 }
+function fwClearCharts() {
+  Object.keys(_fwGraphCharts).forEach(function(id) {
+    try { _fwGraphCharts[id].destroy(); } catch (e) {}
+    delete _fwGraphCharts[id];
+  });
+}
 
 function fwGraphPct(part, total) {
   return total ? (Math.round((Number(part || 0) / total) * 1000) / 10) + "%" : "0%";
 }
-
 function fwGraphCountPct(count, total) {
   return count + " (" + fwGraphPct(count, total) + ")";
 }
@@ -5315,7 +5359,8 @@ function fwGraphTooltipPct(total) {
       label: function(ctx) {
         var v = (ctx.parsed && typeof ctx.parsed === "object") ? (ctx.parsed.y != null ? ctx.parsed.y : ctx.parsed.x != null ? ctx.parsed.x : ctx.parsed) : ctx.parsed;
         if (typeof v !== "number") v = ctx.raw;
-        return "Waschungen: " + fwGraphCountPct(v, total);
+        var pre = (ctx.dataset && ctx.dataset.label) ? ctx.dataset.label + ": " : "Waschungen: ";
+        return pre + fwGraphCountPct(v, total);
       }
     }
   };
@@ -5330,7 +5375,7 @@ function fwGraphKpi(label, value, color, icon) {
 }
 
 function fwInitGraph() {
-  fwPopulateGraphYears();
+  fwGraphPopulateYears();
   fwRenderGraph();
 }
 
@@ -5343,17 +5388,24 @@ function fwRenderGraph() {
   if (!all.length) {
     body.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Fahrzeugw\u00e4sche-Daten \u2013 bitte Waschdatei in Streamlit hochladen.</div>";
     if (stats) stats.innerHTML = "";
+    fwClearCharts();
     return;
   }
 
-  fwPopulateGraphYears();
-  var year = _fwGraphYear || "all";
-  var rows = all.filter(function(e) { return year === "all" || e.year === year; });
-  var label = (year === "all") ? "alle Jahre" : year;
+  fwGraphPopulateYears();
+  var compareMode = !!_fwGraphState.compare;
+  var selectedYears = fwGraphSelectedYears();
+  var yearLabel = compareMode ? selectedYears.join(" vs ") : (_fwGraphState.jahr || "alle Jahre");
+
+  var rows = all.filter(function(e) {
+    if (compareMode) { return selectedYears.length ? selectedYears.indexOf(e.year) !== -1 : true; }
+    return !_fwGraphState.jahr || e.year === _fwGraphState.jahr;
+  });
   var total = rows.length;
 
-  var driverMap = {}, produktMap = {}, kategorieMap = {}, lkwSet = {};
-  var monthCount = Array(12).fill(0);
+  var driverMap = {}, produktMap = {}, lkwSet = {}, monthCount = Array(12).fill(0);
+  var yearTotals = {}, yearMonthCount = {};
+  selectedYears.forEach(function(y) { yearTotals[y] = 0; yearMonthCount[y] = Array(12).fill(0); });
   rows.forEach(function(e) {
     if (e.driverKey) {
       if (!driverMap[e.driverKey]) driverMap[e.driverKey] = { name: e.driverName, count: 0 };
@@ -5361,79 +5413,136 @@ function fwRenderGraph() {
     }
     var p = e.produkt || "Ohne Angabe";
     produktMap[p] = (produktMap[p] || 0) + 1;
-    var k = e.kategorie || "Ohne Angabe";
-    kategorieMap[k] = (kategorieMap[k] || 0) + 1;
     if (e.fahrzeug) lkwSet[e.fahrzeug] = 1;
-    if (e.month >= 1 && e.month <= 12) monthCount[e.month - 1] += 1;
+    if (!yearTotals.hasOwnProperty(e.year)) { yearTotals[e.year] = 0; yearMonthCount[e.year] = Array(12).fill(0); }
+    yearTotals[e.year] += 1;
+    if (e.month >= 1 && e.month <= 12) { monthCount[e.month - 1] += 1; yearMonthCount[e.year][e.month - 1] += 1; }
   });
 
   var topDrivers = Object.keys(driverMap).map(function(k) { return driverMap[k]; })
     .sort(function(a, b) { return b.count - a.count || a.name.localeCompare(b.name, "de"); }).slice(0, 15);
   var topProdukte = Object.entries(produktMap).sort(function(a, b) { return b[1] - a[1] || a[0].localeCompare(b[0], "de"); }).slice(0, 10);
-  var topKategorie = Object.entries(kategorieMap).sort(function(a, b) { return b[1] - a[1] || a[0].localeCompare(b[0], "de"); }).slice(0, 10);
 
   var months = ["Jan", "Feb", "M\u00e4r", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+  var monthsLong = ["Januar", "Februar", "M\u00e4rz", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
   var maxMonth = Math.max.apply(null, monthCount.concat([0]));
   var maxMonthName = maxMonth ? months[monthCount.indexOf(maxMonth)] : "\u2014";
   var driverCount = Object.keys(driverMap).length;
   var lkwCount = Object.keys(lkwSet).length;
   var topDriver = topDrivers.length ? topDrivers[0] : null;
 
+  var diffLabel = "\u2014";
+  if (compareMode && selectedYears.length >= 2) {
+    var diff = (yearTotals[selectedYears[0]] || 0) - (yearTotals[selectedYears[1]] || 0);
+    diffLabel = (diff > 0 ? "+" : "") + diff;
+  }
+
   if (stats) {
-    stats.innerHTML = "Jahr <b style='color:#1e6091;'>" + fwGraphEsc(label) + "</b> &middot; <b>" + total + "</b> Waschungen";
+    stats.innerHTML = "Ansicht <b style='color:#1e6091;'>" + (compareMode ? "Jahre vergleichen" : "Ein Jahr") + "</b> &middot; "
+      + "Jahr <b style='color:#1e6091;'>" + fwGraphEsc(yearLabel) + "</b> &middot; "
+      + "<b>" + total + "</b> Waschungen";
   }
 
   var html = "";
   html += "<div style='margin-right:18px;'>";
+
+  if (!rows.length) {
+    html += "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;'>Keine Waschungen f\u00fcr " + fwGraphEsc(yearLabel) + " gefunden.</div>";
+    html += "</div>";
+    body.innerHTML = html;
+    fwClearCharts();
+    return;
+  }
+
   html += "<div style='display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:12px;margin-bottom:14px;'>";
-  html += fwGraphKpi("Waschungen", total, "#165532", "&#128703;");
-  html += fwGraphKpi("Fahrer aktiv", driverCount, "#1e6091", "&#128101;");
-  html += fwGraphKpi("Fahrzeuge", lkwCount, "#0e4a85", "&#128666;");
-  html += fwGraphKpi("St\u00e4rkster Monat", maxMonthName + (maxMonth ? " \u00b7 " + maxMonth : ""), "#9a5b00", "&#128197;");
+  if (compareMode && selectedYears.length >= 2) {
+    html += fwGraphKpi("Waschungen " + selectedYears[0], yearTotals[selectedYears[0]] || 0, "#1e6091", "&#128703;");
+    html += fwGraphKpi("Waschungen " + selectedYears[1], yearTotals[selectedYears[1]] || 0, "#047857", "&#128703;");
+    html += fwGraphKpi("Differenz", diffLabel, "#1e3a5f", "&#8644;");
+    html += fwGraphKpi("Top Fahrer", topDriver ? fwGraphEsc(topDriver.name) + " \u00b7 " + topDriver.count : "\u2014", "#9a5b00", "&#127942;");
+  } else {
+    html += fwGraphKpi("Waschungen", total, "#165532", "&#128703;");
+    html += fwGraphKpi("Fahrer aktiv", driverCount, "#1e6091", "&#128101;");
+    html += fwGraphKpi("Fahrzeuge", lkwCount, "#0e4a85", "&#128666;");
+    html += fwGraphKpi("St\u00e4rkster Monat", maxMonthName + (maxMonth ? " \u00b7 " + maxMonth : ""), "#9a5b00", "&#128197;");
+  }
   html += "</div>";
 
   html += "<div style='display:grid;grid-template-columns:minmax(0,1.15fr) minmax(420px,.95fr);gap:14px;margin-bottom:14px;align-items:stretch;'>";
-  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:360px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Waschungen nach Monat</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anzahl und Anteil an allen Waschungen</div><div style='height:300px;'><canvas id='fw-chart-month'></canvas></div></div>";
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:360px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>" + (compareMode ? "Jahresvergleich nach Monat" : "Waschungen nach Monat") + "</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>" + (compareMode ? "Die gew\u00e4hlten Jahre werden pro Monat nebeneinander gestellt" : "Anzahl und Anteil an allen Waschungen") + "</div><div style='height:300px;'><canvas id='fw-chart-month'></canvas></div></div>";
   html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:470px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Produkte</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anteil je Waschprodukt</div><div style='height:410px;'><canvas id='fw-chart-produkt'></canvas></div></div>";
   html += "</div>";
 
   html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Top Fahrer nach Anzahl</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anzahl und Anteil an allen Waschungen</div><div style='height:360px;'><canvas id='fw-chart-driver'></canvas></div></div>";
 
   html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:14px;'>";
-  html += "<div style='padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:900;color:#0f172a;'>Monats\u00fcbersicht " + fwGraphEsc(label) + "</div>";
+  html += "<div style='padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:900;color:#0f172a;'>" + (compareMode ? "Jahresvergleich " : "Monats\u00fcbersicht ") + fwGraphEsc(yearLabel) + "</div>";
   html += "<table style='width:100%;border-collapse:collapse;font-size:12.5px;'><thead><tr style='background:#1e6091;color:#fff;'>";
-  ["Monat", "Waschungen", "Anteil"].forEach(function(h, i) {
-    html += "<th style='padding:10px 12px;text-align:" + (i === 0 ? "left" : "right") + ";font-size:11px;font-weight:800;letter-spacing:.3px;'>" + h + "</th>";
-  });
+  if (compareMode && selectedYears.length >= 2) {
+    ["Monat", selectedYears[0], selectedYears[1], "Differenz", "Gesamt"].forEach(function(h, i) {
+      html += "<th style='padding:10px 12px;text-align:" + (i === 0 ? "left" : "right") + ";font-size:11px;font-weight:800;letter-spacing:.3px;'>" + fwGraphEsc(h) + "</th>";
+    });
+  } else {
+    ["Monat", "Waschungen", "Anteil"].forEach(function(h, i) {
+      html += "<th style='padding:10px 12px;text-align:" + (i === 0 ? "left" : "right") + ";font-size:11px;font-weight:800;letter-spacing:.3px;'>" + h + "</th>";
+    });
+  }
   html += "</tr></thead><tbody>";
   months.forEach(function(m, i) {
     html += "<tr style='background:" + (i % 2 ? "#f9fafb" : "#fff") + ";border-bottom:1px solid #f1f5f9;'>";
-    html += "<td style='padding:9px 12px;font-weight:800;color:#0f172a;font-size:13px;'>" + m + "</td>";
-    html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#1e6091;font-size:13px;'>" + monthCount[i] + "</td>";
-    html += "<td style='padding:9px 12px;text-align:right;font-weight:800;color:" + (monthCount[i] ? "#165532" : "#cbd5e1") + ";'>" + fwGraphPct(monthCount[i], total) + "</td>";
+    html += "<td style='padding:9px 12px;font-weight:800;color:#0f172a;font-size:13px;'>" + (compareMode ? monthsLong[i] : m) + "</td>";
+    if (compareMode && selectedYears.length >= 2) {
+      var v1 = (yearMonthCount[selectedYears[0]] || [])[i] || 0;
+      var v2 = (yearMonthCount[selectedYears[1]] || [])[i] || 0;
+      var d = v1 - v2;
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#1e6091;font-size:13px;'>" + v1 + "</td>";
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#047857;font-size:13px;'>" + v2 + "</td>";
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:" + (d >= 0 ? "#047857" : "#dc2626") + ";font-size:13px;'>" + (d > 0 ? "+" : "") + d + "</td>";
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:800;color:#1e3a5f;'>" + (v1 + v2) + "</td>";
+    } else {
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#1e6091;font-size:13px;'>" + monthCount[i] + "</td>";
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:800;color:" + (monthCount[i] ? "#165532" : "#cbd5e1") + ";'>" + fwGraphPct(monthCount[i], total) + "</td>";
+    }
     html += "</tr>";
   });
+  if (compareMode && selectedYears.length >= 2) {
+    var t1 = yearTotals[selectedYears[0]] || 0, t2 = yearTotals[selectedYears[1]] || 0, td = t1 - t2;
+    html += "<tr style='background:#eef4fa;border-top:2px solid #c6d6e8;'>";
+    html += "<td style='padding:9px 12px;font-weight:900;color:#0f172a;'>Gesamt</td>";
+    html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#1e6091;'>" + t1 + "</td>";
+    html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#047857;'>" + t2 + "</td>";
+    html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:" + (td >= 0 ? "#047857" : "#dc2626") + ";'>" + (td > 0 ? "+" : "") + td + "</td>";
+    html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#1e3a5f;'>" + total + "</td>";
+    html += "</tr>";
+  }
   html += "</tbody></table></div>";
   html += "</div>";
-
-  if (!rows.length) {
-    html = "<div style='margin-right:18px;'><div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;'>Keine Waschungen f\u00fcr " + fwGraphEsc(label) + " gefunden.</div></div>";
-  }
   body.innerHTML = html;
 
-  if (!rows.length || typeof Chart === "undefined") return;
+  if (typeof Chart === "undefined") return;
 
   var palette = ["#1e6091", "#2f80b7", "#16a34a", "#0891b2", "#65a30d", "#0e7490", "#5b8def", "#15803d", "#475569", "#92400e"];
 
+  var monthDatasets, monthPlugins;
+  if (compareMode && selectedYears.length >= 2) {
+    monthDatasets = selectedYears.map(function(y, idx) {
+      return { label: "Waschungen " + y, data: yearMonthCount[y] || Array(12).fill(0), backgroundColor: idx === 0 ? "#2f80b7" : "#22a06b", borderRadius: 5 };
+    });
+    monthPlugins = [];
+  } else {
+    monthDatasets = [{ label: "Waschungen", data: monthCount, backgroundColor: "#2f80b7", borderRadius: 5 }];
+    monthPlugins = [fwGraphLabelPlugin(total, "bar-x")];
+  }
+
   fwGraphChart("fw-chart-month", {
     type: "bar",
-    data: { labels: months, datasets: [{ label: "Waschungen", data: monthCount, backgroundColor: "#2f80b7", borderRadius: 5 }] },
-    plugins: [fwGraphLabelPlugin(total, "bar-x")],
+    data: { labels: months, datasets: monthDatasets },
+    plugins: monthPlugins,
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { top: 18 } },
-      plugins: { legend: { display: false }, tooltip: fwGraphTooltipPct(total) },
+      layout: { padding: { top: compareMode ? 4 : 18 } },
+      plugins: { legend: { display: compareMode, position: "bottom", labels: { boxWidth: 10, padding: 10, font: { size: 10 } } }, tooltip: fwGraphTooltipPct(total) },
       scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
     }
   });
@@ -8184,8 +8293,15 @@ iframe.active{{display:block}}
     <div style="width:100%;max-width:1728px;margin:0 auto;display:flex;flex-direction:column;flex:1;overflow:hidden;">
       <div style="display:flex;align-items:center;gap:10px;padding:16px 18px;flex-wrap:wrap;flex-shrink:0;">
         <h2 style="margin:0;font-size:17px;font-weight:900;color:#0f172a;">&#128703; Fahrzeugw&#228;sche &ndash; Graph pro Jahr</h2>
-        <select id="fw-graph-year" onchange="fwGraphYearChange(this.value)"
+        <select id="fw-graph-mode" onchange="fwGraphSetMode(this.value)" title="Ansicht"
+          style="padding:8px 11px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:900;font-family:inherit;background:#fff;color:#1f3347;outline:none;cursor:pointer;">
+          <option value="single">Ein Jahr</option>
+          <option value="compare">Jahre vergleichen</option>
+        </select>
+        <select id="fw-graph-year" onchange="fwGraphSetJahr(this.value)" title="Jahr 1"
           style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:800;font-family:inherit;outline:none;background:#fff;color:#1e6091;cursor:pointer;"></select>
+        <select id="fw-graph-year-2" onchange="fwGraphSetJahr2(this.value)" title="Jahr 2"
+          style="display:none;padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:800;font-family:inherit;outline:none;background:#fff;color:#047857;cursor:pointer;"></select>
         <span id="fw-graph-stats" style="font-size:12px;font-weight:700;color:#64748b;margin-left:auto;"></span>
       </div>
       <div id="fw-graph-content" style="flex:1;overflow-y:auto;padding:4px 0 30px 18px;">
