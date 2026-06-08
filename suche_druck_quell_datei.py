@@ -5353,6 +5353,32 @@ function fwGraphLabelPlugin(total, mode) {
   };
 }
 
+// Mengen-Labels für gruppierte Balken (Vergleichsmodus, mehrere Datensätze)
+function fwGraphCountLabelPlugin() {
+  return {
+    id: "fwCountLabels",
+    afterDatasetsDraw: function(chart) {
+      var ctx = chart.ctx;
+      ctx.save();
+      ctx.font = "800 10px 'Segoe UI', Arial, sans-serif";
+      ctx.fillStyle = "#0f172a";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      (chart.data.datasets || []).forEach(function(ds, di) {
+        var meta = chart.getDatasetMeta(di);
+        if (!meta || meta.hidden || !meta.data) return;
+        meta.data.forEach(function(el, i) {
+          var val = Number(ds.data[i]) || 0;
+          if (!val) return;
+          var pos = el.tooltipPosition ? el.tooltipPosition() : { x: el.x, y: el.y };
+          ctx.fillText(val, pos.x, pos.y - 3);
+        });
+      });
+      ctx.restore();
+    }
+  };
+}
+
 function fwGraphTooltipPct(total) {
   return {
     callbacks: {
@@ -5528,7 +5554,7 @@ function fwRenderGraph() {
     monthDatasets = selectedYears.map(function(y, idx) {
       return { label: "Waschungen " + y, data: yearMonthCount[y] || Array(12).fill(0), backgroundColor: idx === 0 ? "#2f80b7" : "#22a06b", borderRadius: 5 };
     });
-    monthPlugins = [];
+    monthPlugins = [fwGraphCountLabelPlugin()];
   } else {
     monthDatasets = [{ label: "Waschungen", data: monthCount, backgroundColor: "#2f80b7", borderRadius: 5 }];
     monthPlugins = [fwGraphLabelPlugin(total, "bar-x")];
@@ -5541,7 +5567,7 @@ function fwRenderGraph() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { top: compareMode ? 4 : 18 } },
+      layout: { padding: { top: 18 } },
       plugins: { legend: { display: compareMode, position: "bottom", labels: { boxWidth: 10, padding: 10, font: { size: 10 } } }, tooltip: fwGraphTooltipPct(total) },
       scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
     }
@@ -7136,6 +7162,30 @@ function spedPctLabelPlugin(total, mode) {
     }
   };
 }
+function spedGraphCountLabelPlugin() {
+  return {
+    id: "spedCountLabels",
+    afterDatasetsDraw: function(chart) {
+      var ctx = chart.ctx;
+      ctx.save();
+      ctx.font = "800 10px Segoe UI, Arial, sans-serif";
+      ctx.fillStyle = "#0f172a";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      (chart.data.datasets || []).forEach(function(ds, di) {
+        var meta = chart.getDatasetMeta(di);
+        if(!meta || meta.hidden || !meta.data) return;
+        meta.data.forEach(function(el, i) {
+          var val = Number(ds.data[i]) || 0;
+          if(!val) return;
+          var pos = el.tooltipPosition ? el.tooltipPosition() : { x: el.x, y: el.y };
+          ctx.fillText(val, pos.x, pos.y - 3);
+        });
+      });
+      ctx.restore();
+    }
+  };
+}
 function spedTooltipPct(total, axis) {
   return {
     callbacks: {
@@ -7423,7 +7473,7 @@ function spedRenderGraph() {
     monthDatasets = selectedYears.map(function(y, idx){
       return { label: "Fahrten " + y, data: yearMonthCount[y] || Array(12).fill(0), backgroundColor: idx === 0 ? "#2f80b7" : "#22a06b", borderRadius: 5 };
     });
-    monthPlugins = [];
+    monthPlugins = [spedGraphCountLabelPlugin()];
   } else {
     monthDatasets = [{ label: "Fahrten", data: monthCount, backgroundColor: "#2f80b7", borderRadius: 5 }];
     monthPlugins = [spedPctLabelPlugin(total, "bar-x")];
@@ -7436,7 +7486,7 @@ function spedRenderGraph() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { top: compareMode ? 4 : 18 } },
+      layout: { padding: { top: 18 } },
       plugins: { legend: { display: compareMode, position: "bottom", labels: { boxWidth: 10, padding: 10, font: { size: 10 } } }, tooltip: spedTooltipPct(total, "y") },
       scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
     }
