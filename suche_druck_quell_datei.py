@@ -20,8 +20,8 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "spediteure-gruppen-2026-06-06-v33-tourenstart-csv"
-EXTRA_CACHE_VERSION = "extra-parser-2026-06-06-v33-tourenstart-csv"
+APP_CACHE_VERSION = "verstoss-jahresvergleich-2026-06-09-v34-excel-export"
+EXTRA_CACHE_VERSION = "extra-parser-2026-06-09-v34-verstoss-vergleich"
 
 
 # =============================================================================
@@ -5722,6 +5722,7 @@ function ddSelectVerstoss(area) {
 }
 
 var _vsGraphYear = "";
+var _vsGraphState = { jahr: null, jahr2: null, compare: false };
 var _vsGraphCharts = {};
 
 function verstossYearOf(v) {
@@ -5851,26 +5852,73 @@ function verstossBuildListDriver(d) {
   return nd;
 }
 
+function verstossGraphSelectedYears() {
+  var years = [];
+  if (_vsGraphState.jahr) years.push(_vsGraphState.jahr);
+  if (_vsGraphState.compare && _vsGraphState.jahr2 && years.indexOf(_vsGraphState.jahr2) === -1) years.push(_vsGraphState.jahr2);
+  return years;
+}
+
 function verstossPopulateGraphYears() {
   var sel = document.getElementById("verstoss-graph-year");
+  var sel2 = document.getElementById("verstoss-graph-year-2");
+  var mode = document.getElementById("verstoss-graph-mode");
   if (!sel) return;
   var years = verstossGetGraphYears();
-  var keep = sel.value || _vsGraphYear;
-  var html = "<option value='all'>Alle Jahre</option>";
-  years.forEach(function(y) { html += "<option value='" + y + "'>" + y + "</option>"; });
-  sel.innerHTML = html;
-  if (keep && (keep === "all" || years.indexOf(keep) >= 0)) {
-    _vsGraphYear = keep;
-  } else if (years.length) {
-    _vsGraphYear = years[0];
-  } else {
+
+  // Erstinitialisierung aus altem Einzel-Jahr-Status übernehmen
+  if (!_vsGraphState.jahr && _vsGraphYear && _vsGraphYear !== "all") _vsGraphState.jahr = _vsGraphYear;
+
+  if (mode) mode.value = _vsGraphState.compare ? "compare" : "single";
+  if (sel2) sel2.style.display = _vsGraphState.compare ? "inline-block" : "none";
+
+  sel.innerHTML = years.map(function(y) { return "<option value='" + y + "'>" + y + "</option>"; }).join("");
+  if (sel2) sel2.innerHTML = years.map(function(y) { return "<option value='" + y + "'>Vergleich " + y + "</option>"; }).join("");
+
+  if (!years.length) {
+    sel.innerHTML = "<option value=''>\u2014</option>";
+    if (sel2) sel2.innerHTML = "<option value=''>\u2014</option>";
+    _vsGraphState.jahr = null;
+    _vsGraphState.jahr2 = null;
     _vsGraphYear = "all";
+    return;
   }
-  sel.value = _vsGraphYear;
+
+  if (!(_vsGraphState.jahr && years.indexOf(_vsGraphState.jahr) !== -1)) {
+    _vsGraphState.jahr = years[0];
+  }
+  if (years.length === 1) {
+    _vsGraphState.jahr2 = years[0];
+  } else if (!(_vsGraphState.jahr2 && years.indexOf(_vsGraphState.jahr2) !== -1) || _vsGraphState.jahr2 === _vsGraphState.jahr) {
+    var idx = years.indexOf(_vsGraphState.jahr);
+    _vsGraphState.jahr2 = years[(idx + 1) % years.length];
+  }
+
+  sel.value = _vsGraphState.jahr;
+  if (sel2) sel2.value = _vsGraphState.jahr2;
+  _vsGraphYear = _vsGraphState.jahr;
+}
+
+function verstossGraphSetMode(v) {
+  _vsGraphState.compare = (v === "compare");
+  verstossPopulateGraphYears();
+  verstossRenderGraph();
 }
 
 function verstossGraphYearChange(y) {
+  _vsGraphState.jahr = y || null;
   _vsGraphYear = y || "all";
+  if (_vsGraphState.compare && _vsGraphState.jahr2 === y) {
+    var years = verstossGetGraphYears();
+    for (var i = 0; i < years.length; i++) { if (years[i] !== y) { _vsGraphState.jahr2 = years[i]; break; } }
+  }
+  verstossPopulateGraphYears();
+  verstossRenderGraph();
+}
+
+function verstossGraphYear2Change(y) {
+  _vsGraphState.jahr2 = y || null;
+  verstossPopulateGraphYears();
   verstossRenderGraph();
 }
 
@@ -5922,6 +5970,32 @@ function verstossPctLabelPlugin(total, mode) {
   };
 }
 
+// Mengen-Labels für gruppierte Balken (Jahresvergleich, mehrere Datensätze)
+function verstossCountLabelPlugin() {
+  return {
+    id: "verstossCountLabels",
+    afterDatasetsDraw: function(chart) {
+      var ctx = chart.ctx;
+      ctx.save();
+      ctx.font = "800 10px Segoe UI, Arial, sans-serif";
+      ctx.fillStyle = "#0f172a";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      (chart.data.datasets || []).forEach(function(ds, di) {
+        var meta = chart.getDatasetMeta(di);
+        if (!meta || meta.hidden || !meta.data) return;
+        meta.data.forEach(function(el, i) {
+          var val = Number(ds.data[i]) || 0;
+          if (!val) return;
+          var pos = el.tooltipPosition ? el.tooltipPosition() : { x: el.x, y: el.y };
+          ctx.fillText(val, pos.x, pos.y - 3);
+        });
+      });
+      ctx.restore();
+    }
+  };
+}
+
 function verstossTooltipPct(total, axis) {
   return {
     callbacks: {
@@ -5939,6 +6013,32 @@ function verstossInitGraph() {
   verstossRenderGraph();
 }
 
+// Aggregiert Verstöße für einen Datensatz-Filter
+function verstossAggregate(rows) {
+  var driverMap = {}, typeMap = {}, lkwSet = {};
+  var monthCount = Array(12).fill(0), monthDriver = Array(12).fill(0), monthCompany = Array(12).fill(0);
+  var sumDriver = 0, sumCompany = 0;
+  rows.forEach(function(r) {
+    driverMap[r.driver] = (driverMap[r.driver] || 0) + 1;
+    typeMap[r.type] = (typeMap[r.type] || 0) + 1;
+    sumDriver += r.driver_penalty;
+    sumCompany += r.company_penalty;
+    if (r.month >= 1 && r.month <= 12) {
+      monthCount[r.month - 1] += 1;
+      monthDriver[r.month - 1] += r.driver_penalty;
+      monthCompany[r.month - 1] += r.company_penalty;
+    }
+  });
+  return {
+    total: rows.length, sumDriver: sumDriver, sumCompany: sumCompany,
+    driverMap: driverMap, typeMap: typeMap,
+    monthCount: monthCount, monthDriver: monthDriver, monthCompany: monthCompany
+  };
+}
+
+// Zuletzt berechnete Graph-Daten (für Excel-Export)
+var _vsGraphLast = null;
+
 function verstossRenderGraph() {
   var body = document.getElementById("verstoss-graph-content");
   var stats = document.getElementById("verstoss-graph-stats");
@@ -5947,90 +6047,153 @@ function verstossRenderGraph() {
   if (!all.length) {
     body.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Verstoßdaten – bitte Verstoß-CSV in Streamlit hochladen.</div>";
     if (stats) stats.innerHTML = "";
+    _vsGraphLast = null;
     return;
   }
 
   verstossPopulateGraphYears();
-  var year = _vsGraphYear || "all";
-  var rows = all.filter(function(r) { return year === "all" || r.year === year; });
-  var label = (year === "all") ? "alle Jahre" : year;
-  var total = rows.length;
-  var sumDriver = rows.reduce(function(s, r) { return s + r.driver_penalty; }, 0);
-  var sumCompany = rows.reduce(function(s, r) { return s + r.company_penalty; }, 0);
-  var sumDiff = rows.reduce(function(s, r) { return s + Math.max(0, r.diff || 0); }, 0);
-  var driverMap = {}, typeMap = {}, monthCount = Array(12).fill(0), monthDriver = Array(12).fill(0), monthCompany = Array(12).fill(0);
-
-  rows.forEach(function(r) {
-    driverMap[r.driver] = (driverMap[r.driver] || 0) + 1;
-    typeMap[r.type] = (typeMap[r.type] || 0) + 1;
-    if (r.month >= 1 && r.month <= 12) {
-      monthCount[r.month - 1] += 1;
-      monthDriver[r.month - 1] += r.driver_penalty;
-      monthCompany[r.month - 1] += r.company_penalty;
-    }
-  });
-
-  var topDrivers = Object.entries(driverMap).sort(function(a, b) { return b[1] - a[1] || a[0].localeCompare(b[0], "de"); }).slice(0, 15);
-  var topTypes = Object.entries(typeMap).sort(function(a, b) { return b[1] - a[1] || a[0].localeCompare(b[0], "de"); }).slice(0, 12);
+  var compareMode = !!_vsGraphState.compare;
+  var selectedYears = verstossGraphSelectedYears();
   var months = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
-  var maxMonth = Math.max.apply(null, monthCount.concat([0]));
-  var maxMonthName = maxMonth ? months[monthCount.indexOf(maxMonth)] : "—";
+  var monthsLong = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+  var palette = ["#dc2626", "#f97316", "#f59e0b", "#1e3a5f", "#2563eb", "#0891b2", "#16a34a", "#cbd5e1", "#be123c", "#475569", "#0f766e", "#92400e"];
+
+  var yearLabel = compareMode ? selectedYears.join(" vs ") : (_vsGraphState.jahr || "alle Jahre");
+
+  var rows = all.filter(function(r) {
+    if (compareMode) { return selectedYears.length ? selectedYears.indexOf(r.year) !== -1 : true; }
+    return !_vsGraphState.jahr || r.year === _vsGraphState.jahr;
+  });
+  var agg = verstossAggregate(rows);
+  var total = agg.total;
+
+  // Pro-Jahr-Aggregate für Vergleich
+  var yearAgg = {};
+  selectedYears.forEach(function(y) { yearAgg[y] = verstossAggregate(all.filter(function(r){ return r.year === y; })); });
+
+  var topDrivers = Object.entries(agg.driverMap).sort(function(a, b) { return b[1] - a[1] || a[0].localeCompare(b[0], "de"); }).slice(0, 15);
+  var topTypes = Object.entries(agg.typeMap).sort(function(a, b) { return b[1] - a[1] || a[0].localeCompare(b[0], "de"); }).slice(0, 12);
+  var maxMonth = Math.max.apply(null, agg.monthCount.concat([0]));
+  var maxMonthName = maxMonth ? months[agg.monthCount.indexOf(maxMonth)] : "—";
+  var topDriver = topDrivers.length ? { name: topDrivers[0][0], count: topDrivers[0][1] } : null;
+
+  // Daten für Excel-Export merken
+  _vsGraphLast = {
+    compareMode: compareMode, selectedYears: selectedYears, yearLabel: yearLabel,
+    months: months, monthsLong: monthsLong, agg: agg, yearAgg: yearAgg,
+    topDrivers: topDrivers, topTypes: topTypes
+  };
 
   if (stats) {
-    stats.innerHTML = "Jahr <b style='color:#991b1b;'>" + verstossEsc(label) + "</b> &middot; <b>" + total + "</b> Verstöße";
+    stats.innerHTML = "Ansicht <b style='color:#991b1b;'>" + (compareMode ? "Jahre vergleichen" : "Ein Jahr") + "</b> &middot; "
+      + "Jahr <b style='color:#991b1b;'>" + verstossEsc(yearLabel) + "</b> &middot; <b>" + total + "</b> Verstöße";
   }
 
   var html = "";
   html += "<div style='margin-right:18px;'>";
+
+  if (!rows.length) {
+    html += "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;'>Keine Verstöße für " + verstossEsc(yearLabel) + " gefunden.</div></div>";
+    body.innerHTML = html;
+    return;
+  }
+
+  // KPIs
   html += "<div style='display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:12px;margin-bottom:14px;'>";
-  html += verstossGraphKpi("Verstöße", total, "#991b1b", "&#9888;&#65039;");
-  html += verstossGraphKpi("Bußgeld Fahrer", verstossFmtEuro(sumDriver), "#dc2626", "&#128179;");
-  html += verstossGraphKpi("Bußgeld Firma", verstossFmtEuro(sumCompany), "#b45309", "&#127970;");
-  html += verstossGraphKpi("Stärkster Monat", maxMonthName + (maxMonth ? " · " + maxMonth : ""), "#1e3a5f", "&#128197;");
+  if (compareMode && selectedYears.length >= 2) {
+    var t1 = (yearAgg[selectedYears[0]] || {}).total || 0;
+    var t2 = (yearAgg[selectedYears[1]] || {}).total || 0;
+    var diff = t1 - t2;
+    html += verstossGraphKpi("Verstöße " + selectedYears[0], t1, "#991b1b", "&#9888;&#65039;");
+    html += verstossGraphKpi("Verstöße " + selectedYears[1], t2, "#b45309", "&#9888;&#65039;");
+    html += verstossGraphKpi("Differenz", (diff > 0 ? "+" : "") + diff, "#1e3a5f", "&#8644;");
+    html += verstossGraphKpi("Top Fahrer", topDriver ? verstossEsc(topDriver.name) + " · " + topDriver.count : "—", "#7c2d12", "&#127942;");
+  } else {
+    html += verstossGraphKpi("Verstöße", total, "#991b1b", "&#9888;&#65039;");
+    html += verstossGraphKpi("Bußgeld Fahrer", verstossFmtEuro(agg.sumDriver), "#dc2626", "&#128179;");
+    html += verstossGraphKpi("Bußgeld Firma", verstossFmtEuro(agg.sumCompany), "#b45309", "&#127970;");
+    html += verstossGraphKpi("Stärkster Monat", maxMonthName + (maxMonth ? " · " + maxMonth : ""), "#1e3a5f", "&#128197;");
+  }
   html += "</div>";
 
   html += "<div style='display:grid;grid-template-columns:minmax(0,1.15fr) minmax(420px,.95fr);gap:14px;margin-bottom:14px;align-items:stretch;'>";
-  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:360px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Verstöße nach Monat</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anzahl und Anteil an allen Verstößen</div><div style='height:300px;'><canvas id='verstoss-chart-month'></canvas></div></div>";
-  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:470px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Verstoßarten</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anteil je Verstoßart</div><div style='height:410px;'><canvas id='verstoss-chart-type'></canvas></div></div>";
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:360px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>" + (compareMode ? "Jahresvergleich nach Monat" : "Verstöße nach Monat") + "</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>" + (compareMode ? "Die gewählten Jahre werden pro Monat nebeneinander gestellt" : "Anzahl und Anteil an allen Verstößen") + "</div><div style='height:300px;'><canvas id='verstoss-chart-month'></canvas></div></div>";
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:470px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Verstoßarten</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anteil je Verstoßart" + (compareMode ? " (beide Jahre)" : "") + "</div><div style='height:410px;'><canvas id='verstoss-chart-type'></canvas></div></div>";
   html += "</div>";
 
-  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Top Fahrer nach Anzahl</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anzahl und Anteil an allen Verstößen</div><div style='height:360px;'><canvas id='verstoss-chart-driver'></canvas></div></div>";
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Top Fahrer nach Anzahl</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anzahl und Anteil an allen Verstößen" + (compareMode ? " (beide Jahre)" : "") + "</div><div style='height:360px;'><canvas id='verstoss-chart-driver'></canvas></div></div>";
 
+  // Tabelle Monatsübersicht / Jahresvergleich
   html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:14px;'>";
-  html += "<div style='padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:900;color:#0f172a;'>Monatsübersicht " + verstossEsc(label) + "</div>";
+  html += "<div style='padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:900;color:#0f172a;'>" + (compareMode ? "Jahresvergleich " : "Monatsübersicht ") + verstossEsc(yearLabel) + "</div>";
   html += "<table style='width:100%;border-collapse:collapse;font-size:12.5px;'><thead><tr style='background:#1e3a5f;color:#fff;'>";
-  ["Monat", "Verstöße", "Anteil", "Bußgeld Fahrer", "Bußgeld Firma"].forEach(function(h, i) {
-    html += "<th style='padding:10px 12px;text-align:" + (i === 0 ? "left" : "right") + ";font-size:11px;font-weight:800;letter-spacing:.3px;'>" + h + "</th>";
-  });
+  if (compareMode && selectedYears.length >= 2) {
+    ["Monat", selectedYears[0], selectedYears[1], "Differenz", "Gesamt"].forEach(function(h, i) {
+      html += "<th style='padding:10px 12px;text-align:" + (i === 0 ? "left" : "right") + ";font-size:11px;font-weight:800;letter-spacing:.3px;'>" + verstossEsc(h) + "</th>";
+    });
+  } else {
+    ["Monat", "Verstöße", "Anteil", "Bußgeld Fahrer", "Bußgeld Firma"].forEach(function(h, i) {
+      html += "<th style='padding:10px 12px;text-align:" + (i === 0 ? "left" : "right") + ";font-size:11px;font-weight:800;letter-spacing:.3px;'>" + h + "</th>";
+    });
+  }
   html += "</tr></thead><tbody>";
   months.forEach(function(m, i) {
     html += "<tr style='background:" + (i % 2 ? "#f9fafb" : "#fff") + ";border-bottom:1px solid #f1f5f9;'>";
-    html += "<td style='padding:9px 12px;font-weight:800;color:#0f172a;font-size:13px;'>" + m + "</td>";
-    html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#1e3a5f;font-size:13px;'>" + monthCount[i] + "</td>";
-    html += "<td style='padding:9px 12px;text-align:right;font-weight:800;color:" + (monthCount[i] ? "#991b1b" : "#cbd5e1") + ";'>" + verstossPct(monthCount[i], total) + "</td>";
-    html += "<td style='padding:9px 12px;text-align:right;font-weight:700;color:" + (monthDriver[i] ? "#dc2626" : "#cbd5e1") + ";'>" + verstossFmtEuro(monthDriver[i]) + "</td>";
-    html += "<td style='padding:9px 12px;text-align:right;font-weight:700;color:" + (monthCompany[i] ? "#b45309" : "#cbd5e1") + ";'>" + verstossFmtEuro(monthCompany[i]) + "</td>";
+    html += "<td style='padding:9px 12px;font-weight:800;color:#0f172a;font-size:13px;'>" + (compareMode ? monthsLong[i] : m) + "</td>";
+    if (compareMode && selectedYears.length >= 2) {
+      var v1 = ((yearAgg[selectedYears[0]] || {}).monthCount || [])[i] || 0;
+      var v2 = ((yearAgg[selectedYears[1]] || {}).monthCount || [])[i] || 0;
+      var d = v1 - v2;
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#991b1b;font-size:13px;'>" + v1 + "</td>";
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#b45309;font-size:13px;'>" + v2 + "</td>";
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:" + (d <= 0 ? "#16a34a" : "#dc2626") + ";font-size:13px;'>" + (d > 0 ? "+" : "") + d + "</td>";
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:800;color:#1e3a5f;'>" + (v1 + v2) + "</td>";
+    } else {
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#1e3a5f;font-size:13px;'>" + agg.monthCount[i] + "</td>";
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:800;color:" + (agg.monthCount[i] ? "#991b1b" : "#cbd5e1") + ";'>" + verstossPct(agg.monthCount[i], total) + "</td>";
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:700;color:" + (agg.monthDriver[i] ? "#dc2626" : "#cbd5e1") + ";'>" + verstossFmtEuro(agg.monthDriver[i]) + "</td>";
+      html += "<td style='padding:9px 12px;text-align:right;font-weight:700;color:" + (agg.monthCompany[i] ? "#b45309" : "#cbd5e1") + ";'>" + verstossFmtEuro(agg.monthCompany[i]) + "</td>";
+    }
     html += "</tr>";
   });
+  if (compareMode && selectedYears.length >= 2) {
+    var gt1 = (yearAgg[selectedYears[0]] || {}).total || 0, gt2 = (yearAgg[selectedYears[1]] || {}).total || 0, gtd = gt1 - gt2;
+    html += "<tr style='background:#eef2f8;border-top:2px solid #c6d2e2;'>";
+    html += "<td style='padding:9px 12px;font-weight:900;color:#0f172a;'>Gesamt</td>";
+    html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#991b1b;'>" + gt1 + "</td>";
+    html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#b45309;'>" + gt2 + "</td>";
+    html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:" + (gtd <= 0 ? "#16a34a" : "#dc2626") + ";'>" + (gtd > 0 ? "+" : "") + gtd + "</td>";
+    html += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#1e3a5f;'>" + total + "</td>";
+    html += "</tr>";
+  }
   html += "</tbody></table></div>";
   html += "</div>";
 
-  if (!rows.length) {
-    html = "<div style='margin-right:18px;'><div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;'>Keine Verstöße für " + verstossEsc(label) + " gefunden.</div></div>";
-  }
   body.innerHTML = html;
 
-  if (!rows.length || typeof Chart === "undefined") return;
+  if (typeof Chart === "undefined") return;
+
+  // Monatschart
+  var monthDatasets, monthPlugins;
+  if (compareMode && selectedYears.length >= 2) {
+    monthDatasets = selectedYears.map(function(y, idx) {
+      return { label: "Verstöße " + y, data: (yearAgg[y] || {}).monthCount || Array(12).fill(0), backgroundColor: idx === 0 ? "#dc2626" : "#f59e0b", borderRadius: 5 };
+    });
+    monthPlugins = [verstossCountLabelPlugin()];
+  } else {
+    monthDatasets = [{ label: "Verstöße", data: agg.monthCount, backgroundColor: "#dc2626", borderRadius: 5 }];
+    monthPlugins = [verstossPctLabelPlugin(total, "bar-x")];
+  }
 
   verstossChart("verstoss-chart-month", {
     type: "bar",
-    data: { labels: months, datasets: [{ label: "Verstöße", data: monthCount, backgroundColor: "#dc2626", borderRadius: 5 }] },
-    plugins: [verstossPctLabelPlugin(total, "bar-x")],
+    data: { labels: months, datasets: monthDatasets },
+    plugins: monthPlugins,
     options: {
       responsive: true,
       maintainAspectRatio: false,
       layout: { padding: { top: 18 } },
-      plugins: { legend: { display: false }, tooltip: verstossTooltipPct(total, "y") },
+      plugins: { legend: { display: compareMode, position: "bottom", labels: { boxWidth: 10, padding: 10, font: { size: 10 } } }, tooltip: verstossTooltipPct(total, "y") },
       scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
     }
   });
@@ -6039,7 +6202,7 @@ function verstossRenderGraph() {
     type: "doughnut",
     data: {
       labels: topTypes.map(function(x){ return x[0] + " · " + verstossCountPctLabel(x[1], total); }),
-      datasets: [{ data: topTypes.map(function(x){ return x[1]; }), backgroundColor: ["#dc2626", "#f97316", "#f59e0b", "#1e3a5f", "#2563eb", "#0891b2", "#16a34a", "#cbd5e1", "#be123c", "#475569", "#0f766e", "#92400e"] }]
+      datasets: [{ data: topTypes.map(function(x){ return x[1]; }), backgroundColor: palette }]
     },
     plugins: [verstossPctLabelPlugin(total, "doughnut")],
     options: {
@@ -6065,6 +6228,105 @@ function verstossRenderGraph() {
       scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
     }
   });
+}
+
+// ── Excel-Export des Verstoß-Graphen (alle wichtigen Infos) ──────────────────
+function verstossExportExcel() {
+  if (typeof XLSX === "undefined") { alert("Excel-Bibliothek nicht geladen."); return; }
+  if (!_vsGraphLast) { verstossRenderGraph(); }
+  var d = _vsGraphLast;
+  if (!d || !d.agg || !d.agg.total) { alert("Keine Verstoßdaten für den Export."); return; }
+
+  var compareMode = d.compareMode, sy = d.selectedYears, agg = d.agg, yearAgg = d.yearAgg;
+  var months = d.months, monthsLong = d.monthsLong;
+  var total = agg.total;
+  var today = new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "long", year: "numeric" });
+  var fmtE = function(n){ return Math.round(Number(n) || 0); };
+
+  var wb = XLSX.utils.book_new();
+
+  // ── Blatt 1: Übersicht / KPIs ──
+  var ov = [];
+  ov.push(["Verstoßauswertung – " + (compareMode ? "Jahresvergleich" : "Graph pro Jahr")]);
+  ov.push(["Jahr / Auswahl", d.yearLabel]);
+  ov.push(["Stand", today]);
+  ov.push([]);
+  if (compareMode && sy.length >= 2) {
+    var a1 = yearAgg[sy[0]] || {}, a2 = yearAgg[sy[1]] || {};
+    ov.push(["Kennzahl", sy[0], sy[1], "Differenz (" + sy[0] + " − " + sy[1] + ")"]);
+    ov.push(["Verstöße gesamt", a1.total || 0, a2.total || 0, (a1.total || 0) - (a2.total || 0)]);
+    ov.push(["Bußgeld Fahrer (€)", fmtE(a1.sumDriver), fmtE(a2.sumDriver), fmtE(a1.sumDriver) - fmtE(a2.sumDriver)]);
+    ov.push(["Bußgeld Firma (€)", fmtE(a1.sumCompany), fmtE(a2.sumCompany), fmtE(a1.sumCompany) - fmtE(a2.sumCompany)]);
+  } else {
+    ov.push(["Kennzahl", "Wert"]);
+    ov.push(["Verstöße gesamt", total]);
+    ov.push(["Bußgeld Fahrer (€)", fmtE(agg.sumDriver)]);
+    ov.push(["Bußgeld Firma (€)", fmtE(agg.sumCompany)]);
+    var mm = Math.max.apply(null, agg.monthCount.concat([0]));
+    ov.push(["Stärkster Monat", (mm ? monthsLong[agg.monthCount.indexOf(mm)] + " (" + mm + ")" : "—")]);
+  }
+  var wsOv = XLSX.utils.aoa_to_sheet(ov);
+  wsOv["!cols"] = [{ wch: 26 }, { wch: 16 }, { wch: 16 }, { wch: 22 }];
+  XLSX.utils.book_append_sheet(wb, wsOv, "Übersicht");
+
+  // ── Blatt 2: Monate ──
+  var mo = [];
+  if (compareMode && sy.length >= 2) {
+    mo.push(["Monat", sy[0], sy[1], "Differenz", "Gesamt"]);
+    var mc1 = (yearAgg[sy[0]] || {}).monthCount || [], mc2 = (yearAgg[sy[1]] || {}).monthCount || [];
+    monthsLong.forEach(function(m, i) {
+      var v1 = mc1[i] || 0, v2 = mc2[i] || 0;
+      mo.push([m, v1, v2, v1 - v2, v1 + v2]);
+    });
+    var s1 = (yearAgg[sy[0]] || {}).total || 0, s2 = (yearAgg[sy[1]] || {}).total || 0;
+    mo.push(["Gesamt", s1, s2, s1 - s2, s1 + s2]);
+  } else {
+    mo.push(["Monat", "Verstöße", "Anteil %", "Bußgeld Fahrer (€)", "Bußgeld Firma (€)"]);
+    monthsLong.forEach(function(m, i) {
+      var c = agg.monthCount[i];
+      var pct = total ? Math.round((c / total) * 1000) / 10 : 0;
+      mo.push([m, c, pct, fmtE(agg.monthDriver[i]), fmtE(agg.monthCompany[i])]);
+    });
+    mo.push(["Gesamt", total, 100, fmtE(agg.sumDriver), fmtE(agg.sumCompany)]);
+  }
+  var wsMo = XLSX.utils.aoa_to_sheet(mo);
+  wsMo["!cols"] = [{ wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 18 }];
+  XLSX.utils.book_append_sheet(wb, wsMo, "Monate");
+
+  // ── Blatt 3: Verstoßarten ──
+  var ty = [["Verstoßart", "Anzahl", "Anteil %"]];
+  var allTypes = Object.entries(agg.typeMap).sort(function(a, b) { return b[1] - a[1] || a[0].localeCompare(b[0], "de"); });
+  allTypes.forEach(function(x) {
+    ty.push([x[0], x[1], total ? Math.round((x[1] / total) * 1000) / 10 : 0]);
+  });
+  var wsTy = XLSX.utils.aoa_to_sheet(ty);
+  wsTy["!cols"] = [{ wch: 50 }, { wch: 12 }, { wch: 12 }];
+  XLSX.utils.book_append_sheet(wb, wsTy, "Verstoßarten");
+
+  // ── Blatt 4: Fahrer ──
+  var fa;
+  if (compareMode && sy.length >= 2) {
+    fa = [["Fahrer", sy[0], sy[1], "Differenz", "Gesamt"]];
+    var dm1 = (yearAgg[sy[0]] || {}).driverMap || {}, dm2 = (yearAgg[sy[1]] || {}).driverMap || {};
+    var names = {};
+    Object.keys(dm1).forEach(function(n){ names[n] = 1; });
+    Object.keys(dm2).forEach(function(n){ names[n] = 1; });
+    Object.keys(names).map(function(n) {
+      var c1 = dm1[n] || 0, c2 = dm2[n] || 0;
+      return [n, c1, c2, c1 - c2, c1 + c2];
+    }).sort(function(a, b) { return b[4] - a[4] || a[0].localeCompare(b[0], "de"); }).forEach(function(r) { fa.push(r); });
+  } else {
+    fa = [["Fahrer", "Verstöße", "Anteil %"]];
+    Object.entries(agg.driverMap).sort(function(a, b) { return b[1] - a[1] || a[0].localeCompare(b[0], "de"); }).forEach(function(x) {
+      fa.push([x[0], x[1], total ? Math.round((x[1] / total) * 1000) / 10 : 0]);
+    });
+  }
+  var wsFa = XLSX.utils.aoa_to_sheet(fa);
+  wsFa["!cols"] = [{ wch: 28 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+  XLSX.utils.book_append_sheet(wb, wsFa, "Fahrer");
+
+  var fname = "Verstossauswertung_" + (compareMode ? sy.join("_vs_") : (d.yearLabel || "alle")).replace(/[^0-9A-Za-z_]/g, "") + ".xlsx";
+  XLSX.writeFile(wb, fname);
 }
 
 function verstossGraphKpi(label, value, color, icon) {
@@ -8597,8 +8859,17 @@ iframe.active{{display:block}}
     <div style="width:100%;max-width:1728px;margin:0 auto;display:flex;flex-direction:column;flex:1;overflow:hidden;">
       <div style="display:flex;align-items:center;gap:10px;padding:16px 18px;flex-wrap:wrap;flex-shrink:0;">
         <h2 style="margin:0;font-size:17px;font-weight:900;color:#0f172a;">&#9888;&#65039; Versto&#223;auswertung &ndash; Graph pro Jahr</h2>
-        <select id="verstoss-graph-year" onchange="verstossGraphYearChange(this.value)"
+        <select id="verstoss-graph-mode" onchange="verstossGraphSetMode(this.value)" title="Ansicht"
+          style="padding:8px 11px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:900;font-family:inherit;background:#fff;color:#1f3347;outline:none;cursor:pointer;">
+          <option value="single">Ein Jahr</option>
+          <option value="compare">Jahre vergleichen</option>
+        </select>
+        <select id="verstoss-graph-year" onchange="verstossGraphYearChange(this.value)" title="Jahr 1"
           style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:800;font-family:inherit;outline:none;background:#fff;color:#991b1b;cursor:pointer;"></select>
+        <select id="verstoss-graph-year-2" onchange="verstossGraphYear2Change(this.value)" title="Jahr 2"
+          style="display:none;padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:800;font-family:inherit;outline:none;background:#fff;color:#b45309;cursor:pointer;"></select>
+        <button onclick="verstossExportExcel()" title="Graph-Daten als Excel exportieren"
+          style="padding:8px 14px;border:1.5px solid #16a34a;border-radius:8px;font-size:12px;font-weight:900;font-family:inherit;background:#16a34a;color:#fff;outline:none;cursor:pointer;">&#128190; Excel-Export</button>
         <span id="verstoss-graph-stats" style="font-size:12px;font-weight:700;color:#64748b;margin-left:auto;"></span>
       </div>
       <div id="verstoss-graph-content" style="flex:1;overflow-y:auto;padding:4px 0 30px 18px;">
