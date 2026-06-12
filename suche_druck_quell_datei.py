@@ -20,8 +20,8 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "verstoss-jahresvergleich-2026-06-09-v34-excel-export"
-EXTRA_CACHE_VERSION = "extra-parser-2026-06-09-v34-verstoss-vergleich"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-06-12-v35-design"
+EXTRA_CACHE_VERSION = "extra-parser-2026-06-12-v35-design"
 
 
 # =============================================================================
@@ -7833,11 +7833,12 @@ function spedInit() {
 
     fabew_js_code = r"""
 // ── Fahrerbewertung (Auswertung d_rohdaten.json) ─────────────────────────────
+// Design-Update 2026-06-12: kompakter Dashboard-Aufbau, Top/Flop statt 101er-Endlosdiagramm
 var _fabewCharts = {};
 var _fabewState  = { mode: "single", m1: "", m2: "", search: "" };
 var FABEW_TYPE_LABELS = { BRAKE: "Bremsung", CURVE: "Kurve", OVERSPEED: "Tempo", SPEEDUP: "Beschleunigung" };
 var FABEW_TYPE_COLORS = { BRAKE: "#2563eb", CURVE: "#7c3aed", OVERSPEED: "#dc2626", SPEEDUP: "#d97706" };
-var FABEW_MONTH_NAMES = ["Jan","Feb","M\u00e4r","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
+var FABEW_MONTH_NAMES = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
 
 function faBewData() {
   return (typeof FAHRERBEWERTUNG_DATA !== "undefined" && FAHRERBEWERTUNG_DATA && Array.isArray(FAHRERBEWERTUNG_DATA.drivers))
@@ -7846,7 +7847,9 @@ function faBewData() {
 }
 
 function faBewEsc(v) {
-  return String(v == null ? "" : v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  return String(v == null ? "" : v)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 }
 
 function faBewChart(id, cfg) {
@@ -7869,16 +7872,40 @@ function faBewMonthLabel(mk) {
 }
 
 function faBewGradeColor(g) {
-  if (g == null) return "#94a3b8";
+  g = Number(g);
+  if (g == null || isNaN(g)) return "#94a3b8";
   if (g >= 8.5) return "#16a34a";
-  if (g >= 7)   return "#65a30d";
+  if (g >= 7.0) return "#65a30d";
   if (g >= 5.5) return "#d97706";
   return "#dc2626";
 }
 
+function faBewGradeSoft(g) {
+  g = Number(g);
+  if (g == null || isNaN(g)) return "#f1f5f9";
+  if (g >= 8.5) return "#ecfdf5";
+  if (g >= 7.0) return "#f7fee7";
+  if (g >= 5.5) return "#fffbeb";
+  return "#fef2f2";
+}
+
+function faBewGradeText(g) {
+  g = Number(g);
+  if (g == null || isNaN(g)) return "ohne Note";
+  if (g >= 8.5) return "Sehr gut";
+  if (g >= 7.0) return "Gut";
+  if (g >= 5.5) return "Prüfen";
+  return "Kritisch";
+}
+
 function faBewNum(v, dec) {
-  if (v == null || isNaN(v)) return "\u2013";
+  if (v == null || isNaN(v)) return "–";
   return Number(v).toLocaleString("de-DE", { minimumFractionDigits: dec||0, maximumFractionDigits: dec||0 });
+}
+
+function faBewInt(v) {
+  if (v == null || isNaN(v)) return 0;
+  return Number(v) || 0;
 }
 
 function faBewPopulateMonths() {
@@ -7898,6 +7925,8 @@ function faBewPopulateMonths() {
 function faBewSetMode(mode) {
   _fabewState.mode = mode;
   var s2 = document.getElementById("fabew-month-2");
+  var modeSel = document.getElementById("fabew-month-mode");
+  if (modeSel) modeSel.value = mode;
   if (s2) s2.style.display = (mode === "compare") ? "" : "none";
   faBewRender();
 }
@@ -7918,18 +7947,128 @@ function faBewMonthTypeCounts(mk) {
   return EVT.map(function(t){ return gm[t] || 0; });
 }
 
+function faBewDriverMonthEvents(d, mk) {
+  return faBewInt(((d.months || {})[mk] || {})._t);
+}
+
 function faBewInit() {
   faBewPopulateMonths();
   faBewRender();
 }
 
+function faBewStyleBlock() {
+  return "<style>"
+    + ".fabew-shell{display:flex;flex-direction:column;gap:16px;}"
+    + ".fabew-grid4{display:grid;grid-template-columns:repeat(4,minmax(180px,1fr));gap:14px;}"
+    + ".fabew-grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}"
+    + ".fabew-card{background:#fff;border:1px solid #dbe4ef;border-radius:16px;box-shadow:0 10px 28px rgba(15,23,42,.055);overflow:hidden;}"
+    + ".fabew-card-pad{padding:16px 18px;}"
+    + ".fabew-title{font-size:13px;font-weight:950;color:#0f172a;letter-spacing:-.1px;}"
+    + ".fabew-sub{font-size:11.5px;font-weight:750;color:#64748b;margin-top:3px;}"
+    + ".fabew-kpi{position:relative;min-height:112px;background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);border:1px solid #dbe4ef;border-radius:16px;padding:15px 17px;overflow:hidden;box-shadow:0 8px 24px rgba(15,23,42,.045);}"
+    + ".fabew-kpi:before{content:'';position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--accent,#1e6091);}"
+    + ".fabew-kpi .ico{position:absolute;right:14px;top:12px;font-size:22px;opacity:.45;}"
+    + ".fabew-kpi .lab{font-size:10.5px;font-weight:900;color:#64748b;text-transform:uppercase;letter-spacing:.55px;margin-bottom:9px;}"
+    + ".fabew-kpi .num{font-size:27px;font-weight:1000;letter-spacing:-.7px;line-height:1.05;color:var(--accent,#1e6091);font-variant-numeric:tabular-nums;}"
+    + ".fabew-kpi .note{font-size:11.5px;font-weight:760;color:#64748b;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}"
+    + ".fabew-driver-card{border:1px solid #dbe4ef;border-radius:14px;background:#fff;padding:14px 15px;box-shadow:0 8px 22px rgba(15,23,42,.04);min-width:0;}"
+    + ".fabew-driver-card .label{font-size:10px;font-weight:900;color:#64748b;text-transform:uppercase;letter-spacing:.55px;}"
+    + ".fabew-driver-card .name{font-size:15px;font-weight:950;color:#0f172a;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}"
+    + ".fabew-driver-card .value{font-size:22px;font-weight:1000;letter-spacing:-.4px;margin-top:6px;font-variant-numeric:tabular-nums;}"
+    + ".fabew-board{display:flex;flex-direction:column;gap:7px;padding:14px;}"
+    + ".fabew-barrow{display:grid;grid-template-columns:24px minmax(120px,1fr) minmax(130px,38%) 48px;gap:9px;align-items:center;padding:7px 9px;border-radius:10px;border:1px solid #eef2f7;background:#fff;}"
+    + ".fabew-barrow:nth-child(even){background:#fbfdff;}"
+    + ".fabew-rank{font-size:10.5px;font-weight:950;color:#94a3b8;text-align:right;font-variant-numeric:tabular-nums;}"
+    + ".fabew-name{font-size:12px;font-weight:850;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}"
+    + ".fabew-mini{height:9px;background:#edf2f7;border-radius:999px;overflow:hidden;}"
+    + ".fabew-fill{height:100%;border-radius:999px;background:var(--accent,#1e6091);}"
+    + ".fabew-val{font-size:12px;font-weight:950;text-align:right;font-variant-numeric:tabular-nums;}"
+    + ".fabew-table-wrap{overflow:auto;max-height:520px;}"
+    + ".fabew-table{width:100%;border-collapse:separate;border-spacing:0;font-size:12px;}"
+    + ".fabew-table th{position:sticky;top:0;background:#102033;color:#fff;padding:10px 11px;text-align:right;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.45px;white-space:nowrap;z-index:2;}"
+    + ".fabew-table th:first-child,.fabew-table th:nth-child(2){text-align:left;}"
+    + ".fabew-table td{padding:10px 11px;border-bottom:1px solid #edf2f7;text-align:right;color:#334155;font-weight:730;white-space:nowrap;font-variant-numeric:tabular-nums;}"
+    + ".fabew-table td:first-child,.fabew-table td:nth-child(2){text-align:left;}"
+    + ".fabew-table tr:nth-child(even) td{background:#fbfdff;}"
+    + ".fabew-table tr:hover td{background:#eef6ff;}"
+    + "@media(max-width:1180px){.fabew-grid4{grid-template-columns:repeat(2,minmax(180px,1fr));}.fabew-grid2{grid-template-columns:1fr;}}"
+    + "@media(max-width:760px){.fabew-grid4{grid-template-columns:1fr;}.fabew-barrow{grid-template-columns:22px minmax(100px,1fr) 74px 42px;}.fabew-mini{height:8px;}.fabew-card-pad{padding:13px;}}"
+    + "</style>";
+}
+
 function faBewKpi(label, value, sub, color, icon) {
-  return "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;position:relative;overflow:hidden;'>"
-    + "<div style='position:absolute;top:11px;right:13px;font-size:19px;line-height:1;opacity:.5;'>" + icon + "</div>"
-    + "<div style='font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px;'>" + faBewEsc(label) + "</div>"
-    + "<div style='font-size:23px;font-weight:950;color:" + color + ";line-height:1.15;'>" + value + "</div>"
-    + (sub ? "<div style='font-size:11px;font-weight:700;color:#94a3b8;margin-top:2px;'>" + faBewEsc(sub) + "</div>" : "")
+  return "<div class='fabew-kpi' style='--accent:" + color + ";'>"
+    + "<div class='ico'>" + icon + "</div>"
+    + "<div class='lab'>" + faBewEsc(label) + "</div>"
+    + "<div class='num'>" + value + "</div>"
+    + (sub ? "<div class='note'>" + faBewEsc(sub) + "</div>" : "")
     + "</div>";
+}
+
+function faBewSummaryCard(label, driver, value, sub, color, icon) {
+  var name = driver && driver.name ? driver.name : "–";
+  return "<div class='fabew-driver-card'>"
+    + "<div style='display:flex;align-items:center;justify-content:space-between;gap:10px;'>"
+    + "<div class='label'>" + faBewEsc(label) + "</div>"
+    + "<div style='width:30px;height:30px;border-radius:10px;background:" + (driver ? faBewGradeSoft(driver.grade) : "#f1f5f9") + ";color:" + color + ";display:flex;align-items:center;justify-content:center;font-size:16px;'>" + icon + "</div>"
+    + "</div>"
+    + "<div class='name' title='" + faBewEsc(name) + "'>" + faBewEsc(name) + "</div>"
+    + "<div class='value' style='color:" + color + ";'>" + value + "</div>"
+    + "<div style='font-size:11px;font-weight:750;color:#64748b;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + faBewEsc(sub || "") + "</div>"
+    + "</div>";
+}
+
+function faBewBarRow(d, idx, max, options) {
+  options = options || {};
+  var grade = Number(d.grade);
+  var color = options.color || faBewGradeColor(grade);
+  var val = options.value != null ? Number(options.value) : grade;
+  var maxVal = Math.max(1, Number(max) || 1);
+  var pct = Math.max(4, Math.min(100, Math.round((val / maxVal) * 100)));
+  var display = options.display || faBewNum(val, options.dec == null ? 1 : options.dec);
+  return "<div class='fabew-barrow'>"
+    + "<div class='fabew-rank'>" + (idx + 1) + "</div>"
+    + "<div class='fabew-name' title='" + faBewEsc(d.name || "") + "'>" + faBewEsc(d.name || "") + "</div>"
+    + "<div class='fabew-mini'><div class='fabew-fill' style='--accent:" + color + ";width:" + pct + "%;'></div></div>"
+    + "<div class='fabew-val' style='color:" + color + ";'>" + display + "</div>"
+    + "</div>";
+}
+
+function faBewBoard(title, subtitle, list, mode) {
+  var max = 10;
+  if (mode === "events") max = list.reduce(function(mx,d){ return Math.max(mx, faBewInt(d.evt)); }, 1);
+  var html = "<div class='fabew-card'>"
+    + "<div class='fabew-card-pad' style='border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#fbfdff,#fff);'>"
+    + "<div class='fabew-title'>" + faBewEsc(title) + "</div>"
+    + "<div class='fabew-sub'>" + faBewEsc(subtitle) + "</div>"
+    + "</div><div class='fabew-board'>";
+  if (!list.length) {
+    html += "<div style='padding:24px;text-align:center;color:#94a3b8;font-size:12px;font-weight:750;'>Keine Daten</div>";
+  } else {
+    list.forEach(function(d,i){
+      if (mode === "events") html += faBewBarRow(d, i, max, { value: faBewInt(d.evt), display: faBewNum(d.evt), dec: 0, color: "#dc2626" });
+      else html += faBewBarRow(d, i, 10, { value: d.grade, display: faBewNum(d.grade,1), dec: 1 });
+    });
+  }
+  html += "</div></div>";
+  return html;
+}
+
+function faBewTypePills(m1, m2, compare) {
+  var EVT = faBewData().event_types || ["BRAKE","CURVE","OVERSPEED","SPEEDUP"];
+  var c1 = faBewMonthTypeCounts(m1);
+  var c2 = compare ? faBewMonthTypeCounts(m2) : [];
+  var html = "<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;'>";
+  EVT.forEach(function(t, i){
+    var color = FABEW_TYPE_COLORS[t] || "#64748b";
+    var val = c1[i] || 0;
+    var more = compare ? (" / " + (c2[i] || 0)) : "";
+    html += "<span style='display:inline-flex;align-items:center;gap:7px;border:1px solid #dbe4ef;background:#fff;border-radius:999px;padding:5px 10px;font-size:11px;font-weight:850;color:#334155;'>"
+      + "<i style='display:inline-block;width:8px;height:8px;border-radius:999px;background:" + color + ";'></i>"
+      + faBewEsc(FABEW_TYPE_LABELS[t] || t) + " <b style='color:" + color + ";font-variant-numeric:tabular-nums;'>" + faBewNum(val) + more + "</b></span>";
+  });
+  html += "</div>";
+  return html;
 }
 
 function faBewRender() {
@@ -7938,68 +8077,75 @@ function faBewRender() {
   if (!content) return;
 
   var data = faBewData();
-  var drivers = data.drivers || [];
-  if (!drivers.length) {
-    content.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Fahrerbewertungs-Daten \u2013 bitte d_rohdaten.json in Streamlit hochladen.</div>";
+  var driversAll = data.drivers || [];
+  if (!driversAll.length) {
+    content.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Fahrerbewertungs-Daten – bitte d_rohdaten.json in Streamlit hochladen.</div>";
     if (statsEl) statsEl.innerHTML = "";
     return;
   }
 
+  faBewPopulateMonths();
   var compare = (_fabewState.mode === "compare");
   var m1 = _fabewState.m1, m2 = _fabewState.m2;
   var filtered = faBewFilteredDrivers();
-  var graded = drivers.filter(function(d){ return d.grade != null; });
-  var avgGrade = graded.length ? (graded.reduce(function(s,d){ return s + d.grade; }, 0) / graded.length) : null;
-  var totalEv = drivers.reduce(function(s,d){ return s + (d.evt || 0); }, 0);
-  var fuelArr = drivers.map(function(d){ return d.fuel; }).filter(function(v){ return v != null && !isNaN(v); });
-  var avgFuel = fuelArr.length ? (fuelArr.reduce(function(s,v){ return s + v; }, 0) / fuelArr.length) : null;
+  var graded = filtered.filter(function(d){ return d.grade != null && !isNaN(d.grade); });
+  var avgGrade = graded.length ? (graded.reduce(function(s,d){ return s + Number(d.grade); }, 0) / graded.length) : null;
+  var totalEv = filtered.reduce(function(s,d){ return s + faBewInt(d.evt); }, 0);
+  var fuelArr = filtered.map(function(d){ return d.fuel; }).filter(function(v){ return v != null && !isNaN(v); });
+  var avgFuel = fuelArr.length ? (fuelArr.reduce(function(s,v){ return s + Number(v); }, 0) / fuelArr.length) : null;
+
+  var best = graded.slice().sort(function(a,b){ return Number(b.grade) - Number(a.grade) || (a.name||"").localeCompare(b.name||"","de"); })[0] || null;
+  var worst = graded.slice().sort(function(a,b){ return Number(a.grade) - Number(b.grade) || (a.name||"").localeCompare(b.name||"","de"); })[0] || null;
+  var eventTop = filtered.slice().sort(function(a,b){ return faBewInt(b.evt) - faBewInt(a.evt) || (a.name||"").localeCompare(b.name||"","de"); })[0] || null;
+  var fuelTop = fuelArr.length ? filtered.slice().filter(function(d){ return d.fuel != null && !isNaN(d.fuel); }).sort(function(a,b){ return Number(b.fuel) - Number(a.fuel); })[0] : null;
+  var monthTitle = compare ? (faBewMonthLabel(m1) + " gegen " + faBewMonthLabel(m2)) : faBewMonthLabel(m1);
 
   if (statsEl) {
-    statsEl.innerHTML = "<b>" + filtered.length + "</b> / " + drivers.length + " Fahrer"
-      + (avgGrade != null ? " &nbsp;&middot;&nbsp; \u00d8 Note <b>" + faBewNum(avgGrade,1) + "</b>" : "")
-      + " &nbsp;&middot;&nbsp; \u03a3 <b>" + faBewNum(totalEv) + "</b> Ereignisse";
+    statsEl.innerHTML = "<span style='display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #dbe4ef;border-radius:999px;padding:7px 12px;box-shadow:0 3px 12px rgba(15,23,42,.05);'>"
+      + "<b style='color:#0f172a;'>" + filtered.length + "</b> / " + driversAll.length + " Fahrer"
+      + (avgGrade != null ? " · Ø Note <b style='color:" + faBewGradeColor(avgGrade) + ";'>" + faBewNum(avgGrade,1) + "</b>" : "")
+      + " · Σ <b style='color:#dc2626;'>" + faBewNum(totalEv) + "</b> Ereignisse</span>";
   }
 
-  var html = "";
+  var top15 = graded.slice().sort(function(a,b){ return Number(b.grade) - Number(a.grade); }).slice(0, 15);
+  var flop15 = graded.slice().sort(function(a,b){ return Number(a.grade) - Number(b.grade); }).slice(0, 15);
+  var event15 = filtered.slice().filter(function(d){ return faBewInt(d.evt) > 0; }).sort(function(a,b){ return faBewInt(b.evt) - faBewInt(a.evt); }).slice(0, 15);
+  var topEventHeight = Math.max(310, event15.length * 26 + 90);
 
-  // KPI-Strip
-  html += "<div style='display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:6px 0 16px;'>";
-  html += faBewKpi("Bewertete Fahrer", graded.length + " / " + drivers.length, data.profile || "", "#1e3a5f", "&#128101;");
-  html += faBewKpi("\u00d8 Gesamtnote", avgGrade != null ? faBewNum(avgGrade,1) : "\u2013", "Skala 1\u201310 (10 = best)", faBewGradeColor(avgGrade), "&#11088;");
+  var html = faBewStyleBlock();
+  html += "<div class='fabew-shell'>";
+
+  html += "<div class='fabew-grid4'>";
+  html += faBewKpi("Bewertete Fahrer", graded.length + " / " + filtered.length, data.profile || "aktuelle Auswahl", "#1e3a5f", "&#128101;");
+  html += faBewKpi("Ø Gesamtnote", avgGrade != null ? faBewNum(avgGrade,1) : "–", "Skala 1–10 · " + (avgGrade != null ? faBewGradeText(avgGrade) : "ohne Wert"), faBewGradeColor(avgGrade), "&#11088;");
   html += faBewKpi("Ereignisse gesamt", faBewNum(totalEv), "kritische Fahrereignisse", "#dc2626", "&#9888;&#65039;");
-  html += faBewKpi("\u00d8 Verbrauch", avgFuel != null ? faBewNum(avgFuel,1) + " l" : "\u2013", "je 100 km (FMS)", "#0891b2", "&#9981;");
+  html += faBewKpi("Ø Verbrauch", avgFuel != null ? faBewNum(avgFuel,1) + " l" : "–", "je 100 km laut FMS", "#0891b2", "&#9981;");
   html += "</div>";
 
-  // Note pro Fahrer
-  var noteCount = filtered.filter(function(d){ return d.grade != null; }).length;
-  var noteHeight = Math.max(320, noteCount * 22 + 40);
-  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;'>"
-    + "<div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Gesamtnote pro Fahrer</div>"
-    + "<div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Sortiert nach Note (beste oben) &middot; Skala 1\u201310</div>"
-    + "<div style='height:" + noteHeight + "px;'><canvas id='fabew-chart-note'></canvas></div></div>";
-
-  // Ereignisse nach Monat + Ereignisarten
-  html += "<div style='display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin-bottom:14px;'>";
-  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;'>"
-    + "<div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Ereignisse nach Monat</div>"
-    + "<div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Gestapelt nach Ereignisart</div>"
-    + "<div style='height:300px;'><canvas id='fabew-chart-month'></canvas></div></div>";
-  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;'>"
-    + "<div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Ereignisarten</div>"
-    + "<div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>"
-    + (compare ? faBewMonthLabel(m1) + " vs. " + faBewMonthLabel(m2) : faBewMonthLabel(m1))
-    + "</div><div style='height:300px;'><canvas id='fabew-chart-type'></canvas></div></div>";
+  html += "<div class='fabew-grid4'>";
+  html += faBewSummaryCard("Bester Fahrer", best, best ? faBewNum(best.grade,1) : "–", best ? (faBewGradeText(best.grade) + " · " + faBewNum(best.evt) + " Ereignisse") : "Keine Note", "#16a34a", "&#11088;");
+  html += faBewSummaryCard("Schwächste Note", worst, worst ? faBewNum(worst.grade,1) : "–", worst ? (faBewGradeText(worst.grade) + " · prüfen") : "Keine Note", worst ? faBewGradeColor(worst.grade) : "#94a3b8", "&#128269;");
+  html += faBewSummaryCard("Meiste Ereignisse", eventTop, eventTop ? faBewNum(eventTop.evt) : "–", eventTop ? ("Note " + faBewNum(eventTop.grade,1)) : "Keine Ereignisse", "#dc2626", "&#9888;&#65039;");
+  html += faBewSummaryCard("Höchster Verbrauch", fuelTop, fuelTop ? (faBewNum(fuelTop.fuel,1) + " l") : "–", fuelTop ? "je 100 km" : "Keine FMS-Werte", "#0891b2", "&#9981;");
   html += "</div>";
 
-  // Top Fahrer nach Ereignissen
-  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;'>"
-    + "<div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Top Fahrer nach Ereignissen</div>"
-    + "<div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>"
-    + (compare ? faBewMonthLabel(m1) + " vs. " + faBewMonthLabel(m2) : faBewMonthLabel(m1)) + " &middot; Top 25</div>"
-    + "<div style='height:360px;'><canvas id='fabew-chart-top'></canvas></div></div>";
+  html += "<div class='fabew-grid2'>";
+  html += faBewBoard("Top 15 nach Gesamtnote", "Beste Fahrer der aktuellen Auswahl", top15, "grade");
+  html += faBewBoard("Kritischste 15 nach Gesamtnote", "Diese Fahrer zuerst prüfen", flop15, "grade");
+  html += "</div>";
 
-  // Tabelle
+  html += "<div class='fabew-grid2'>";
+  html += "<div class='fabew-card'><div class='fabew-card-pad'><div class='fabew-title'>Ereignisse nach Monat</div><div class='fabew-sub'>Gestapelt nach Ereignisart über alle vorhandenen Monate</div><div style='height:320px;margin-top:12px;'><canvas id='fabew-chart-month'></canvas></div></div></div>";
+  html += "<div class='fabew-card'><div class='fabew-card-pad'><div class='fabew-title'>Ereignisarten</div><div class='fabew-sub'>" + faBewEsc(monthTitle) + "</div>" + faBewTypePills(m1, m2, compare) + "<div style='height:300px;margin-top:8px;'><canvas id='fabew-chart-type'></canvas></div></div></div>";
+  html += "</div>";
+
+  html += "<div class='fabew-grid2' style='grid-template-columns:1.15fr .85fr;'>";
+  html += "<div class='fabew-card'><div class='fabew-card-pad'><div class='fabew-title'>Top Fahrer nach Ereignissen</div><div class='fabew-sub'>" + faBewEsc(monthTitle) + " · maximal 15 Fahrer · horizontal lesbar</div><div style='height:" + topEventHeight + "px;margin-top:12px;'><canvas id='fabew-chart-top'></canvas></div></div></div>";
+  html += faBewBoard("Auffällige Fahrer gesamt", "Nach allen Ereignissen im Datensatz", event15, "events");
+  html += "</div>";
+
   html += faBewTable(filtered);
+  html += "</div>";
 
   content.innerHTML = html;
   faBewDrawCharts(filtered, compare, m1, m2);
@@ -8007,35 +8153,39 @@ function faBewRender() {
 
 function faBewTable(list) {
   var sorted = list.slice().sort(function(a,b){
-    var ga = a.grade == null ? -1 : a.grade, gb = b.grade == null ? -1 : b.grade;
+    var ga = a.grade == null ? -1 : Number(a.grade), gb = b.grade == null ? -1 : Number(b.grade);
     if (gb !== ga) return gb - ga;
     return (a.name || "").localeCompare(b.name || "", "de");
   });
-  var h = "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;'>";
-  h += "<div style='overflow:auto;max-height:560px;'><table style='width:100%;border-collapse:collapse;font-size:12px;'>";
-  h += "<thead><tr style='position:sticky;top:0;background:linear-gradient(180deg,#2f4a6b 0%,#1e3a5f 100%);z-index:2;'>";
-  ["Fahrer","Pers-Nr","Note","Krit.","Wirtsch.","Schwer.","Ereignisse","Brems.","Kurve","Tempo","km","Std","\u00d8 l"].forEach(function(hd,i){
-    var ta = i <= 1 ? "left" : "right";
-    h += "<th style='padding:9px 10px;text-align:" + ta + ";color:#fff;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;'>" + hd + "</th>";
+  var h = "<div class='fabew-card'>";
+  h += "<div class='fabew-card-pad' style='display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#fbfdff,#fff);'>"
+    + "<div><div class='fabew-title'>Vollständige Fahrerübersicht</div><div class='fabew-sub'>Alle Werte als Tabelle · sortiert nach Gesamtnote</div></div>"
+    + "<div style='font-size:11px;font-weight:850;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:999px;padding:6px 10px;'>" + sorted.length + " Fahrer</div>"
+    + "</div>";
+  h += "<div class='fabew-table-wrap'><table class='fabew-table'>";
+  h += "<thead><tr>";
+  ["Fahrer","Pers-Nr","Note","Status","Krit.","Wirtsch.","Schwer.","Ereignisse","Brems.","Kurve","Tempo","km","Std","Ø l"].forEach(function(hd){
+    h += "<th>" + hd + "</th>";
   });
   h += "</tr></thead><tbody>";
-  sorted.forEach(function(d,i){
-    var bg = i % 2 === 0 ? "#ffffff" : "#f8fafc";
+  sorted.forEach(function(d){
     var gc = faBewGradeColor(d.grade);
-    h += "<tr style='background:" + bg + ";border-bottom:1px solid #eef2f7;'>";
-    h += "<td style='padding:8px 10px;font-weight:700;color:#0f172a;white-space:nowrap;'>" + faBewEsc(d.name) + "</td>";
-    h += "<td style='padding:8px 10px;color:#94a3b8;'>" + faBewEsc(d.persnr) + "</td>";
-    h += "<td style='padding:8px 10px;text-align:right;font-weight:900;color:" + gc + ";'>" + faBewNum(d.grade,1) + "</td>";
-    h += "<td style='padding:8px 10px;text-align:right;color:#475569;'>" + faBewNum(d.g_crit,1) + "</td>";
-    h += "<td style='padding:8px 10px;text-align:right;color:#475569;'>" + faBewNum(d.g_eco,1) + "</td>";
-    h += "<td style='padding:8px 10px;text-align:right;color:#475569;'>" + faBewNum(d.g_diff,1) + "</td>";
-    h += "<td style='padding:8px 10px;text-align:right;font-weight:800;color:#dc2626;'>" + faBewNum(d.evt) + "</td>";
-    h += "<td style='padding:8px 10px;text-align:right;color:#64748b;'>" + faBewNum((d.ev||{}).BRAKE) + "</td>";
-    h += "<td style='padding:8px 10px;text-align:right;color:#64748b;'>" + faBewNum((d.ev||{}).CURVE) + "</td>";
-    h += "<td style='padding:8px 10px;text-align:right;color:#64748b;'>" + faBewNum((d.ev||{}).OVERSPEED) + "</td>";
-    h += "<td style='padding:8px 10px;text-align:right;color:#475569;'>" + faBewNum(d.dist) + "</td>";
-    h += "<td style='padding:8px 10px;text-align:right;color:#475569;'>" + faBewNum(d.hours,0) + "</td>";
-    h += "<td style='padding:8px 10px;text-align:right;color:#0891b2;'>" + faBewNum(d.fuel,1) + "</td>";
+    var gs = faBewGradeSoft(d.grade);
+    h += "<tr>";
+    h += "<td style='font-weight:900;color:#0f172a;max-width:240px;overflow:hidden;text-overflow:ellipsis;' title='" + faBewEsc(d.name) + "'>" + faBewEsc(d.name) + "</td>";
+    h += "<td style='color:#94a3b8;font-weight:800;'>" + faBewEsc(d.persnr) + "</td>";
+    h += "<td style='font-weight:1000;color:" + gc + ";font-size:13px;'>" + faBewNum(d.grade,1) + "</td>";
+    h += "<td><span style='display:inline-flex;justify-content:center;min-width:72px;background:" + gs + ";border:1px solid " + gc + "33;color:" + gc + ";border-radius:999px;padding:3px 9px;font-size:10px;font-weight:950;text-align:center;'>" + faBewEsc(faBewGradeText(d.grade)) + "</span></td>";
+    h += "<td>" + faBewNum(d.g_crit,1) + "</td>";
+    h += "<td>" + faBewNum(d.g_eco,1) + "</td>";
+    h += "<td>" + faBewNum(d.g_diff,1) + "</td>";
+    h += "<td style='font-weight:1000;color:#dc2626;'>" + faBewNum(d.evt) + "</td>";
+    h += "<td>" + faBewNum((d.ev||{}).BRAKE) + "</td>";
+    h += "<td>" + faBewNum((d.ev||{}).CURVE) + "</td>";
+    h += "<td>" + faBewNum((d.ev||{}).OVERSPEED) + "</td>";
+    h += "<td>" + faBewNum(d.dist) + "</td>";
+    h += "<td>" + faBewNum(d.hours,0) + "</td>";
+    h += "<td style='color:#0891b2;font-weight:900;'>" + faBewNum(d.fuel,1) + "</td>";
     h += "</tr>";
   });
   h += "</tbody></table></div></div>";
@@ -8046,106 +8196,100 @@ function faBewDrawCharts(filtered, compare, m1, m2) {
   var data = faBewData();
   var EVT = data.event_types || ["BRAKE","CURVE","OVERSPEED","SPEEDUP"];
   var commonOpts = {
-    responsive: true, maintainAspectRatio: false,
-    plugins: { legend: { labels: { font: { family: "Segoe UI", size: 11 } } } }
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { labels: { font: { family: "Segoe UI", size: 11, weight: "700" }, boxWidth: 11, usePointStyle: true } },
+      tooltip: { backgroundColor: "#0f172a", padding: 10, titleFont: { family: "Segoe UI", size: 12, weight: "800" }, bodyFont: { family: "Segoe UI", size: 12, weight: "700" } }
+    }
   };
 
-  // 1) Note pro Fahrer (horizontal)
-  var graded = filtered.filter(function(d){ return d.grade != null; })
-    .sort(function(a,b){ return b.grade - a.grade || (a.name||"").localeCompare(b.name||"","de"); });
-  faBewChart("fabew-chart-note", {
-    type: "bar",
-    data: {
-      labels: graded.map(function(d){ return d.name; }),
-      datasets: [{
-        label: "Gesamtnote",
-        data: graded.map(function(d){ return d.grade; }),
-        backgroundColor: graded.map(function(d){ return faBewGradeColor(d.grade); }),
-        borderRadius: 3, maxBarThickness: 16
-      }]
-    },
-    options: {
-      indexAxis: "y", responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false },
-        tooltip: { callbacks: { label: function(c){ return "Note: " + c.parsed.x.toLocaleString("de-DE"); } } } },
-      scales: { x: { min: 0, max: 10, ticks: { stepSize: 1, font: { size: 10 } }, grid: { color: "#eef2f7" } },
-                y: { ticks: { font: { size: 10 }, autoSkip: false }, grid: { display: false } } }
-    }
-  });
-
-  // 2) Ereignisse nach Monat (gestapelt)
+  // Ereignisse nach Monat (gestapelt)
   var months = faBewMonths();
   var monthDatasets = EVT.map(function(t){
     return {
       label: FABEW_TYPE_LABELS[t] || t,
       data: months.map(function(mk){ return ((data.g_months[mk]||{})[t]) || 0; }),
       backgroundColor: FABEW_TYPE_COLORS[t] || "#64748b",
-      stack: "ev", borderRadius: 2
+      stack: "ev",
+      borderRadius: 4,
+      borderSkipped: false,
+      maxBarThickness: 46
     };
   });
   faBewChart("fabew-chart-month", {
     type: "bar",
     data: { labels: months.map(faBewMonthLabel), datasets: monthDatasets },
     options: Object.assign({}, commonOpts, {
-      scales: { x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10 } } },
-                y: { stacked: true, beginAtZero: true, grid: { color: "#eef2f7" }, ticks: { font: { size: 10 } } } }
+      scales: {
+        x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10, weight: "700" }, color: "#64748b" } },
+        y: { stacked: true, beginAtZero: true, grid: { color: "#eef2f7" }, ticks: { font: { size: 10 }, color: "#64748b" } }
+      }
     })
   });
 
-  // 3) Ereignisarten
+  // Ereignisarten
   var labelsT = EVT.map(function(t){ return FABEW_TYPE_LABELS[t] || t; });
   var colorsT = EVT.map(function(t){ return FABEW_TYPE_COLORS[t] || "#64748b"; });
   if (compare) {
     faBewChart("fabew-chart-type", {
       type: "bar",
       data: { labels: labelsT, datasets: [
-        { label: faBewMonthLabel(m1), data: faBewMonthTypeCounts(m1), backgroundColor: "#1d4ed8", borderRadius: 3 },
-        { label: faBewMonthLabel(m2), data: faBewMonthTypeCounts(m2), backgroundColor: "#d97706", borderRadius: 3 }
+        { label: faBewMonthLabel(m1), data: faBewMonthTypeCounts(m1), backgroundColor: "#1e3a5f", borderRadius: 5, borderSkipped: false },
+        { label: faBewMonthLabel(m2), data: faBewMonthTypeCounts(m2), backgroundColor: "#d97706", borderRadius: 5, borderSkipped: false }
       ]},
       options: Object.assign({}, commonOpts, {
-        scales: { x: { grid: { display: false }, ticks: { font: { size: 10 } } },
-                  y: { beginAtZero: true, grid: { color: "#eef2f7" }, ticks: { font: { size: 10 } } } }
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 10, weight: "700" }, color: "#64748b" } },
+          y: { beginAtZero: true, grid: { color: "#eef2f7" }, ticks: { font: { size: 10 }, color: "#64748b" } }
+        }
       })
     });
   } else {
     faBewChart("fabew-chart-type", {
       type: "doughnut",
-      data: { labels: labelsT, datasets: [{ data: faBewMonthTypeCounts(m1), backgroundColor: colorsT, borderWidth: 2, borderColor: "#fff" }] },
-      options: { responsive: true, maintainAspectRatio: false, cutout: "55%",
-        plugins: { legend: { position: "bottom", labels: { font: { size: 11 }, padding: 12 } } } }
+      data: { labels: labelsT, datasets: [{ data: faBewMonthTypeCounts(m1), backgroundColor: colorsT, borderWidth: 3, borderColor: "#fff", hoverOffset: 5 }] },
+      options: { responsive: true, maintainAspectRatio: false, cutout: "62%",
+        plugins: { legend: { position: "bottom", labels: { font: { size: 11, weight: "750" }, padding: 13, usePointStyle: true } } } }
     });
   }
 
-  // 4) Top Fahrer nach Ereignissen
-  function evOf(d, mk) { return ((d.months || {})[mk] || {})._t || 0; }
+  // Top Fahrer nach Ereignissen – horizontal, damit Namen lesbar bleiben
+  function evOf(d, mk) { return faBewDriverMonthEvents(d, mk); }
   var topList;
   if (compare) {
     topList = filtered.map(function(d){ return { name: d.name, a: evOf(d,m1), b: evOf(d,m2) }; })
       .filter(function(x){ return x.a || x.b; })
-      .sort(function(x,y){ return (y.a+y.b) - (x.a+x.b); }).slice(0,25);
+      .sort(function(x,y){ return (y.a+y.b) - (x.a+x.b) || String(x.name).localeCompare(String(y.name), "de"); }).slice(0,15);
     faBewChart("fabew-chart-top", {
       type: "bar",
       data: { labels: topList.map(function(x){ return x.name; }), datasets: [
-        { label: faBewMonthLabel(m1), data: topList.map(function(x){ return x.a; }), backgroundColor: "#1d4ed8", borderRadius: 3 },
-        { label: faBewMonthLabel(m2), data: topList.map(function(x){ return x.b; }), backgroundColor: "#d97706", borderRadius: 3 }
+        { label: faBewMonthLabel(m1), data: topList.map(function(x){ return x.a; }), backgroundColor: "#1e3a5f", borderRadius: 5, borderSkipped: false },
+        { label: faBewMonthLabel(m2), data: topList.map(function(x){ return x.b; }), backgroundColor: "#d97706", borderRadius: 5, borderSkipped: false }
       ]},
       options: Object.assign({}, commonOpts, {
-        scales: { x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 60, minRotation: 45 } },
-                  y: { beginAtZero: true, grid: { color: "#eef2f7" }, ticks: { font: { size: 10 } } } }
+        indexAxis: "y",
+        scales: {
+          x: { beginAtZero: true, grid: { color: "#eef2f7" }, ticks: { font: { size: 10 }, color: "#64748b", precision: 0 } },
+          y: { grid: { display: false }, ticks: { font: { size: 10, weight: "750" }, color: "#334155", autoSkip: false } }
+        }
       })
     });
   } else {
     topList = filtered.map(function(d){ return { name: d.name, v: evOf(d,m1) }; })
       .filter(function(x){ return x.v; })
-      .sort(function(x,y){ return y.v - x.v; }).slice(0,25);
+      .sort(function(x,y){ return y.v - x.v || String(x.name).localeCompare(String(y.name), "de"); }).slice(0,15);
     faBewChart("fabew-chart-top", {
       type: "bar",
       data: { labels: topList.map(function(x){ return x.name; }),
-        datasets: [{ label: "Ereignisse " + faBewMonthLabel(m1), data: topList.map(function(x){ return x.v; }), backgroundColor: "#dc2626", borderRadius: 3 }] },
+        datasets: [{ label: "Ereignisse " + faBewMonthLabel(m1), data: topList.map(function(x){ return x.v; }), backgroundColor: "#dc2626", borderRadius: 5, borderSkipped: false }] },
       options: Object.assign({}, commonOpts, {
-        plugins: { legend: { display: false } },
-        scales: { x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 60, minRotation: 45 } },
-                  y: { beginAtZero: true, grid: { color: "#eef2f7" }, ticks: { font: { size: 10 } } } }
+        indexAxis: "y",
+        plugins: { legend: { display: false }, tooltip: commonOpts.plugins.tooltip },
+        scales: {
+          x: { beginAtZero: true, grid: { color: "#eef2f7" }, ticks: { font: { size: 10 }, color: "#64748b", precision: 0 } },
+          y: { grid: { display: false }, ticks: { font: { size: 10, weight: "750" }, color: "#334155", autoSkip: false } }
+        }
       })
     });
   }
@@ -8155,12 +8299,12 @@ function faBewExportExcel() {
   if (typeof XLSX === "undefined") { alert("Excel-Bibliothek nicht geladen."); return; }
   var data = faBewData();
   var drivers = data.drivers || [];
-  if (!drivers.length) { alert("Keine Fahrerbewertungs-Daten f\u00fcr den Export."); return; }
+  if (!drivers.length) { alert("Keine Fahrerbewertungs-Daten für den Export."); return; }
   var today = new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "long", year: "numeric" });
   var wb = XLSX.utils.book_new();
 
   var rows = [["Fahrer","Pers-Nr","Gesamtnote","Note Kritisch","Note Wirtschaft","Note Schwierigkeit",
-               "Ereignisse gesamt","Bremsung","Kurve","Tempo","Beschleunigung","km","Stunden","\u00d8 Verbrauch l/100km"]];
+               "Ereignisse gesamt","Bremsung","Kurve","Tempo","Beschleunigung","km","Stunden","Ø Verbrauch l/100km"]];
   drivers.slice().sort(function(a,b){
     var ga = a.grade == null ? -1 : a.grade, gb = b.grade == null ? -1 : b.grade;
     return gb - ga || (a.name||"").localeCompare(b.name||"","de");
@@ -8176,7 +8320,7 @@ function faBewExportExcel() {
 
   var months = faBewMonths();
   var EVT = data.event_types || ["BRAKE","CURVE","OVERSPEED","SPEEDUP"];
-  var mo = [["Monat"].concat(EVT.map(function(t){ return FABEW_TYPE_LABELS[t] || t; })).concat(["Gesamt"])];
+  var mo = [["Monat"].concat(EVT.map(function(t){ return FABEW_TYPE_LABELS[t] || t; })).concat(["Gesamt"])] ;
   months.forEach(function(mk){
     var gm = (data.g_months||{})[mk] || {};
     mo.push([faBewMonthLabel(mk)].concat(EVT.map(function(t){ return gm[t]||0; })).concat([gm._t||0]));
@@ -9177,27 +9321,33 @@ iframe.active{{display:block}}
     </div>
   </div>
 
-  <!-- ── Fahrerbewertung Panel (Graph) ───────────────────────────────────── -->
-  <div id="panel-fa-bewertung" style="display:none;flex:1;flex-direction:column;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;">
-    <div style="width:100%;max-width:1728px;margin:0 auto;display:flex;flex-direction:column;flex:1;overflow:hidden;">
-      <div style="display:flex;align-items:center;gap:10px;padding:16px 18px;flex-wrap:wrap;flex-shrink:0;">
-        <h2 style="margin:0;font-size:17px;font-weight:900;color:#0f172a;">&#11088; Fahrerbewertung</h2>
+  <!-- ── Fahrerbewertung Panel (Dashboard) ───────────────────────────────── -->
+  <div id="panel-fa-bewertung" style="display:none;flex:1;flex-direction:column;background:linear-gradient(180deg,#e8eef6 0%,#f3f7fb 100%);font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;">
+    <div style="width:100%;max-width:1760px;margin:0 auto;display:flex;flex-direction:column;flex:1;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;flex-wrap:wrap;flex-shrink:0;background:rgba(255,255,255,.78);border-bottom:1px solid #dbe4ef;box-shadow:0 8px 24px rgba(15,23,42,.055);backdrop-filter:blur(8px);">
+        <div style="display:flex;align-items:center;gap:10px;margin-right:8px;">
+          <div style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#1e3a5f,#2563eb);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 8px 18px rgba(37,99,235,.25);">&#11088;</div>
+          <div>
+            <h2 style="margin:0;font-size:18px;font-weight:950;color:#0f172a;letter-spacing:-.35px;line-height:1.1;">Fahrerbewertung</h2>
+            <div style="font-size:11px;font-weight:750;color:#64748b;margin-top:2px;">Dashboard · Note, Ereignisse und Verbrauch</div>
+          </div>
+        </div>
         <select id="fabew-month-mode" onchange="faBewSetMode(this.value)" title="Monatsansicht"
-          style="padding:8px 11px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:900;font-family:inherit;background:#fff;color:#1f3347;outline:none;cursor:pointer;">
+          style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:12px;font-weight:900;font-family:inherit;background:#fff;color:#1e3a5f;outline:none;cursor:pointer;box-shadow:0 2px 8px rgba(15,23,42,.04);">
           <option value="single">Ein Monat</option>
           <option value="compare">Monate vergleichen</option>
         </select>
         <select id="fabew-month" onchange="faBewMonthChange(this.value)" title="Monat 1"
-          style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:800;font-family:inherit;outline:none;background:#fff;color:#1d4ed8;cursor:pointer;"></select>
+          style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:12.5px;font-weight:900;font-family:inherit;outline:none;background:#fff;color:#1d4ed8;cursor:pointer;box-shadow:0 2px 8px rgba(15,23,42,.04);"></select>
         <select id="fabew-month-2" onchange="faBewMonth2Change(this.value)" title="Monat 2"
-          style="display:none;padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:800;font-family:inherit;outline:none;background:#fff;color:#b45309;cursor:pointer;"></select>
+          style="display:none;padding:8px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:12.5px;font-weight:900;font-family:inherit;outline:none;background:#fff;color:#b45309;cursor:pointer;box-shadow:0 2px 8px rgba(15,23,42,.04);"></select>
         <input id="fabew-search" placeholder="Fahrer suchen..." oninput="faBewFilter(this.value)"
-          style="min-width:150px;max-width:240px;padding:8px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#fff;color:#0f172a;">
+          style="min-width:180px;max-width:270px;padding:8px 14px;border:1px solid #cbd5e1;border-radius:10px;font-size:13px;font-family:inherit;font-weight:750;outline:none;background:#fff;color:#0f172a;box-shadow:0 2px 8px rgba(15,23,42,.04);">
         <button onclick="faBewExportExcel()" title="Bewertung als Excel exportieren"
-          style="padding:8px 14px;border:1.5px solid #16a34a;border-radius:8px;font-size:12px;font-weight:900;font-family:inherit;background:#16a34a;color:#fff;outline:none;cursor:pointer;">&#128190; Excel-Export</button>
-        <span id="fabew-stats" style="font-size:12px;font-weight:700;color:#64748b;margin-left:auto;"></span>
+          style="padding:8px 14px;border:1px solid #15803d;border-radius:10px;font-size:12px;font-weight:950;font-family:inherit;background:linear-gradient(180deg,#16a34a,#15803d);color:#fff;outline:none;cursor:pointer;box-shadow:0 8px 16px rgba(22,163,74,.18);">&#128190; Excel-Export</button>
+        <span id="fabew-stats" style="font-size:12px;font-weight:750;color:#64748b;margin-left:auto;"></span>
       </div>
-      <div id="fabew-content" style="flex:1;overflow-y:auto;padding:4px 18px 30px 18px;">
+      <div id="fabew-content" style="flex:1;overflow-y:auto;padding:18px 18px 34px 18px;">
         <div style="color:#94a3b8;padding:60px;text-align:center;font-size:14px;">Keine Fahrerbewertungs-Daten &ndash; bitte d_rohdaten.json in Streamlit hochladen.</div>
       </div>
     </div>
