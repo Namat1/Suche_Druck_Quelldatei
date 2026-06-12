@@ -3943,7 +3943,7 @@ def parse_timerecording_csv(uploaded_file) -> str:
     return _json.dumps(by_driver, ensure_ascii=False)
 
 
-def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', spesen_json: str = '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}', grosskunden_json: str = "[]", timerec_json: str = "{}", spediteure_json: str = '{"katalog":[],"fahrten":[]}', versp_abfahrt_json: str = "{}", last_updated: str = "") -> str:
+def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', spesen_json: str = '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}', grosskunden_json: str = "[]", timerec_json: str = "{}", spediteure_json: str = '{"katalog":[],"fahrten":[]}', fahrerbewertung_json: str = '{"profile":"","event_types":[],"g_months":{},"g_ev":{},"drivers":[]}', versp_abfahrt_json: str = "{}", last_updated: str = "") -> str:
     try:
         _logo_up = st.session_state.get("g_logo")
     except Exception:
@@ -5717,6 +5717,24 @@ function buildVerstossDdMenu() {
 }
 
 function ddSelectVerstoss(area) {
+  showArea(area);
+  document.querySelectorAll(".nav-dd").forEach(function(d){ d.classList.remove("open"); });
+}
+
+function buildFaDdMenu() {
+  var menu = document.getElementById("ddmenu-fa");
+  if (!menu) return;
+  var items = [
+    { id: "fa", label: "Schichten / Tachograph" },
+    { id: "fa_bewertung", label: "Fahrerbewertung" }
+  ];
+  menu.innerHTML = items.map(function(it) {
+    var active = (currentArea === it.id) ? " active" : "";
+    return "<div class='dd-item" + active + "' onclick='ddSelectFa(\"" + it.id + "\")'>" + it.label + "</div>";
+  }).join("");
+}
+
+function ddSelectFa(area) {
   showArea(area);
   document.querySelectorAll(".nav-dd").forEach(function(d){ d.classList.remove("open"); });
 }
@@ -7813,6 +7831,370 @@ function spedInit() {
 
 """
 
+    fabew_js_code = r"""
+// ── Fahrerbewertung (Auswertung d_rohdaten.json) ─────────────────────────────
+var _fabewCharts = {};
+var _fabewState  = { mode: "single", m1: "", m2: "", search: "" };
+var FABEW_TYPE_LABELS = { BRAKE: "Bremsung", CURVE: "Kurve", OVERSPEED: "Tempo", SPEEDUP: "Beschleunigung" };
+var FABEW_TYPE_COLORS = { BRAKE: "#2563eb", CURVE: "#7c3aed", OVERSPEED: "#dc2626", SPEEDUP: "#d97706" };
+var FABEW_MONTH_NAMES = ["Jan","Feb","M\u00e4r","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
+
+function faBewData() {
+  return (typeof FAHRERBEWERTUNG_DATA !== "undefined" && FAHRERBEWERTUNG_DATA && Array.isArray(FAHRERBEWERTUNG_DATA.drivers))
+    ? FAHRERBEWERTUNG_DATA
+    : { profile: "", event_types: ["BRAKE","CURVE","OVERSPEED","SPEEDUP"], g_months: {}, g_ev: {}, drivers: [] };
+}
+
+function faBewEsc(v) {
+  return String(v == null ? "" : v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function faBewChart(id, cfg) {
+  var canvas = document.getElementById(id);
+  if (!canvas || typeof Chart === "undefined") return;
+  if (_fabewCharts[id]) { try { _fabewCharts[id].destroy(); } catch(e) {} }
+  _fabewCharts[id] = new Chart(canvas, cfg);
+}
+
+function faBewMonths() {
+  var d = faBewData();
+  return Object.keys(d.g_months || {}).sort();
+}
+
+function faBewMonthLabel(mk) {
+  var m = /^(\d{4})-(\d{2})$/.exec(mk || "");
+  if (!m) return mk || "";
+  var idx = Math.max(0, Math.min(11, parseInt(m[2], 10) - 1));
+  return FABEW_MONTH_NAMES[idx] + " " + m[1];
+}
+
+function faBewGradeColor(g) {
+  if (g == null) return "#94a3b8";
+  if (g >= 8.5) return "#16a34a";
+  if (g >= 7)   return "#65a30d";
+  if (g >= 5.5) return "#d97706";
+  return "#dc2626";
+}
+
+function faBewNum(v, dec) {
+  if (v == null || isNaN(v)) return "\u2013";
+  return Number(v).toLocaleString("de-DE", { minimumFractionDigits: dec||0, maximumFractionDigits: dec||0 });
+}
+
+function faBewPopulateMonths() {
+  var months = faBewMonths();
+  var s1 = document.getElementById("fabew-month");
+  var s2 = document.getElementById("fabew-month-2");
+  if (!s1 || !s2) return;
+  var opts = months.map(function(mk){ return "<option value='" + mk + "'>" + faBewMonthLabel(mk) + "</option>"; }).join("");
+  s1.innerHTML = opts;
+  s2.innerHTML = opts;
+  if (!_fabewState.m1 || months.indexOf(_fabewState.m1) === -1) _fabewState.m1 = months.length ? months[months.length - 1] : "";
+  if (!_fabewState.m2 || months.indexOf(_fabewState.m2) === -1) _fabewState.m2 = months.length > 1 ? months[months.length - 2] : _fabewState.m1;
+  s1.value = _fabewState.m1;
+  s2.value = _fabewState.m2;
+}
+
+function faBewSetMode(mode) {
+  _fabewState.mode = mode;
+  var s2 = document.getElementById("fabew-month-2");
+  if (s2) s2.style.display = (mode === "compare") ? "" : "none";
+  faBewRender();
+}
+function faBewMonthChange(v)  { _fabewState.m1 = v; faBewRender(); }
+function faBewMonth2Change(v) { _fabewState.m2 = v; faBewRender(); }
+function faBewFilter(q)       { _fabewState.search = (q || "").toLowerCase().trim(); faBewRender(); }
+
+function faBewFilteredDrivers() {
+  var q = _fabewState.search;
+  return faBewData().drivers.filter(function(d){
+    return !q || (d.name || "").toLowerCase().indexOf(q) !== -1 || String(d.persnr || "").indexOf(q) !== -1;
+  });
+}
+
+function faBewMonthTypeCounts(mk) {
+  var gm = (faBewData().g_months || {})[mk] || {};
+  var EVT = faBewData().event_types || ["BRAKE","CURVE","OVERSPEED","SPEEDUP"];
+  return EVT.map(function(t){ return gm[t] || 0; });
+}
+
+function faBewInit() {
+  faBewPopulateMonths();
+  faBewRender();
+}
+
+function faBewKpi(label, value, sub, color, icon) {
+  return "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;position:relative;overflow:hidden;'>"
+    + "<div style='position:absolute;top:11px;right:13px;font-size:19px;line-height:1;opacity:.5;'>" + icon + "</div>"
+    + "<div style='font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px;'>" + faBewEsc(label) + "</div>"
+    + "<div style='font-size:23px;font-weight:950;color:" + color + ";line-height:1.15;'>" + value + "</div>"
+    + (sub ? "<div style='font-size:11px;font-weight:700;color:#94a3b8;margin-top:2px;'>" + faBewEsc(sub) + "</div>" : "")
+    + "</div>";
+}
+
+function faBewRender() {
+  var content = document.getElementById("fabew-content");
+  var statsEl = document.getElementById("fabew-stats");
+  if (!content) return;
+
+  var data = faBewData();
+  var drivers = data.drivers || [];
+  if (!drivers.length) {
+    content.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Fahrerbewertungs-Daten \u2013 bitte d_rohdaten.json in Streamlit hochladen.</div>";
+    if (statsEl) statsEl.innerHTML = "";
+    return;
+  }
+
+  var compare = (_fabewState.mode === "compare");
+  var m1 = _fabewState.m1, m2 = _fabewState.m2;
+  var filtered = faBewFilteredDrivers();
+  var graded = drivers.filter(function(d){ return d.grade != null; });
+  var avgGrade = graded.length ? (graded.reduce(function(s,d){ return s + d.grade; }, 0) / graded.length) : null;
+  var totalEv = drivers.reduce(function(s,d){ return s + (d.evt || 0); }, 0);
+  var fuelArr = drivers.map(function(d){ return d.fuel; }).filter(function(v){ return v != null && !isNaN(v); });
+  var avgFuel = fuelArr.length ? (fuelArr.reduce(function(s,v){ return s + v; }, 0) / fuelArr.length) : null;
+
+  if (statsEl) {
+    statsEl.innerHTML = "<b>" + filtered.length + "</b> / " + drivers.length + " Fahrer"
+      + (avgGrade != null ? " &nbsp;&middot;&nbsp; \u00d8 Note <b>" + faBewNum(avgGrade,1) + "</b>" : "")
+      + " &nbsp;&middot;&nbsp; \u03a3 <b>" + faBewNum(totalEv) + "</b> Ereignisse";
+  }
+
+  var html = "";
+
+  // KPI-Strip
+  html += "<div style='display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:6px 0 16px;'>";
+  html += faBewKpi("Bewertete Fahrer", graded.length + " / " + drivers.length, data.profile || "", "#1e3a5f", "&#128101;");
+  html += faBewKpi("\u00d8 Gesamtnote", avgGrade != null ? faBewNum(avgGrade,1) : "\u2013", "Skala 1\u201310 (10 = best)", faBewGradeColor(avgGrade), "&#11088;");
+  html += faBewKpi("Ereignisse gesamt", faBewNum(totalEv), "kritische Fahrereignisse", "#dc2626", "&#9888;&#65039;");
+  html += faBewKpi("\u00d8 Verbrauch", avgFuel != null ? faBewNum(avgFuel,1) + " l" : "\u2013", "je 100 km (FMS)", "#0891b2", "&#9981;");
+  html += "</div>";
+
+  // Note pro Fahrer
+  var noteCount = filtered.filter(function(d){ return d.grade != null; }).length;
+  var noteHeight = Math.max(320, noteCount * 22 + 40);
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;'>"
+    + "<div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Gesamtnote pro Fahrer</div>"
+    + "<div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Sortiert nach Note (beste oben) &middot; Skala 1\u201310</div>"
+    + "<div style='height:" + noteHeight + "px;'><canvas id='fabew-chart-note'></canvas></div></div>";
+
+  // Ereignisse nach Monat + Ereignisarten
+  html += "<div style='display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin-bottom:14px;'>";
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;'>"
+    + "<div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Ereignisse nach Monat</div>"
+    + "<div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Gestapelt nach Ereignisart</div>"
+    + "<div style='height:300px;'><canvas id='fabew-chart-month'></canvas></div></div>";
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;'>"
+    + "<div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Ereignisarten</div>"
+    + "<div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>"
+    + (compare ? faBewMonthLabel(m1) + " vs. " + faBewMonthLabel(m2) : faBewMonthLabel(m1))
+    + "</div><div style='height:300px;'><canvas id='fabew-chart-type'></canvas></div></div>";
+  html += "</div>";
+
+  // Top Fahrer nach Ereignissen
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;'>"
+    + "<div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Top Fahrer nach Ereignissen</div>"
+    + "<div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>"
+    + (compare ? faBewMonthLabel(m1) + " vs. " + faBewMonthLabel(m2) : faBewMonthLabel(m1)) + " &middot; Top 25</div>"
+    + "<div style='height:360px;'><canvas id='fabew-chart-top'></canvas></div></div>";
+
+  // Tabelle
+  html += faBewTable(filtered);
+
+  content.innerHTML = html;
+  faBewDrawCharts(filtered, compare, m1, m2);
+}
+
+function faBewTable(list) {
+  var sorted = list.slice().sort(function(a,b){
+    var ga = a.grade == null ? -1 : a.grade, gb = b.grade == null ? -1 : b.grade;
+    if (gb !== ga) return gb - ga;
+    return (a.name || "").localeCompare(b.name || "", "de");
+  });
+  var h = "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;'>";
+  h += "<div style='overflow:auto;max-height:560px;'><table style='width:100%;border-collapse:collapse;font-size:12px;'>";
+  h += "<thead><tr style='position:sticky;top:0;background:linear-gradient(180deg,#2f4a6b 0%,#1e3a5f 100%);z-index:2;'>";
+  ["Fahrer","Pers-Nr","Note","Krit.","Wirtsch.","Schwer.","Ereignisse","Brems.","Kurve","Tempo","km","Std","\u00d8 l"].forEach(function(hd,i){
+    var ta = i <= 1 ? "left" : "right";
+    h += "<th style='padding:9px 10px;text-align:" + ta + ";color:#fff;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;'>" + hd + "</th>";
+  });
+  h += "</tr></thead><tbody>";
+  sorted.forEach(function(d,i){
+    var bg = i % 2 === 0 ? "#ffffff" : "#f8fafc";
+    var gc = faBewGradeColor(d.grade);
+    h += "<tr style='background:" + bg + ";border-bottom:1px solid #eef2f7;'>";
+    h += "<td style='padding:8px 10px;font-weight:700;color:#0f172a;white-space:nowrap;'>" + faBewEsc(d.name) + "</td>";
+    h += "<td style='padding:8px 10px;color:#94a3b8;'>" + faBewEsc(d.persnr) + "</td>";
+    h += "<td style='padding:8px 10px;text-align:right;font-weight:900;color:" + gc + ";'>" + faBewNum(d.grade,1) + "</td>";
+    h += "<td style='padding:8px 10px;text-align:right;color:#475569;'>" + faBewNum(d.g_crit,1) + "</td>";
+    h += "<td style='padding:8px 10px;text-align:right;color:#475569;'>" + faBewNum(d.g_eco,1) + "</td>";
+    h += "<td style='padding:8px 10px;text-align:right;color:#475569;'>" + faBewNum(d.g_diff,1) + "</td>";
+    h += "<td style='padding:8px 10px;text-align:right;font-weight:800;color:#dc2626;'>" + faBewNum(d.evt) + "</td>";
+    h += "<td style='padding:8px 10px;text-align:right;color:#64748b;'>" + faBewNum((d.ev||{}).BRAKE) + "</td>";
+    h += "<td style='padding:8px 10px;text-align:right;color:#64748b;'>" + faBewNum((d.ev||{}).CURVE) + "</td>";
+    h += "<td style='padding:8px 10px;text-align:right;color:#64748b;'>" + faBewNum((d.ev||{}).OVERSPEED) + "</td>";
+    h += "<td style='padding:8px 10px;text-align:right;color:#475569;'>" + faBewNum(d.dist) + "</td>";
+    h += "<td style='padding:8px 10px;text-align:right;color:#475569;'>" + faBewNum(d.hours,0) + "</td>";
+    h += "<td style='padding:8px 10px;text-align:right;color:#0891b2;'>" + faBewNum(d.fuel,1) + "</td>";
+    h += "</tr>";
+  });
+  h += "</tbody></table></div></div>";
+  return h;
+}
+
+function faBewDrawCharts(filtered, compare, m1, m2) {
+  var data = faBewData();
+  var EVT = data.event_types || ["BRAKE","CURVE","OVERSPEED","SPEEDUP"];
+  var commonOpts = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { font: { family: "Segoe UI", size: 11 } } } }
+  };
+
+  // 1) Note pro Fahrer (horizontal)
+  var graded = filtered.filter(function(d){ return d.grade != null; })
+    .sort(function(a,b){ return b.grade - a.grade || (a.name||"").localeCompare(b.name||"","de"); });
+  faBewChart("fabew-chart-note", {
+    type: "bar",
+    data: {
+      labels: graded.map(function(d){ return d.name; }),
+      datasets: [{
+        label: "Gesamtnote",
+        data: graded.map(function(d){ return d.grade; }),
+        backgroundColor: graded.map(function(d){ return faBewGradeColor(d.grade); }),
+        borderRadius: 3, maxBarThickness: 16
+      }]
+    },
+    options: {
+      indexAxis: "y", responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: function(c){ return "Note: " + c.parsed.x.toLocaleString("de-DE"); } } } },
+      scales: { x: { min: 0, max: 10, ticks: { stepSize: 1, font: { size: 10 } }, grid: { color: "#eef2f7" } },
+                y: { ticks: { font: { size: 10 }, autoSkip: false }, grid: { display: false } } }
+    }
+  });
+
+  // 2) Ereignisse nach Monat (gestapelt)
+  var months = faBewMonths();
+  var monthDatasets = EVT.map(function(t){
+    return {
+      label: FABEW_TYPE_LABELS[t] || t,
+      data: months.map(function(mk){ return ((data.g_months[mk]||{})[t]) || 0; }),
+      backgroundColor: FABEW_TYPE_COLORS[t] || "#64748b",
+      stack: "ev", borderRadius: 2
+    };
+  });
+  faBewChart("fabew-chart-month", {
+    type: "bar",
+    data: { labels: months.map(faBewMonthLabel), datasets: monthDatasets },
+    options: Object.assign({}, commonOpts, {
+      scales: { x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10 } } },
+                y: { stacked: true, beginAtZero: true, grid: { color: "#eef2f7" }, ticks: { font: { size: 10 } } } }
+    })
+  });
+
+  // 3) Ereignisarten
+  var labelsT = EVT.map(function(t){ return FABEW_TYPE_LABELS[t] || t; });
+  var colorsT = EVT.map(function(t){ return FABEW_TYPE_COLORS[t] || "#64748b"; });
+  if (compare) {
+    faBewChart("fabew-chart-type", {
+      type: "bar",
+      data: { labels: labelsT, datasets: [
+        { label: faBewMonthLabel(m1), data: faBewMonthTypeCounts(m1), backgroundColor: "#1d4ed8", borderRadius: 3 },
+        { label: faBewMonthLabel(m2), data: faBewMonthTypeCounts(m2), backgroundColor: "#d97706", borderRadius: 3 }
+      ]},
+      options: Object.assign({}, commonOpts, {
+        scales: { x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                  y: { beginAtZero: true, grid: { color: "#eef2f7" }, ticks: { font: { size: 10 } } } }
+      })
+    });
+  } else {
+    faBewChart("fabew-chart-type", {
+      type: "doughnut",
+      data: { labels: labelsT, datasets: [{ data: faBewMonthTypeCounts(m1), backgroundColor: colorsT, borderWidth: 2, borderColor: "#fff" }] },
+      options: { responsive: true, maintainAspectRatio: false, cutout: "55%",
+        plugins: { legend: { position: "bottom", labels: { font: { size: 11 }, padding: 12 } } } }
+    });
+  }
+
+  // 4) Top Fahrer nach Ereignissen
+  function evOf(d, mk) { return ((d.months || {})[mk] || {})._t || 0; }
+  var topList;
+  if (compare) {
+    topList = filtered.map(function(d){ return { name: d.name, a: evOf(d,m1), b: evOf(d,m2) }; })
+      .filter(function(x){ return x.a || x.b; })
+      .sort(function(x,y){ return (y.a+y.b) - (x.a+x.b); }).slice(0,25);
+    faBewChart("fabew-chart-top", {
+      type: "bar",
+      data: { labels: topList.map(function(x){ return x.name; }), datasets: [
+        { label: faBewMonthLabel(m1), data: topList.map(function(x){ return x.a; }), backgroundColor: "#1d4ed8", borderRadius: 3 },
+        { label: faBewMonthLabel(m2), data: topList.map(function(x){ return x.b; }), backgroundColor: "#d97706", borderRadius: 3 }
+      ]},
+      options: Object.assign({}, commonOpts, {
+        scales: { x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 60, minRotation: 45 } },
+                  y: { beginAtZero: true, grid: { color: "#eef2f7" }, ticks: { font: { size: 10 } } } }
+      })
+    });
+  } else {
+    topList = filtered.map(function(d){ return { name: d.name, v: evOf(d,m1) }; })
+      .filter(function(x){ return x.v; })
+      .sort(function(x,y){ return y.v - x.v; }).slice(0,25);
+    faBewChart("fabew-chart-top", {
+      type: "bar",
+      data: { labels: topList.map(function(x){ return x.name; }),
+        datasets: [{ label: "Ereignisse " + faBewMonthLabel(m1), data: topList.map(function(x){ return x.v; }), backgroundColor: "#dc2626", borderRadius: 3 }] },
+      options: Object.assign({}, commonOpts, {
+        plugins: { legend: { display: false } },
+        scales: { x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 60, minRotation: 45 } },
+                  y: { beginAtZero: true, grid: { color: "#eef2f7" }, ticks: { font: { size: 10 } } } }
+      })
+    });
+  }
+}
+
+function faBewExportExcel() {
+  if (typeof XLSX === "undefined") { alert("Excel-Bibliothek nicht geladen."); return; }
+  var data = faBewData();
+  var drivers = data.drivers || [];
+  if (!drivers.length) { alert("Keine Fahrerbewertungs-Daten f\u00fcr den Export."); return; }
+  var today = new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "long", year: "numeric" });
+  var wb = XLSX.utils.book_new();
+
+  var rows = [["Fahrer","Pers-Nr","Gesamtnote","Note Kritisch","Note Wirtschaft","Note Schwierigkeit",
+               "Ereignisse gesamt","Bremsung","Kurve","Tempo","Beschleunigung","km","Stunden","\u00d8 Verbrauch l/100km"]];
+  drivers.slice().sort(function(a,b){
+    var ga = a.grade == null ? -1 : a.grade, gb = b.grade == null ? -1 : b.grade;
+    return gb - ga || (a.name||"").localeCompare(b.name||"","de");
+  }).forEach(function(d){
+    var ev = d.ev || {};
+    rows.push([d.name||"", d.persnr||"", d.grade, d.g_crit, d.g_eco, d.g_diff,
+               d.evt||0, ev.BRAKE||0, ev.CURVE||0, ev.OVERSPEED||0, ev.SPEEDUP||0,
+               d.dist||0, d.hours||0, d.fuel]);
+  });
+  var wsF = XLSX.utils.aoa_to_sheet(rows);
+  wsF["!cols"] = [{wch:26},{wch:10},{wch:11},{wch:13},{wch:14},{wch:14},{wch:16},{wch:10},{wch:9},{wch:9},{wch:14},{wch:9},{wch:9},{wch:18}];
+  XLSX.utils.book_append_sheet(wb, wsF, "Fahrerbewertung");
+
+  var months = faBewMonths();
+  var EVT = data.event_types || ["BRAKE","CURVE","OVERSPEED","SPEEDUP"];
+  var mo = [["Monat"].concat(EVT.map(function(t){ return FABEW_TYPE_LABELS[t] || t; })).concat(["Gesamt"])];
+  months.forEach(function(mk){
+    var gm = (data.g_months||{})[mk] || {};
+    mo.push([faBewMonthLabel(mk)].concat(EVT.map(function(t){ return gm[t]||0; })).concat([gm._t||0]));
+  });
+  var wsM = XLSX.utils.aoa_to_sheet(mo);
+  wsM["!cols"] = [{wch:12},{wch:11},{wch:9},{wch:9},{wch:14},{wch:10}];
+  XLSX.utils.book_append_sheet(wb, wsM, "Monate");
+
+  var info = [["Fahrerbewertung"], ["Profil", data.profile || ""], ["Stand", today],
+              ["Fahrer gesamt", drivers.length], ["davon bewertet", drivers.filter(function(d){return d.grade!=null;}).length]];
+  var wsI = XLSX.utils.aoa_to_sheet(info);
+  wsI["!cols"] = [{wch:18},{wch:28}];
+  XLSX.utils.book_append_sheet(wb, wsI, "Info");
+
+  XLSX.writeFile(wb, "Fahrerbewertung_" + new Date().toISOString().slice(0,10) + ".xlsx");
+}
+"""
+
     bus_js_code = r"""
 // ── Busfahrplan + Notfallplan (hardcoded, gültig ab KW 23) ────────────────────
 var BUS_FAHRTEN = [
@@ -8482,7 +8864,12 @@ iframe.active{{display:block}}
     <div class="dd-menu" id="ddmenu-verstoss"></div>
   </div>
   <button class="nav-btn" id="btn-sam" onclick="showArea('sam')">&#128664; Sa + So Einsätze</button>
-  <button class="nav-btn" id="btn-fa" onclick="showArea('fa')">&#128101; Fahrerauswertung</button>
+  <div class="nav-dd" id="dd-fa">
+    <button class="nav-dd-btn" id="btn-fa" onclick="ddToggle('fa',event)">
+      &#128101; Fahrerauswertung <span class="dd-arrow">&#9660;</span>
+    </button>
+    <div class="dd-menu" id="ddmenu-fa"></div>
+  </div>
   <button class="nav-btn" id="btn-zulage" onclick="showArea('zulage')">&#128176; Zulagen</button>
   <button class="nav-btn" id="btn-spesen" onclick="showArea('spesen')">&#128181; Spesen</button>
   <button class="nav-btn" id="btn-gk" onclick="showArea('gk')">&#127970; Gro&#223;kunden</button>
@@ -8790,6 +9177,32 @@ iframe.active{{display:block}}
     </div>
   </div>
 
+  <!-- ── Fahrerbewertung Panel (Graph) ───────────────────────────────────── -->
+  <div id="panel-fa-bewertung" style="display:none;flex:1;flex-direction:column;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;">
+    <div style="width:100%;max-width:1728px;margin:0 auto;display:flex;flex-direction:column;flex:1;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:10px;padding:16px 18px;flex-wrap:wrap;flex-shrink:0;">
+        <h2 style="margin:0;font-size:17px;font-weight:900;color:#0f172a;">&#11088; Fahrerbewertung</h2>
+        <select id="fabew-month-mode" onchange="faBewSetMode(this.value)" title="Monatsansicht"
+          style="padding:8px 11px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:900;font-family:inherit;background:#fff;color:#1f3347;outline:none;cursor:pointer;">
+          <option value="single">Ein Monat</option>
+          <option value="compare">Monate vergleichen</option>
+        </select>
+        <select id="fabew-month" onchange="faBewMonthChange(this.value)" title="Monat 1"
+          style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:800;font-family:inherit;outline:none;background:#fff;color:#1d4ed8;cursor:pointer;"></select>
+        <select id="fabew-month-2" onchange="faBewMonth2Change(this.value)" title="Monat 2"
+          style="display:none;padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:800;font-family:inherit;outline:none;background:#fff;color:#b45309;cursor:pointer;"></select>
+        <input id="fabew-search" placeholder="Fahrer suchen..." oninput="faBewFilter(this.value)"
+          style="min-width:150px;max-width:240px;padding:8px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#fff;color:#0f172a;">
+        <button onclick="faBewExportExcel()" title="Bewertung als Excel exportieren"
+          style="padding:8px 14px;border:1.5px solid #16a34a;border-radius:8px;font-size:12px;font-weight:900;font-family:inherit;background:#16a34a;color:#fff;outline:none;cursor:pointer;">&#128190; Excel-Export</button>
+        <span id="fabew-stats" style="font-size:12px;font-weight:700;color:#64748b;margin-left:auto;"></span>
+      </div>
+      <div id="fabew-content" style="flex:1;overflow-y:auto;padding:4px 18px 30px 18px;">
+        <div style="color:#94a3b8;padding:60px;text-align:center;font-size:14px;">Keine Fahrerbewertungs-Daten &ndash; bitte d_rohdaten.json in Streamlit hochladen.</div>
+      </div>
+    </div>
+  </div>
+
   <div id="panel-zulage" style="display:none;flex:1;flex-direction:column;background:#e8ecf1;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;">
     <div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:#f0f2f6;border-bottom:1.5px solid #c8cfd9;flex-wrap:wrap;flex-shrink:0;">
       <h2 style="margin:0;font-size:16px;font-weight:900;color:#1b66b3;">&#128176; Zulagen</h2>
@@ -9021,6 +9434,7 @@ function ddToggle(area, e) {{
     else if(area === "sped") buildSpedDdMenu();
     else if(area === "infos") buildInfosDdMenu();
     else if(area === "vz") buildVzDdMenu();
+    else if(area === "fa") buildFaDdMenu();
     else buildDdMenu(area);
     dd.classList.add("open");
     // Position unter dem Button berechnen (fixed, ignoriert iframe)
@@ -9071,9 +9485,10 @@ function showArea(s) {{
   // Samstags-Button
   var samBtn = document.getElementById("btn-sam");
   if(samBtn) samBtn.className = "nav-btn" + (s==="sam"?" active":"");
-  // Fahrerauswertung-Button
+  // Fahrerauswertung-Button (Dropdown: Schichten + Fahrerbewertung)
   var faBtn = document.getElementById("btn-fa");
-  if(faBtn) faBtn.className = "nav-btn" + (s==="fa"?" active":"");
+  if(faBtn) faBtn.className = "nav-dd-btn" + ((s==="fa" || s==="fa_bewertung")?" active":"");
+  if(typeof buildFaDdMenu === "function") buildFaDdMenu();
   // Panels
   var vzPanel       = document.getElementById("panel-vz");
   var telPanel      = document.getElementById("panel-tel");
@@ -9127,6 +9542,12 @@ function showArea(s) {{
     else {{ verstossRenderGraph(); }}
   }}
   if(s==="fa") {{ if(faPanel) faPanel.scrollTop = 0; if(faPanel && !faPanel.dataset.loaded) {{ faRender(""); faPanel.dataset.loaded="1"; }} }}
+  var faBewPanel = document.getElementById("panel-fa-bewertung");
+  if(faBewPanel) faBewPanel.style.display = (s==="fa_bewertung") ? "flex" : "none";
+  if(s==="fa_bewertung") {{
+    if(faBewPanel && !faBewPanel.dataset.loaded) {{ faBewInit(); faBewPanel.dataset.loaded="1"; }}
+    else {{ faBewRender(); }}
+  }}
   var gkPanel = document.getElementById("panel-gk");
   if(gkPanel) gkPanel.style.display = (s==="gk") ? "flex" : "none";
   var gkBtn = document.getElementById("btn-gk");
@@ -9382,6 +9803,7 @@ var FAHRZEUGWAESCHE_DATA = {fahrzeugwaesche_json};
 var TEL_DATA = {tel_json};
 var SAM_DATA             = {sam_json};
 var FA_DATA              = {fa_json};
+var FAHRERBEWERTUNG_DATA = {fahrerbewertung_json};
 var ZULAGE_DATA          = {zulage_json};
 var ZULAGE_XLSX_SONDER   = "{zulage_xlsx_sonder}";
 var ZULAGE_XLSX_FUENGERS    = "{zulage_xlsx_fuengers}";
@@ -9397,6 +9819,8 @@ var faActiveTab            = "schichten";
 {spesen_js_code}
 
 {sped_js_code}
+
+{fabew_js_code}
 
 // ── Großkunden ────────────────────────────────────────────────────────────────
 var gkSelected = 0;
@@ -12918,6 +13342,117 @@ def parse_spesen_csv(uploaded_file) -> str:
     }, ensure_ascii=False)
 
 
+def parse_fahrerbewertung_json(uploaded_file) -> str:
+    """Liest die Fahrerbewertungs-Rohdaten (d_rohdaten.json) und verdichtet sie zu einer
+    kompakten Zusammenfassung pro Fahrer.
+
+    Die Roh-JSON ist sehr groß (zehntausende Einzel-Events). Damit das erzeugte
+    suche.html nicht aufgebläht wird, werden hier NUR Aggregate eingebettet:
+    Noten, Ereigniszähler je Art und Monat sowie Kennzahlen. Die Einzel-Events
+    selbst werden NICHT übernommen.
+    """
+    import json as _json
+
+    try:
+        raw = uploaded_file.read()
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8-sig", errors="replace")
+        data = _json.loads(raw)
+    except Exception:
+        return _json.dumps({"profile": "", "event_types": [], "g_months": {},
+                            "g_ev": {}, "drivers": []}, ensure_ascii=False)
+
+    drivers = data.get("drivers", []) if isinstance(data, dict) else []
+    EVT = ["BRAKE", "CURVE", "OVERSPEED", "SPEEDUP"]
+    out_drivers = []
+    g_months: dict = {}
+    g_ev = {t: 0 for t in EVT}
+    profile = ""
+
+    def _r1(x):
+        return round(x, 1) if isinstance(x, (int, float)) else x
+
+    for d in drivers:
+        if not isinstance(d, dict):
+            continue
+        g = d.get("grades") or {}
+        rp = d.get("rating_profiles") or []
+        if rp and not profile:
+            profile = rp[0]
+        sc = g.get("sub_critical_grades") or {}
+        se = g.get("sub_economic_grades") or {}
+        sd = g.get("sub_difficulty_grades") or {}
+
+        ev = {t: 0 for t in EVT}
+        months: dict = {}
+        for e in (d.get("critical_events") or []):
+            if not isinstance(e, dict):
+                continue
+            t = e.get("type")
+            if t in ev:
+                ev[t] += 1
+            st = str(e.get("start_time") or "")
+            mk = st[:7] if len(st) >= 7 and st[4] == "-" else None
+            if mk:
+                mm = months.setdefault(mk, {"_t": 0})
+                if t:
+                    mm[t] = mm.get(t, 0) + 1
+                mm["_t"] += 1
+                gm = g_months.setdefault(mk, {"_t": 0})
+                if t:
+                    gm[t] = gm.get(t, 0) + 1
+                gm["_t"] += 1
+        for t in EVT:
+            g_ev[t] += ev[t]
+
+        fuel = None
+        for fi in (d.get("fms_info") or []):
+            if isinstance(fi, dict) and fi.get("vehicle") == "__ALL__":
+                fuel = fi.get("avg_used_fuel")
+                break
+
+        dt = d.get("driving_time") or 0
+        subs = {k: v for k, v in {
+            "overspeed": sc.get("overspeed"), "brake": sc.get("brake"),
+            "speedup": sc.get("speedup"), "curves": sc.get("curves"),
+            "foresight": sc.get("foresight_driving"),
+            "idle": se.get("idle"), "avg_speed": se.get("avg_speed"),
+            "wearfree_brake": se.get("wearfree_brake"), "cruise": se.get("cruisecontrol"),
+            "altitude": sd.get("altitude"), "street_type": sd.get("street_type"),
+            "stopps": sd.get("count_stopps"),
+        }.items() if v is not None}
+
+        out_drivers.append({
+            "name": d.get("name", ""),
+            "persnr": str(d.get("employee_number", "") or ""),
+            "grade": g.get("main_grade"),
+            "g_crit": g.get("main_critical_grade"),
+            "g_eco": g.get("main_economic_grade"),
+            "g_diff": g.get("main_difficulty_grade"),
+            "subs": subs,
+            "dist": d.get("distance", 0) or 0,
+            "hours": round(dt / 3600.0, 1) if dt else 0,
+            "trips": d.get("count_evaluated_trips", 0) or 0,
+            "fuel": _r1(fuel),
+            "ev": ev,
+            "evt": sum(ev.values()),
+            "brake": d.get("total_brake_count", 0) or 0,
+            "curve": d.get("total_curve_count", 0) or 0,
+            "speedup": d.get("total_speedup_count", 0) or 0,
+            "months": months,
+            "vehicles": d.get("vehicles") or [],
+        })
+
+    out_drivers.sort(key=lambda r: (r.get("name") or "").lower())
+    return _json.dumps({
+        "profile": profile,
+        "event_types": EVT,
+        "g_months": g_months,
+        "g_ev": g_ev,
+        "drivers": out_drivers,
+    }, ensure_ascii=False, separators=(",", ":"))
+
+
 def parse_verstoss_csv(uploaded_file) -> str:
     """Parst die Digitacho-Verstoßauswertungs-CSV und aggregiert Verstöße und Bußgelder pro Fahrer.
 
@@ -13746,6 +14281,20 @@ with tab_extra:
             spinner_text="Verarbeite Schichten-CSV ...",
         )
 
+        def _fahrerbewertung_summary(j):
+            fb  = json.loads(j or "{}")
+            drv = fb.get("drivers", [])
+            grd = sum(1 for d in drv if d.get("grade") is not None)
+            ev  = sum(d.get("evt", 0) for d in drv)
+            mon = len(fb.get("g_months", {}))
+            return f"{len(drv)} Fahrer ({grd} bewertet), {ev} Ereignisse, {mon} Monate"
+        _extra_single_upload(
+            "Fahrerbewertung Rohdaten (JSON: d_rohdaten.json)", ["json"],
+            "fahrerbewertung", parse_fahrerbewertung_json,
+            summary_fn=_fahrerbewertung_summary,
+            spinner_text="Verarbeite Fahrerbewertungs-JSON ...",
+        )
+
 
 # === Tab: Download ===========================================================
 with tab_dl:
@@ -13790,6 +14339,7 @@ with tab_dl:
                 grosskunden_json=st.session_state.get("grosskunden_json", "[]"),
                 timerec_json=st.session_state.get("timerec_json", "{}"),
                 spediteure_json=st.session_state.get("spediteure_json", '{"katalog":[],"fahrten":[]}'),
+                fahrerbewertung_json=st.session_state.get("fahrerbewertung_json", '{"profile":"","event_types":[],"g_months":{},"g_ev":{},"drivers":[]}'),
                 versp_abfahrt_json="{}",
                 last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
             )
