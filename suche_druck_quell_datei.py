@@ -20,8 +20,8 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-06-12-v35-design"
-EXTRA_CACHE_VERSION = "extra-parser-2026-06-12-v35-design"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-06-12-v36-fullwidth"
+EXTRA_CACHE_VERSION = "extra-parser-2026-06-12-v36-fullwidth"
 
 
 # =============================================================================
@@ -7835,7 +7835,7 @@ function spedInit() {
 // ── Fahrerbewertung (Auswertung d_rohdaten.json) ─────────────────────────────
 // Design-Update 2026-06-12: kompakter Dashboard-Aufbau, Top/Flop statt 101er-Endlosdiagramm
 var _fabewCharts = {};
-var _fabewState  = { mode: "single", m1: "", m2: "", search: "" };
+var _fabewState  = { mode: "single", m1: "", search: "" };
 var FABEW_TYPE_LABELS = { BRAKE: "Bremsung", CURVE: "Kurve", OVERSPEED: "Tempo", SPEEDUP: "Beschleunigung" };
 var FABEW_TYPE_COLORS = { BRAKE: "#2563eb", CURVE: "#7c3aed", OVERSPEED: "#dc2626", SPEEDUP: "#d97706" };
 var FABEW_MONTH_NAMES = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
@@ -7911,27 +7911,20 @@ function faBewInt(v) {
 function faBewPopulateMonths() {
   var months = faBewMonths();
   var s1 = document.getElementById("fabew-month");
-  var s2 = document.getElementById("fabew-month-2");
-  if (!s1 || !s2) return;
+  if (!s1) return;
   var opts = months.map(function(mk){ return "<option value='" + mk + "'>" + faBewMonthLabel(mk) + "</option>"; }).join("");
   s1.innerHTML = opts;
-  s2.innerHTML = opts;
   if (!_fabewState.m1 || months.indexOf(_fabewState.m1) === -1) _fabewState.m1 = months.length ? months[months.length - 1] : "";
-  if (!_fabewState.m2 || months.indexOf(_fabewState.m2) === -1) _fabewState.m2 = months.length > 1 ? months[months.length - 2] : _fabewState.m1;
   s1.value = _fabewState.m1;
-  s2.value = _fabewState.m2;
 }
 
 function faBewSetMode(mode) {
-  _fabewState.mode = mode;
-  var s2 = document.getElementById("fabew-month-2");
-  var modeSel = document.getElementById("fabew-month-mode");
-  if (modeSel) modeSel.value = mode;
-  if (s2) s2.style.display = (mode === "compare") ? "" : "none";
+  // Vergleich wurde bewusst entfernt; Fahrerbewertung bleibt immer in der Monatsansicht.
+  _fabewState.mode = "single";
   faBewRender();
 }
 function faBewMonthChange(v)  { _fabewState.m1 = v; faBewRender(); }
-function faBewMonth2Change(v) { _fabewState.m2 = v; faBewRender(); }
+function faBewMonth2Change(v) { faBewRender(); }
 function faBewFilter(q)       { _fabewState.search = (q || "").toLowerCase().trim(); faBewRender(); }
 
 function faBewFilteredDrivers() {
@@ -8085,8 +8078,9 @@ function faBewRender() {
   }
 
   faBewPopulateMonths();
-  var compare = (_fabewState.mode === "compare");
-  var m1 = _fabewState.m1, m2 = _fabewState.m2;
+  _fabewState.mode = "single";
+  var compare = false;
+  var m1 = _fabewState.m1, m2 = "";
   var filtered = faBewFilteredDrivers();
   var graded = filtered.filter(function(d){ return d.grade != null && !isNaN(d.grade); });
   var avgGrade = graded.length ? (graded.reduce(function(s,d){ return s + Number(d.grade); }, 0) / graded.length) : null;
@@ -9323,7 +9317,7 @@ iframe.active{{display:block}}
 
   <!-- ── Fahrerbewertung Panel (Dashboard) ───────────────────────────────── -->
   <div id="panel-fa-bewertung" style="display:none;flex:1;flex-direction:column;background:linear-gradient(180deg,#e8eef6 0%,#f3f7fb 100%);font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;">
-    <div style="width:100%;max-width:1760px;margin:0 auto;display:flex;flex-direction:column;flex:1;overflow:hidden;">
+    <div style="width:100%;max-width:none;margin:0;display:flex;flex-direction:column;flex:1;overflow:hidden;">
       <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;flex-wrap:wrap;flex-shrink:0;background:rgba(255,255,255,.78);border-bottom:1px solid #dbe4ef;box-shadow:0 8px 24px rgba(15,23,42,.055);backdrop-filter:blur(8px);">
         <div style="display:flex;align-items:center;gap:10px;margin-right:8px;">
           <div style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#1e3a5f,#2563eb);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 8px 18px rgba(37,99,235,.25);">&#11088;</div>
@@ -9332,22 +9326,15 @@ iframe.active{{display:block}}
             <div style="font-size:11px;font-weight:750;color:#64748b;margin-top:2px;">Dashboard · Note, Ereignisse und Verbrauch</div>
           </div>
         </div>
-        <select id="fabew-month-mode" onchange="faBewSetMode(this.value)" title="Monatsansicht"
-          style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:12px;font-weight:900;font-family:inherit;background:#fff;color:#1e3a5f;outline:none;cursor:pointer;box-shadow:0 2px 8px rgba(15,23,42,.04);">
-          <option value="single">Ein Monat</option>
-          <option value="compare">Monate vergleichen</option>
-        </select>
-        <select id="fabew-month" onchange="faBewMonthChange(this.value)" title="Monat 1"
+        <select id="fabew-month" onchange="faBewMonthChange(this.value)" title="Monat auswählen"
           style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:12.5px;font-weight:900;font-family:inherit;outline:none;background:#fff;color:#1d4ed8;cursor:pointer;box-shadow:0 2px 8px rgba(15,23,42,.04);"></select>
-        <select id="fabew-month-2" onchange="faBewMonth2Change(this.value)" title="Monat 2"
-          style="display:none;padding:8px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:12.5px;font-weight:900;font-family:inherit;outline:none;background:#fff;color:#b45309;cursor:pointer;box-shadow:0 2px 8px rgba(15,23,42,.04);"></select>
         <input id="fabew-search" placeholder="Fahrer suchen..." oninput="faBewFilter(this.value)"
-          style="min-width:180px;max-width:270px;padding:8px 14px;border:1px solid #cbd5e1;border-radius:10px;font-size:13px;font-family:inherit;font-weight:750;outline:none;background:#fff;color:#0f172a;box-shadow:0 2px 8px rgba(15,23,42,.04);">
+          style="flex:1;min-width:220px;max-width:520px;padding:8px 14px;border:1px solid #cbd5e1;border-radius:10px;font-size:13px;font-family:inherit;font-weight:750;outline:none;background:#fff;color:#0f172a;box-shadow:0 2px 8px rgba(15,23,42,.04);">
         <button onclick="faBewExportExcel()" title="Bewertung als Excel exportieren"
           style="padding:8px 14px;border:1px solid #15803d;border-radius:10px;font-size:12px;font-weight:950;font-family:inherit;background:linear-gradient(180deg,#16a34a,#15803d);color:#fff;outline:none;cursor:pointer;box-shadow:0 8px 16px rgba(22,163,74,.18);">&#128190; Excel-Export</button>
         <span id="fabew-stats" style="font-size:12px;font-weight:750;color:#64748b;margin-left:auto;"></span>
       </div>
-      <div id="fabew-content" style="flex:1;overflow-y:auto;padding:18px 18px 34px 18px;">
+      <div id="fabew-content" style="flex:1;overflow-y:auto;padding:16px 18px 34px 18px;">
         <div style="color:#94a3b8;padding:60px;text-align:center;font-size:14px;">Keine Fahrerbewertungs-Daten &ndash; bitte d_rohdaten.json in Streamlit hochladen.</div>
       </div>
     </div>
