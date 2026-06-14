@@ -9282,20 +9282,64 @@ iframe.active{{display:block}}
     </div>
   </div>
 
-  <div id="panel-tel" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#e8ecf1;font-family:'Segoe UI',Arial,sans-serif">
-    <div style="max-width:900px;margin:0 auto">
-      <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128222; Telefonliste</h2>
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-        <input id="tel-search" placeholder="Name suchen..." oninput="telFilter(this.value)"
-          style="flex:1;min-width:200px;max-width:400px;padding:8px 14px;border:2px solid #1b66b3;
-                 border-radius:5px;font-size:13px;font-family:inherit;outline:none">
-        <button onclick="telPDF()"
-          style="padding:8px 18px;background:#dc2626;border:none;color:#fff;border-radius:5px;
-                 font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap">
-          &#128196; PDF exportieren
-        </button>
+  <div id="panel-tel" style="display:none;flex:1;overflow-y:auto;font-family:'Segoe UI',Arial,sans-serif;">
+    <style>
+      #panel-tel{{--tink:#0f1f33;--tacc:#1e6091;background:linear-gradient(180deg,#eef3f9 0%,#f5f8fc 100%);}}
+      #panel-tel .tel-wrap{{max-width:1060px;margin:0 auto;padding:0 20px 40px;}}
+      #panel-tel .tel-head{{position:sticky;top:0;z-index:5;background:linear-gradient(180deg,#f3f7fc 0%,rgba(243,247,252,.92) 100%);backdrop-filter:blur(6px);padding:18px 0 14px;margin-bottom:6px;}}
+      #panel-tel .tel-title{{display:flex;align-items:center;gap:12px;margin-bottom:12px;}}
+      #panel-tel .tel-ico{{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#1e6091,#3aa0d8);color:#fff;display:flex;align-items:center;justify-content:center;font-size:19px;box-shadow:0 8px 18px rgba(30,96,145,.25);flex-shrink:0;}}
+      #panel-tel .tel-h{{font-size:19px;font-weight:950;letter-spacing:-.4px;color:var(--tink);line-height:1.05;}}
+      #panel-tel .tel-sub{{font-size:11.5px;font-weight:700;color:#64748b;margin-top:2px;}}
+      #panel-tel .tel-count{{margin-left:auto;font-size:12px;font-weight:850;color:var(--tacc);background:#e8f1fb;border:1px solid #cfe0f1;border-radius:999px;padding:4px 12px;white-space:nowrap;font-variant-numeric:tabular-nums;}}
+      #panel-tel .tel-controls{{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}}
+      #panel-tel .tel-searchwrap{{position:relative;flex:1;min-width:220px;max-width:460px;}}
+      #panel-tel .tel-sicon{{position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:13px;opacity:.5;pointer-events:none;}}
+      #panel-tel .tel-search{{width:100%;padding:10px 14px 10px 35px;border:1.5px solid #cdddee;border-radius:11px;font-size:13px;font-family:inherit;font-weight:600;outline:none;background:#fff;color:var(--tink);box-shadow:0 1px 3px rgba(30,96,145,.05);transition:border-color .14s,box-shadow .14s;}}
+      #panel-tel .tel-search:focus{{border-color:var(--tacc);box-shadow:0 0 0 3px rgba(30,96,145,.13);}}
+      #panel-tel .tel-pdf{{display:inline-flex;align-items:center;gap:7px;padding:10px 16px;border:1.5px solid #cdddee;border-radius:11px;background:#fff;color:var(--tacc);font-size:12.5px;font-weight:850;font-family:inherit;cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s;}}
+      #panel-tel .tel-pdf:hover{{background:#eef5fc;border-color:#bcd4ec;}}
+      #panel-tel .tel-group{{margin-bottom:20px;}}
+      #panel-tel .tel-group-h{{display:flex;align-items:center;gap:9px;margin-bottom:9px;padding-bottom:7px;border-bottom:1.5px solid #dbe7f3;}}
+      #panel-tel .tel-group-n{{font-size:12px;font-weight:950;text-transform:uppercase;letter-spacing:.6px;color:var(--tacc);}}
+      #panel-tel .tel-group-c{{font-size:10.5px;font-weight:800;color:#64748b;background:#fff;border:1px solid #dbe7f3;border-radius:999px;padding:1px 8px;font-variant-numeric:tabular-nums;}}
+      #panel-tel .tel-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:10px;}}
+      #panel-tel .tel-card{{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #e2e8f0;border-radius:13px;padding:11px 12px;box-shadow:0 3px 10px rgba(15,31,51,.04);transition:transform .12s,box-shadow .12s,border-color .12s;}}
+      #panel-tel .tel-card:hover{{transform:translateY(-1px);box-shadow:0 8px 20px rgba(15,31,51,.09);border-color:#cfe0f1;}}
+      #panel-tel .tel-av{{flex-shrink:0;width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;letter-spacing:.3px;}}
+      #panel-tel .tel-body{{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px;}}
+      #panel-tel .tel-name{{font-size:13.5px;font-weight:850;color:var(--tink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}
+      #panel-tel .tel-num{{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;font-weight:800;color:var(--tacc);text-decoration:none;font-variant-numeric:tabular-nums;letter-spacing:.2px;width:fit-content;}}
+      #panel-tel .tel-num:hover{{text-decoration:underline;}}
+      #panel-tel .tel-num-i{{color:#7aa0c4;font-weight:400;font-size:12px;}}
+      #panel-tel .tel-role{{display:inline-block;width:fit-content;margin-top:3px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.4px;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:999px;padding:1px 8px;}}
+      #panel-tel .tel-mail{{display:inline-block;width:fit-content;margin-top:2px;font-size:11px;font-weight:700;color:#64748b;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}}
+      #panel-tel .tel-mail:hover{{color:var(--tacc);text-decoration:underline;}}
+      #panel-tel .tel-copy{{flex-shrink:0;width:32px;height:32px;border-radius:9px;border:1px solid #e2e8f0;background:#f8fafc;color:#64748b;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:background .12s,color .12s,border-color .12s;}}
+      #panel-tel .tel-copy:hover{{background:#eef5fc;color:var(--tacc);border-color:#cfe0f1;}}
+      #panel-tel .tel-copy.copied{{background:#ecfdf5;color:#16a34a;border-color:#bbf7d0;}}
+      #panel-tel .tel-empty{{color:#94a3b8;padding:60px;text-align:center;font-size:14px;}}
+      @media (prefers-reduced-motion:reduce){{#panel-tel .tel-card{{transition:none;}}}}
+    </style>
+    <div class="tel-wrap">
+      <div class="tel-head">
+        <div class="tel-title">
+          <span class="tel-ico">&#128222;</span>
+          <div>
+            <div class="tel-h">Telefonliste</div>
+            <div class="tel-sub">Fachberater &amp; Kontakte &middot; klick auf die Nummer zum Anrufen</div>
+          </div>
+          <span id="tel-count" class="tel-count"></span>
+        </div>
+        <div class="tel-controls">
+          <div class="tel-searchwrap">
+            <span class="tel-sicon">&#128269;</span>
+            <input id="tel-search" class="tel-search" placeholder="Name oder Nummer suchen..." oninput="telFilter(this.value)">
+          </div>
+          <button class="tel-pdf" onclick="telPDF()">&#128196; PDF</button>
+        </div>
       </div>
-      <div id="tel-content"></div>
+      <div id="tel-content" class="tel-content"></div>
     </div>
   </div>
 
@@ -10761,46 +10805,62 @@ function telPDF() {{
 function telCopy(tel) {{
   if(navigator.clipboard) navigator.clipboard.writeText(tel);
 }}
+function telCopyBtn(btn) {{
+  var t = btn.getAttribute("data-tel") || "";
+  if(navigator.clipboard) navigator.clipboard.writeText(t);
+  btn.classList.add("copied");
+  btn.innerHTML = "&#10003;";
+  setTimeout(function(){{ btn.classList.remove("copied"); btn.innerHTML = "&#128203;"; }}, 1100);
+}}
+function telAvatarHtml(name) {{
+  var h = gkHue(name);
+  return "<span class='tel-av' style='background:hsl(" + h + ",58%,93%);color:hsl(" + h + ",48%,32%);'>"
+       + gkEsc(gkInitials(name)) + "</span>";
+}}
 function telHover(el, on) {{
   el.style.background = on ? "#eff6ff" : "#fff";
 }}
 function telFilter(q) {{ telRender(q); }}
 
 function telRender(q) {{
-  q = q.toLowerCase().trim();
+  q = (q || "").toLowerCase().trim();
   var html = "";
+  var totalShown = 0;
   TEL_DATA.forEach(function(g) {{
     var hits = g.personen.filter(function(p) {{
       return !q || p.name.toLowerCase().includes(q) || p.tel.includes(q);
     }});
     if(!hits.length) return;
-    html += "<div style='margin-bottom:18px'>";
-    html += "<div style='font-size:11px;font-weight:900;text-transform:uppercase;"
-          + "letter-spacing:.5px;color:#1b66b3;padding:4px 0;"
-          + "border-bottom:2px solid #1b66b3;margin-bottom:6px'>";
-    html += g.gruppe + " <span style='font-weight:500;color:#94a3b8'>(" + hits.length + ")</span></div>";
-    html += "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:6px'>";
+    totalShown += hits.length;
+    html += "<div class='tel-group'>";
+    html += "<div class='tel-group-h'><span class='tel-group-n'>" + gkEsc(g.gruppe) + "</span>"
+          + "<span class='tel-group-c'>" + hits.length + "</span></div>";
+    html += "<div class='tel-grid'>";
     hits.forEach(function(p) {{
-      var safetel = p.tel.replace(/'/g,"&#39;");
-      html += "<div onclick='telCopy(this.dataset.tel)' onmouseover='telHover(this,true)' onmouseout='telHover(this,false)'"
-            + " data-tel='" + safetel + "' title='Klicken zum Kopieren'"
-            + " style='cursor:pointer;background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:8px 12px;transition:background .12s'>";
-      html += "<div style='font-weight:800;font-size:13px;color:#0b1220'>" + p.name + "</div>";
-      var telClean = p.tel.replace(/[^\d+]/g,'');
-      html += "<a href='tel:" + telClean + "' onclick='event.stopPropagation()'" + " title='ProCall: " + safetel + "'"
-            + " style='display:block;font-size:13px;color:#1b66b3;font-weight:700;margin-top:2px;text-decoration:none;'>&#128222; " + p.tel + "</a>";
+      var safetel = String(p.tel).replace(/'/g,"&#39;");
+      var telClean = String(p.tel).replace(/[^\d+]/g,"");
+      var isRole = (p.mail === "Disponent" || p.mail === "Chef");
+      html += "<div class='tel-card'>";
+      html += telAvatarHtml(p.name);
+      html += "<div class='tel-body'>";
+      html += "<div class='tel-name' title='" + gkAttr(p.name) + "'>" + gkEsc(p.name) + "</div>";
+      html += "<a class='tel-num' href='tel:" + telClean + "' title='Anrufen: " + gkAttr(p.tel) + "'>"
+            + "<span class='tel-num-i'>&#128222;</span>" + gkEsc(p.tel) + "</a>";
       if(p.mail) {{
-        var isRole = (p.mail==="Disponent"||p.mail==="Chef");
         html += isRole
-          ? "<div style='font-size:11px;color:#dc2626;font-weight:700;margin-top:2px'>" + p.mail + "</div>"
-          : "<div style='font-size:11px;color:#64748b;margin-top:2px'>&#9993; " + p.mail + "</div>";
+          ? "<span class='tel-role'>" + gkEsc(p.mail) + "</span>"
+          : "<a class='tel-mail' href='mailto:" + gkAttr(p.mail) + "' title='" + gkAttr(p.mail) + "'>&#9993; " + gkEsc(p.mail) + "</a>";
       }}
+      html += "</div>";
+      html += "<button class='tel-copy' type='button' title='Nummer kopieren' data-tel='" + safetel + "' onclick='telCopyBtn(this)'>&#128203;</button>";
       html += "</div>";
     }});
     html += "</div></div>";
   }});
-  if(!html) html = "<div style='color:#64748b;padding:20px'>Keine Ergebnisse.</div>";
+  if(!html) html = "<div class='tel-empty'>Keine Treffer.</div>";
   document.getElementById("tel-content").innerHTML = html;
+  var cnt = document.getElementById("tel-count");
+  if(cnt) cnt.textContent = totalShown ? (totalShown + (totalShown === 1 ? " Kontakt" : " Kontakte")) : "";
 }}
 // ── Samstags Fahrer ───────────────────────────────────────────────────────────
 var samCurrentSort = "count"; // default: beim ersten Öffnen: viele Einsätze oben, wenige unten
