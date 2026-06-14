@@ -7984,8 +7984,14 @@ function faBewStyleBlock() {
     + ".fabew-table td:first-child,.fabew-table td:nth-child(2){text-align:left;}"
     + ".fabew-table tr:nth-child(even) td{background:#fbfdff;}"
     + ".fabew-table tr:hover td{background:#eef6ff;}"
+    + ".fabew-monthfocus{border:1.5px solid #bcd4ec;border-radius:18px;background:linear-gradient(180deg,#f2f8ff 0%,#ffffff 72%);box-shadow:0 12px 30px rgba(30,96,145,.10);padding:14px 16px 16px;}"
+    + ".fabew-mf-head{display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin-bottom:12px;}"
+    + ".fabew-mf-badge{font-size:10.5px;font-weight:950;letter-spacing:.6px;text-transform:uppercase;color:#fff;background:#1e6091;border-radius:999px;padding:5px 12px;}"
+    + ".fabew-mf-month{font-size:18px;font-weight:1000;color:#0f172a;letter-spacing:-.4px;font-variant-numeric:tabular-nums;}"
+    + ".fabew-mf-count{font-size:12px;font-weight:900;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:999px;padding:4px 11px;font-variant-numeric:tabular-nums;}"
+    + ".fabew-mf-hint{font-size:11px;font-weight:750;color:#64748b;margin-left:auto;}"
     + "@media(max-width:1180px){.fabew-grid4{grid-template-columns:repeat(2,minmax(180px,1fr));}.fabew-grid2{grid-template-columns:1fr;}}"
-    + "@media(max-width:760px){.fabew-grid4{grid-template-columns:1fr;}.fabew-barrow{grid-template-columns:22px minmax(100px,1fr) 74px 42px;}.fabew-mini{height:8px;}.fabew-card-pad{padding:13px;}}"
+    + "@media(max-width:760px){.fabew-grid4{grid-template-columns:1fr;}.fabew-barrow{grid-template-columns:22px minmax(100px,1fr) 74px 42px;}.fabew-mini{height:8px;}.fabew-card-pad{padding:13px;}.fabew-mf-hint{margin-left:0;width:100%;}}"
     + "</style>";
 }
 
@@ -8109,6 +8115,22 @@ function faBewRender() {
   var html = faBewStyleBlock();
   html += "<div class='fabew-shell'>";
 
+  // ── Monatsfokus: reagiert sichtbar auf die Monatsauswahl ──────────────────────
+  // Diese beiden Auswertungen ändern sich beim Monatswechsel – darum stehen sie ganz oben.
+  var mFocusTotal = faBewInt((data.g_months[m1] || {})._t);
+  html += "<div class='fabew-monthfocus'>";
+  html += "<div class='fabew-mf-head'>"
+    + "<span class='fabew-mf-badge'>Monatsfokus</span>"
+    + "<span class='fabew-mf-month'>" + faBewEsc(faBewMonthLabel(m1)) + "</span>"
+    + "<span class='fabew-mf-count'>" + faBewNum(mFocusTotal) + " Ereignisse</span>"
+    + "<span class='fabew-mf-hint'>Diese Auswertung wechselt mit der Monatsauswahl oben</span>"
+    + "</div>";
+  html += "<div class='fabew-grid2' style='grid-template-columns:.82fr 1.18fr;'>";
+  html += "<div class='fabew-card'><div class='fabew-card-pad'><div class='fabew-title'>Ereignisarten</div><div class='fabew-sub'>" + faBewEsc(monthTitle) + "</div>" + faBewTypePills(m1, m2, compare) + "<div style='height:300px;margin-top:8px;'><canvas id='fabew-chart-type'></canvas></div></div></div>";
+  html += "<div class='fabew-card'><div class='fabew-card-pad'><div class='fabew-title'>Top Fahrer nach Ereignissen</div><div class='fabew-sub'>" + faBewEsc(monthTitle) + " · maximal 15 Fahrer · horizontal lesbar</div><div style='height:" + topEventHeight + "px;margin-top:12px;'><canvas id='fabew-chart-top'></canvas></div></div></div>";
+  html += "</div></div>";
+
+  // ── Gesamtkennzahlen (über den ganzen Datensatz, monatsunabhängig) ────────────
   html += "<div class='fabew-grid4'>";
   html += faBewKpi("Bewertete Fahrer", graded.length + " / " + filtered.length, data.profile || "aktuelle Auswahl", "#1e3a5f", "&#128101;");
   html += faBewKpi("Ø Gesamtnote", avgGrade != null ? faBewNum(avgGrade,1) : "–", "Skala 1–10 · " + (avgGrade != null ? faBewGradeText(avgGrade) : "ohne Wert"), faBewGradeColor(avgGrade), "&#11088;");
@@ -8130,11 +8152,6 @@ function faBewRender() {
 
   html += "<div class='fabew-grid2'>";
   html += "<div class='fabew-card'><div class='fabew-card-pad'><div class='fabew-title'>Ereignisse nach Monat</div><div class='fabew-sub'>Gestapelt nach Ereignisart über alle vorhandenen Monate</div><div style='height:320px;margin-top:12px;'><canvas id='fabew-chart-month'></canvas></div></div></div>";
-  html += "<div class='fabew-card'><div class='fabew-card-pad'><div class='fabew-title'>Ereignisarten</div><div class='fabew-sub'>" + faBewEsc(monthTitle) + "</div>" + faBewTypePills(m1, m2, compare) + "<div style='height:300px;margin-top:8px;'><canvas id='fabew-chart-type'></canvas></div></div></div>";
-  html += "</div>";
-
-  html += "<div class='fabew-grid2' style='grid-template-columns:1.15fr .85fr;'>";
-  html += "<div class='fabew-card'><div class='fabew-card-pad'><div class='fabew-title'>Top Fahrer nach Ereignissen</div><div class='fabew-sub'>" + faBewEsc(monthTitle) + " · maximal 15 Fahrer · horizontal lesbar</div><div style='height:" + topEventHeight + "px;margin-top:12px;'><canvas id='fabew-chart-top'></canvas></div></div></div>";
   html += faBewBoard("Auffällige Fahrer gesamt", "Nach allen Ereignissen im Datensatz", event15, "events");
   html += "</div>";
 
