@@ -7864,11 +7864,54 @@ function faBewMonths() {
   return Object.keys(d.g_months || {}).sort();
 }
 
+// Jahres-/Monatsschlüssel: "2026-05" = Monat, "2026" = ganzes Jahr
+function faBewIsYearKey(k) { return /^\d{4}$/.test(k || ""); }
+
+function faBewYears() {
+  var ys = {};
+  faBewMonths().forEach(function(mk){ ys[mk.slice(0,4)] = 1; });
+  return Object.keys(ys).sort();
+}
+
+// Liefert die Monatsschlüssel, die ein Schlüssel abdeckt (Jahr => alle Monate des Jahres)
+function faBewKeyMonths(key) {
+  if (faBewIsYearKey(key)) return faBewMonths().filter(function(mk){ return mk.slice(0,4) === key; });
+  return key ? [key] : [];
+}
+
+// Gesamtzahl Ereignisse für einen Schlüssel (Monat oder Jahr)
+function faBewKeyTotal(key) {
+  var gm = faBewData().g_months || {};
+  return faBewKeyMonths(key).reduce(function(s,k){ return s + faBewInt((gm[k] || {})._t); }, 0);
+}
+
+// Vergleichs-Schlüssel: Monat => Vormonat, Jahr => Vorjahr (falls vorhanden)
+function faBewPrevKey(key) {
+  if (faBewIsYearKey(key)) {
+    var ys = faBewYears(); var i = ys.indexOf(key);
+    return i > 0 ? ys[i-1] : "";
+  }
+  var ms = faBewMonths(); var j = ms.indexOf(key);
+  return j > 0 ? ms[j-1] : "";
+}
+
+function faBewKeyValid(key) {
+  if (!key) return false;
+  if (faBewIsYearKey(key)) return faBewYears().indexOf(key) !== -1;
+  return faBewMonths().indexOf(key) !== -1;
+}
+
 function faBewMonthLabel(mk) {
+  if (faBewIsYearKey(mk)) return "Ganzes Jahr " + mk;
   var m = /^(\d{4})-(\d{2})$/.exec(mk || "");
   if (!m) return mk || "";
   var idx = Math.max(0, Math.min(11, parseInt(m[2], 10) - 1));
   return FABEW_MONTH_NAMES[idx] + " " + m[1];
+}
+
+// Kurzlabel für Delta-/Vergleichstexte: Jahr => "2025", Monat => "Apr 2026"
+function faBewKeyShort(mk) {
+  return faBewIsYearKey(mk) ? mk : faBewMonthLabel(mk);
 }
 
 function faBewGradeColor(g) {
@@ -7909,12 +7952,23 @@ function faBewInt(v) {
 }
 
 function faBewPopulateMonths() {
-  var months = faBewMonths();
   var s1 = document.getElementById("fabew-month");
   if (!s1) return;
-  var opts = months.map(function(mk){ return "<option value='" + mk + "'>" + faBewMonthLabel(mk) + "</option>"; }).join("");
+  var years  = faBewYears();
+  var months = faBewMonths();
+  var opts = "";
+  // Pro Jahr (neuestes oben): "Ganzes Jahr" gefolgt von den Monaten dieses Jahres
+  years.slice().reverse().forEach(function(yr){
+    opts += "<option value='" + yr + "'>" + faBewMonthLabel(yr) + "</option>";
+    months.filter(function(mk){ return mk.slice(0,4) === yr; }).forEach(function(mk){
+      opts += "<option value='" + mk + "'>\u00A0\u00A0" + faBewMonthLabel(mk) + "</option>";
+    });
+  });
   s1.innerHTML = opts;
-  if (!_fabewState.m1 || months.indexOf(_fabewState.m1) === -1) _fabewState.m1 = months.length ? months[months.length - 1] : "";
+  // Standard: ganzes (neuestes) Jahr
+  if (!faBewKeyValid(_fabewState.m1)) {
+    _fabewState.m1 = years.length ? years[years.length - 1] : (months.length ? months[months.length - 1] : "");
+  }
   s1.value = _fabewState.m1;
 }
 
@@ -7935,13 +7989,17 @@ function faBewFilteredDrivers() {
 }
 
 function faBewMonthTypeCounts(mk) {
-  var gm = (faBewData().g_months || {})[mk] || {};
+  var gm  = faBewData().g_months || {};
   var EVT = faBewData().event_types || ["BRAKE","CURVE","OVERSPEED","SPEEDUP"];
-  return EVT.map(function(t){ return gm[t] || 0; });
+  var keys = faBewKeyMonths(mk);
+  return EVT.map(function(t){
+    return keys.reduce(function(s,k){ return s + ((gm[k] || {})[t] || 0); }, 0);
+  });
 }
 
 function faBewDriverMonthEvents(d, mk) {
-  return faBewInt(((d.months || {})[mk] || {})._t);
+  var keys = faBewKeyMonths(mk);
+  return keys.reduce(function(s,k){ return s + faBewInt(((d.months || {})[k] || {})._t); }, 0);
 }
 
 function faBewInit() {
@@ -8117,16 +8175,16 @@ function faBewRender() {
   var html = faBewStyleBlock();
   html += "<div class='fabew-shell'>";
 
-  // ── Monatsfokus: reagiert sichtbar auf die Monatsauswahl ──────────────────────
-  // Diese Auswertungen ändern sich beim Monatswechsel – darum stehen sie ganz oben.
-  var mFocusTotal = faBewInt((data.g_months[m1] || {})._t);
+  // ── Zeitraumfokus: reagiert sichtbar auf die Auswahl (Monat oder ganzes Jahr) ──
+  // Diese Auswertungen ändern sich beim Wechsel der Auswahl – darum stehen sie ganz oben.
+  var isYear = faBewIsYearKey(m1);
+  var mFocusTotal = faBewKeyTotal(m1);
 
-  // Vormonat bestimmen (für Delta-Anzeige und Veränderungs-Board)
-  var focusMonths = faBewMonths();
-  var mIdx   = focusMonths.indexOf(m1);
-  var mPrev  = mIdx > 0 ? focusMonths[mIdx - 1] : "";
-  var prevTotal = mPrev ? faBewInt((data.g_months[mPrev] || {})._t) : null;
+  // Vergleich: Monat => Vormonat, Jahr => Vorjahr
+  var mPrev = faBewPrevKey(m1);
+  var prevTotal = mPrev ? faBewKeyTotal(mPrev) : null;
   var dTotal = prevTotal == null ? null : (mFocusTotal - prevTotal);
+  var prevWord = isYear ? "Vorjahr" : "Vormonat";
 
   // Delta-Badge im Kopf: rot = mehr Ereignisse (schlechter), grün = weniger (besser)
   var deltaHtml = "";
@@ -8136,23 +8194,23 @@ function faBewRender() {
     var dbg = zero ? "#f1f5f9" : (up ? "#fef2f2" : "#ecfdf5");
     var arrow = zero ? "&#177;" : (up ? "&#9650;" : "&#9660;");
     deltaHtml = "<span class='fabew-mf-delta' style='color:" + dc + ";border-color:" + dc + "33;background:" + dbg + ";'>"
-      + arrow + " " + faBewNum(Math.abs(dTotal)) + " ggü. " + faBewEsc(faBewMonthLabel(mPrev)) + "</span>";
+      + arrow + " " + faBewNum(Math.abs(dTotal)) + " ggü. " + faBewEsc(faBewKeyShort(mPrev)) + "</span>";
   }
 
   html += "<div class='fabew-monthfocus'>";
   html += "<div class='fabew-mf-head'>"
-    + "<span class='fabew-mf-badge'>Monatsfokus</span>"
+    + "<span class='fabew-mf-badge'>" + (isYear ? "Jahresfokus" : "Monatsfokus") + "</span>"
     + "<span class='fabew-mf-month'>" + faBewEsc(faBewMonthLabel(m1)) + "</span>"
     + "<span class='fabew-mf-count'>" + faBewNum(mFocusTotal) + " Ereignisse</span>"
     + deltaHtml
-    + "<span class='fabew-mf-hint'>Diese Auswertung wechselt mit der Monatsauswahl oben</span>"
+    + "<span class='fabew-mf-hint'>Diese Auswertung wechselt mit der Auswahl oben</span>"
     + "</div>";
   html += "<div class='fabew-grid2' style='grid-template-columns:.82fr 1.18fr;'>";
   html += "<div class='fabew-card'><div class='fabew-card-pad'><div class='fabew-title'>Ereignisarten</div><div class='fabew-sub'>" + faBewEsc(monthTitle) + "</div>" + faBewTypePills(m1, m2, compare) + "<div style='height:300px;margin-top:8px;'><canvas id='fabew-chart-type'></canvas></div></div></div>";
   html += "<div class='fabew-card'><div class='fabew-card-pad'><div class='fabew-title'>Top Fahrer nach Ereignissen</div><div class='fabew-sub'>" + faBewEsc(monthTitle) + " · maximal 15 Fahrer · horizontal lesbar</div><div style='height:" + topEventHeight + "px;margin-top:12px;'><canvas id='fabew-chart-top'></canvas></div></div></div>";
   html += "</div>";
 
-  // Stärkste Veränderung ggü. Vormonat (Auf-/Absteiger) – pro Fahrer aus d.months
+  // Stärkste Veränderung ggü. Vormonat/Vorjahr (Auf-/Absteiger) – pro Fahrer aus d.months
   var changeList = filtered.map(function(d){
     var cur = faBewDriverMonthEvents(d, m1);
     var prv = mPrev ? faBewDriverMonthEvents(d, mPrev) : 0;
@@ -8163,8 +8221,8 @@ function faBewRender() {
 
   html += "<div class='fabew-card' style='margin-top:14px;'>";
   html += "<div class='fabew-card-pad' style='border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#fbfdff,#fff);'>"
-    + "<div class='fabew-title'>Stärkste Veränderung ggü. Vormonat</div>"
-    + "<div class='fabew-sub'>" + (mPrev ? (faBewEsc(faBewMonthLabel(mPrev)) + " &rarr; " + faBewEsc(faBewMonthLabel(m1)) + " &middot; rot = mehr, grün = weniger Ereignisse") : "Kein Vormonat im Datensatz vorhanden") + "</div>"
+    + "<div class='fabew-title'>Stärkste Veränderung ggü. " + prevWord + "</div>"
+    + "<div class='fabew-sub'>" + (mPrev ? (faBewEsc(faBewKeyShort(mPrev)) + " &rarr; " + faBewEsc(faBewKeyShort(m1)) + " &middot; rot = mehr, grün = weniger Ereignisse") : ("Kein " + prevWord + " im Datensatz vorhanden")) + "</div>"
     + "</div>";
   if (mPrev && changeTop.length) {
     html += "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:9px;padding:14px;'>";
@@ -8184,11 +8242,11 @@ function faBewRender() {
     html += "</div>";
   } else {
     html += "<div style='padding:24px;text-align:center;color:#94a3b8;font-size:12px;font-weight:750;'>"
-      + (mPrev ? "Keine Veränderung ggü. Vormonat" : "Erster Monat im Datensatz &ndash; kein Vergleich möglich") + "</div>";
+      + (mPrev ? ("Keine Veränderung ggü. " + prevWord) : ("Kein " + prevWord + " vorhanden &ndash; kein Vergleich möglich")) + "</div>";
   }
   html += "</div>";
 
-  html += "</div>";  // Ende Monatsfokus
+  html += "</div>";  // Ende Zeitraumfokus
 
   // ── Gesamtkennzahlen (über den ganzen Datensatz, monatsunabhängig) ────────────
   html += "<div class='fabew-grid4'>";
@@ -9403,7 +9461,7 @@ iframe.active{{display:block}}
             <div style="font-size:11px;font-weight:750;color:#64748b;margin-top:2px;">Dashboard · Note, Ereignisse und Verbrauch</div>
           </div>
         </div>
-        <select id="fabew-month" onchange="faBewMonthChange(this.value)" title="Monat auswählen"
+        <select id="fabew-month" onchange="faBewMonthChange(this.value)" title="Zeitraum auswählen (ganzes Jahr oder Monat)"
           style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:12.5px;font-weight:900;font-family:inherit;outline:none;background:#fff;color:#1d4ed8;cursor:pointer;box-shadow:0 2px 8px rgba(15,23,42,.04);"></select>
         <input id="fabew-search" placeholder="Fahrer suchen..." oninput="faBewFilter(this.value)"
           style="flex:1;min-width:220px;max-width:520px;padding:8px 14px;border:1px solid #cbd5e1;border-radius:10px;font-size:13px;font-family:inherit;font-weight:750;outline:none;background:#fff;color:#0f172a;box-shadow:0 2px 8px rgba(15,23,42,.04);">
