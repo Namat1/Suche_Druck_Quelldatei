@@ -9564,20 +9564,98 @@ iframe.active{{display:block}}
   </div>
 
   <!-- ── Großkunden Panel ───────────────────────────────────────────────────── -->
-  <div id="panel-gk" style="display:none;flex:1;overflow:hidden;background:#f3f7fb;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
+  <div id="panel-gk" style="display:none;flex:1;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
+    <style>
+      #panel-gk{{--ink:#0f1f33;background:linear-gradient(180deg,#eef3f9 0%,#f5f8fc 100%);}}
+      #panel-gk .gk-head{{flex-shrink:0;background:linear-gradient(180deg,#fbfdff 0%,#edf3fa 100%);border-bottom:1px solid #d4e0ee;padding:13px 18px 12px;}}
+      #panel-gk .gk-titlerow{{display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-bottom:11px;}}
+      #panel-gk .gk-title{{display:flex;align-items:center;gap:9px;font-size:16.5px;font-weight:900;letter-spacing:-.3px;color:var(--ink);white-space:nowrap;}}
+      #panel-gk .gk-dot{{width:9px;height:9px;border-radius:50%;background:linear-gradient(135deg,#1e6091,#3aa0d8);box-shadow:0 0 0 4px rgba(30,96,145,.12);}}
+      #panel-gk .gk-count{{font-size:11.5px;font-weight:800;color:#1e6091;background:#e8f1fb;border:1px solid #cfe0f1;border-radius:999px;padding:2px 9px;font-variant-numeric:tabular-nums;}}
+      #panel-gk .gk-searchwrap{{position:relative;flex:1;min-width:200px;max-width:380px;}}
+      #panel-gk .gk-sicon{{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:13px;opacity:.5;pointer-events:none;}}
+      #panel-gk .gk-search{{width:100%;padding:9px 13px 9px 33px;border:1.5px solid #cdddee;border-radius:10px;font-size:13px;font-family:inherit;font-weight:600;outline:none;background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(30,96,145,.05);transition:border-color .14s,box-shadow .14s;}}
+      #panel-gk .gk-search:focus{{border-color:#1e6091;box-shadow:0 0 0 3px rgba(30,96,145,.13);}}
+      #panel-gk .gk-stat{{margin-left:auto;font-size:11.5px;font-weight:700;color:#7c8ca0;white-space:nowrap;font-variant-numeric:tabular-nums;}}
+      #panel-gk .gk-tiles{{display:flex;flex-wrap:wrap;gap:7px;max-height:146px;overflow-y:auto;padding:2px 4px 2px 0;}}
+      #panel-gk .gk-tile{{display:flex;align-items:center;gap:9px;cursor:pointer;font-family:inherit;text-align:left;border:1.5px solid #dbe4ef;background:#fff;border-radius:11px;padding:7px 12px 7px 8px;min-width:150px;max-width:250px;user-select:none;transition:transform .12s,box-shadow .12s,border-color .12s;}}
+      #panel-gk .gk-tile:hover{{transform:translateY(-1px);box-shadow:0 6px 16px rgba(15,31,51,.10);border-color:#c3d4e7;}}
+      #panel-gk .gk-tile:focus-visible{{outline:none;border-color:var(--gk);box-shadow:0 0 0 3px color-mix(in srgb,var(--gk) 28%,transparent);}}
+      #panel-gk .gk-tile.is-active{{border-color:var(--gk);box-shadow:0 8px 20px color-mix(in srgb,var(--gk) 22%,rgba(15,31,51,.10));}}
+      #panel-gk .gk-tile-txt{{min-width:0;display:flex;flex-direction:column;gap:3px;}}
+      #panel-gk .gk-tile-name{{font-size:12.5px;font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;}}
+      #panel-gk .gk-tile-meta{{font-size:10.5px;font-weight:700;color:#7c8ca0;}}
+      #panel-gk .gk-mono{{flex-shrink:0;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:900;letter-spacing:.3px;background:var(--gks);color:var(--gkd);}}
+      #panel-gk .gk-detail{{flex:1;overflow-y:auto;padding:18px 20px 34px;}}
+      #panel-gk .gk-fade{{animation:gkFade .22s ease-out;}}
+      @keyframes gkFade{{from{{opacity:0;transform:translateY(6px);}}to{{opacity:1;transform:none;}}}}
+      @media (prefers-reduced-motion:reduce){{#panel-gk .gk-fade{{animation:none;}}#panel-gk .gk-tile{{transition:none;}}}}
+      #panel-gk .gk-hero{{display:flex;align-items:center;gap:16px;background:linear-gradient(135deg,var(--gks) 0%,#fff 72%);border:1px solid var(--gkb);border-left:5px solid var(--gk);border-radius:16px;padding:16px 20px;margin-bottom:14px;box-shadow:0 10px 26px rgba(15,31,51,.06);flex-wrap:wrap;}}
+      #panel-gk .gk-hero-mono{{flex-shrink:0;width:54px;height:54px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;letter-spacing:.4px;background:var(--gk);color:#fff;box-shadow:0 6px 16px color-mix(in srgb,var(--gk) 40%,transparent);}}
+      #panel-gk .gk-hero-txt{{min-width:0;flex:1;}}
+      #panel-gk .gk-hero-name{{font-size:23px;font-weight:900;letter-spacing:-.5px;color:var(--ink);line-height:1.1;}}
+      #panel-gk .gk-hero-sub{{font-size:12.5px;font-weight:700;color:var(--gkd);margin-top:3px;}}
+      #panel-gk .gk-actions{{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto;}}
+      #panel-gk .gk-act{{display:inline-flex;align-items:center;gap:7px;background:var(--gk);color:#fff;border:none;border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:800;text-decoration:none;white-space:nowrap;cursor:pointer;box-shadow:0 4px 12px color-mix(in srgb,var(--gk) 32%,transparent);transition:filter .12s,transform .12s;}}
+      #panel-gk .gk-act:hover{{filter:brightness(1.07);transform:translateY(-1px);}}
+      #panel-gk .gk-act b{{font-weight:900;opacity:.85;}}
+      #panel-gk .gk-act-sm{{background:#fff;color:var(--gkd);border:1.5px solid var(--gkb);box-shadow:none;}}
+      #panel-gk .gk-act-sm:hover{{background:var(--gks);filter:none;}}
+      #panel-gk .gk-card{{background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;box-shadow:0 4px 14px rgba(15,31,51,.045);margin-bottom:14px;}}
+      #panel-gk .gk-card-h{{display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#fbfdff,#fff);}}
+      #panel-gk .gk-eyebrow{{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.8px;color:var(--gkd);}}
+      #panel-gk .gk-eyebrow::before{{content:"";width:7px;height:7px;border-radius:50%;background:var(--gk);}}
+      #panel-gk .gk-cnt{{margin-left:auto;font-size:11px;font-weight:800;color:#94a3b8;font-variant-numeric:tabular-nums;}}
+      #panel-gk .gk-card-b{{padding:4px 16px 10px;}}
+      #panel-gk .gk-loc{{display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap;padding:12px 0;border-top:1px solid #f1f5f9;}}
+      #panel-gk .gk-loc:first-child{{border-top:none;}}
+      #panel-gk .gk-loc-name{{min-width:220px;flex:0 0 auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13.5px;font-weight:800;color:var(--ink);}}
+      #panel-gk .gk-loc-addr{{flex:1;font-size:12.5px;color:#475569;line-height:1.6;}}
+      #panel-gk .gk-loc-chips{{display:flex;flex-wrap:wrap;gap:8px;padding:10px 0 4px;}}
+      #panel-gk .gk-loc-chip{{display:inline-flex;align-items:center;gap:9px;padding:7px 12px;background:#f7fafd;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;font-weight:800;color:var(--ink);}}
+      #panel-gk .gk-knr{{display:inline-flex;align-items:baseline;gap:5px;background:var(--gks);border:1px solid var(--gkb);border-radius:6px;padding:2px 8px;}}
+      #panel-gk .gk-knr-l{{font-size:8.5px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--gkd);}}
+      #panel-gk .gk-knr-v{{font-size:12.5px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;}}
+      #panel-gk .gk-grid{{display:grid;grid-template-columns:minmax(340px,1.1fr) minmax(260px,.9fr);gap:14px;align-items:start;}}
+      @media (max-width:880px){{#panel-gk .gk-grid{{grid-template-columns:1fr;}}}}
+      #panel-gk .gk-c-sec{{margin:13px 0 6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-bottom:6px;border-bottom:1px solid #e8eef5;}}
+      #panel-gk .gk-c-sec-l{{font-size:10.5px;font-weight:900;text-transform:uppercase;letter-spacing:.7px;color:var(--gkd);}}
+      #panel-gk .gk-c-row{{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #f4f7fa;}}
+      #panel-gk .gk-c-row:last-child{{border-bottom:none;}}
+      #panel-gk .gk-c-left{{flex:1;min-width:0;}}
+      #panel-gk .gk-mail{{color:var(--gkd);font-size:12.5px;font-weight:700;text-decoration:none;}}
+      #panel-gk .gk-mail:hover{{text-decoration:underline;}}
+      #panel-gk .gk-c-label{{font-size:12.5px;font-weight:700;color:var(--ink);}}
+      #panel-gk .gk-c-dash{{color:#cbd5e1;font-size:12px;}}
+      #panel-gk .gk-tel{{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;color:var(--gkd);font-variant-numeric:tabular-nums;text-decoration:none;white-space:nowrap;}}
+      #panel-gk .gk-tel-i{{color:var(--gk);font-weight:400;}}
+      #panel-gk .gk-c-other{{display:flex;gap:12px;align-items:baseline;padding:7px 0;border-bottom:1px solid #f4f7fa;}}
+      #panel-gk .gk-c-other-l{{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;min-width:90px;flex-shrink:0;}}
+      #panel-gk .gk-c-other-v{{font-size:12.5px;color:#334155;line-height:1.5;}}
+      #panel-gk .gk-hint{{display:flex;align-items:flex-start;gap:12px;padding:10px 16px;border-top:1px solid #f1f5f9;}}
+      #panel-gk .gk-hint:first-child{{border-top:none;}}
+      #panel-gk .gk-hint-n{{flex-shrink:0;width:20px;height:20px;border-radius:6px;background:var(--gks);color:var(--gkd);font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;margin-top:1px;}}
+      #panel-gk .gk-hint-t{{font-size:12.5px;color:#334155;line-height:1.55;}}
+      #panel-gk .gk-ff-row{{padding:9px 16px;border-top:1px solid #f4f7fa;font-size:12.5px;color:#334155;}}
+      #panel-gk .gk-ff-row:first-child{{border-top:none;}}
+      #panel-gk .gk-ff-long{{background:#f8fbff;line-height:1.6;}}
+      #panel-gk .gk-empty{{color:#94a3b8;padding:70px;text-align:center;font-size:14px;}}
+    </style>
     <!-- Kopf / Suche -->
-    <div style="flex-shrink:0;background:linear-gradient(180deg,#f8fbff 0%,#edf4fb 100%);border-bottom:1.5px solid #c6d6e8;padding:10px 16px;box-shadow:0 1px 5px rgba(30,96,145,.08);">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-        <div style="font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.45px;color:#1e6091;white-space:nowrap;">Gro&#223;kunden <span id="gk-count" style="font-weight:700;color:#4f708f;"></span></div>
-        <input id="gk-search" placeholder="Gro&#223;kunden suchen..." oninput="gkFilter(this.value)"
-          style="flex:1;max-width:340px;padding:7px 11px;border:1.5px solid #b9cce3;border-radius:6px;font-size:12px;font-family:inherit;outline:none;background:#fff;color:#1f3347;box-shadow:0 1px 3px rgba(30,96,145,.07);">
-        <span id="gk-stats" style="margin-left:auto;font-size:11px;font-weight:700;color:#64748b;"></span>
+    <div class="gk-head">
+      <div class="gk-titlerow">
+        <div class="gk-title"><span class="gk-dot"></span>Gro&#223;kunden <span id="gk-count" class="gk-count"></span></div>
+        <div class="gk-searchwrap">
+          <span class="gk-sicon">&#128269;</span>
+          <input id="gk-search" class="gk-search" placeholder="Gro&#223;kunden suchen..." oninput="gkFilter(this.value)">
+        </div>
+        <span id="gk-stats" class="gk-stat"></span>
       </div>
-      <div id="gk-tiles" style="display:flex;flex-wrap:wrap;gap:6px;max-height:120px;overflow-y:auto;padding-right:4px;"></div>
+      <div id="gk-tiles" class="gk-tiles"></div>
     </div>
     <!-- Detail unten -->
-    <div id="gk-detail" style="flex:1;overflow-y:auto;padding:16px 18px 28px;background:#f3f7fb;">
-      <div style="color:#94a3b8;padding:70px;text-align:center;font-size:14px;">Keine Gro&#223;kundendaten &ndash; bitte Excel in Streamlit hochladen.</div>
+    <div id="gk-detail" class="gk-detail">
+      <div class="gk-empty">Keine Gro&#223;kundendaten &ndash; bitte Excel in Streamlit hochladen.</div>
     </div>
   </div>
 
@@ -10107,6 +10185,33 @@ function gkAttr(v) {{
   return gkEsc(v).replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 }}
 
+// ── Deterministische Akzentfarbe + Monogramm pro Kunde ──────────────────────
+function gkHue(name) {{
+  var s = String(name || ""), h = 0, i;
+  for (i = 0; i < s.length; i++) {{ h = (h * 31 + s.charCodeAt(i)) >>> 0; }}
+  return h % 360;
+}}
+
+function gkAccentStyle(name) {{
+  var h = gkHue(name);
+  return "--gk:hsl(" + h + ",54%,42%);--gks:hsl(" + h + ",62%,95%);"
+       + "--gkb:hsl(" + h + ",46%,86%);--gkd:hsl(" + h + ",55%,30%);";
+}}
+
+function gkInitials(name) {{
+  var raw = String(name || "");
+  var words = raw.replace(/[^0-9A-Za-zÄÖÜäöüß ]/g, " ").split(/\s+/).filter(Boolean)
+    .filter(function(w){{ return !/^(gmbh|mbh|kg|co|ag|ohg|ek|und|der|die|das)$/i.test(w); }});
+  if (!words.length) words = raw.split(/\s+/).filter(Boolean);
+  var a = words[0] ? words[0].charAt(0) : "?";
+  var b = words.length > 1 ? words[1].charAt(0) : "";
+  return ((a + b).toUpperCase()) || "?";
+}}
+
+function gkMonoHtml(name, cls) {{
+  return "<span class='" + (cls || "gk-mono") + "'>" + gkEsc(gkInitials(name)) + "</span>";
+}}
+
 function gkExtractEmails(v) {{
   var s = String(v == null ? "" : v);
   return s.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{{2,}}/ig) || [];
@@ -10166,11 +10271,8 @@ function gkRastingNfcEmailsFromLines(customer) {{
 function gkDistributorLinkHtml(emails, label, subject) {{
   emails = gkUniqEmails(emails);
   if (!emails.length) return "";
-  return "<a href='" + gkAttr(gkMailto(emails, subject || label)) + "'"
-       + " style='display:inline-flex;align-items:center;gap:7px;background:#e8f2fb;color:#1e6091;"
-       + "border:1px solid #9db9d5;border-radius:5px;padding:5px 11px;font-size:11.5px;"
-       + "font-weight:800;text-decoration:none;white-space:nowrap;box-shadow:0 1px 3px rgba(15,23,42,.08);'>"
-       + "&#9993; " + gkEsc(label) + " <span style='font-weight:700;opacity:.8;'>(" + emails.length + ")</span></a>";
+  return "<a class='gk-act gk-act-sm' href='" + gkAttr(gkMailto(emails, subject || label)) + "'>"
+       + "&#9993; " + gkEsc(label) + " <b>" + emails.length + "</b></a>";
 }}
 
 var GK_EDEKA_LAGER_NMS_EMAILS = [
@@ -10242,7 +10344,7 @@ function gkFilter(q) {{
   if (gkSelected >= 0) gkShow(gkSelected, true);
   else {{
     var detail = document.getElementById("gk-detail");
-    if (detail) detail.innerHTML = "<div style='color:#94a3b8;padding:70px;text-align:center;font-size:14px;'>Kein Gro&#223;kunde f&#252;r diese Suche.</div>";
+    if (detail) detail.innerHTML = "<div class='gk-empty'>Kein Gro&#223;kunde f&#252;r diese Suche.</div>";
   }}
 }}
 
@@ -10265,34 +10367,20 @@ function gkBuildTiles(activeIdx) {{
       if (k.entries.length === 1) singleKnr = k.entries[0].kundennummer || "";
       else multiCount = k.entries.length;
     }}
-    var bg      = active ? "linear-gradient(180deg,#f8fbff 0%,#dbeaf7 100%)" : "#fff";
-    var border  = active ? "#9db9d5" : "#cbd5e1";
-    var txtMain = active ? "#16324f" : "#334155";
-    var txtSub  = active ? "rgba(22,50,79,.72)" : "#334155";
-    var knrBg    = active ? "rgba(30,96,145,.10)" : "#eef4fb";
-    var knrTxt   = active ? "#16324f" : "#334155";
-    var knrLabel = active ? "rgba(30,96,145,.72)" : "#1e6091";
+    var meta = singleKnr
+      ? "<span class='gk-knr'><span class='gk-knr-l'>KNr</span><span class='gk-knr-v'>" + gkEsc(singleKnr) + "</span></span>"
+      : (multiCount ? "<span class='gk-tile-meta'>" + multiCount + " Standorte</span>" : "");
     html += "<button type='button' onclick='gkShow(" + realIdx + ")'"
-          + " style='cursor:pointer;border-radius:6px;padding:8px 11px;text-align:left;font-family:inherit;"
-          + "border:1px solid " + border + ";background:" + bg + ";"
-          + "transition:all .12s;min-width:118px;max-width:230px;user-select:none;"
-          + (active ? "box-shadow:0 2px 9px rgba(30,96,145,.18);" : "")
-          + "'>"
-          + "<div style='font-size:12px;font-weight:700;color:" + txtMain + ";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25;'>"
-          + gkEsc(k.name) + "</div>";
-    if (singleKnr) {{
-      html += "<div style='margin-top:5px;display:inline-flex;align-items:baseline;gap:5px;"
-            + "background:" + knrBg + ";border-radius:3px;padding:2px 7px;'>"
-            + "<span style='font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.55px;color:" + knrLabel + ";'>KNr</span>"
-            + "<span style='font-size:12px;font-weight:800;color:" + knrTxt + ";font-variant-numeric:tabular-nums;letter-spacing:.2px;line-height:1;'>"
-            + gkEsc(singleKnr) + "</span></div>";
-    }} else if (multiCount) {{
-      html += "<div style='font-size:10.5px;color:" + txtSub + ";margin-top:4px;font-weight:600;'>"
-            + multiCount + " Eintr&auml;ge</div>";
-    }}
-    html += "</button>";
+          + " class='gk-tile" + (active ? " is-active" : "") + "'"
+          + " style='" + gkAccentStyle(k.name) + "'>"
+          + gkMonoHtml(k.name, "gk-mono")
+          + "<span class='gk-tile-txt'>"
+          + "<span class='gk-tile-name'>" + gkEsc(k.name) + "</span>"
+          + (meta ? meta : "")
+          + "</span>"
+          + "</button>";
   }});
-  tilesEl.innerHTML = html || "<div style='color:#94a3b8;font-size:12px;padding:8px 4px;'>Keine Treffer.</div>";
+  tilesEl.innerHTML = html || "<div class='gk-tile-meta' style='padding:8px 4px;'>Keine Treffer.</div>";
 }}
 
 function gkRender() {{
@@ -10300,7 +10388,7 @@ function gkRender() {{
   if (!detail) return;
   if (!GK_DATA || !GK_DATA.length) {{
     gkBuildTiles(-1);
-    detail.innerHTML = "<div style='color:#94a3b8;padding:80px;text-align:center;font-size:14px;'>Keine Gro\u00dfkundendaten \u2013 bitte Excel in Streamlit hochladen.</div>";
+    detail.innerHTML = "<div class='gk-empty'>Keine Gro\u00dfkundendaten \u2013 bitte Excel in Streamlit hochladen.</div>";
     return;
   }}
   var visible = gkVisibleIndexes();
@@ -10314,7 +10402,7 @@ function gkShow(idx, skipTiles) {{
   if (!detail) return;
   var customer = GK_DATA[idx];
   if (!customer) {{
-    detail.innerHTML = "<div style='color:#94a3b8;padding:70px;text-align:center;font-size:14px;'>Kein Gro&#223;kunde ausgew&#228;hlt.</div>";
+    detail.innerHTML = "<div class='gk-empty'>Kein Gro&#223;kunde ausgew&#228;hlt.</div>";
     return;
   }}
   if (customer.type === "structured") gkRenderStructured(customer, detail);
@@ -10355,14 +10443,31 @@ function gkRenderStructured(customer, detail) {{
   var entryCount = customer.entries.length;
   var subline = entryCount === 1 ? "1 Standort" : entryCount + " Standorte";
 
-  var html = "<div style='width:100%;'>";
+  // Alle E-Mail-Adressen des Kunden für "Mail an alle"
+  var gkAllEmails = [];
+  customer.entries.forEach(function(entry) {{
+    (entry.rows||[]).forEach(function(row) {{
+      emailIdx.forEach(function(ci) {{
+        gkExtractEmails(row[ci]||"").forEach(function(a){{ gkAllEmails.push(a); }});
+      }});
+    }});
+  }});
+  gkAllEmails = gkUniqEmails(gkAllEmails);
 
-  // ── Header ───────────────────────────────────────────────────────────────────
-  html += "<div style='margin-bottom:14px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;'>"
-        + "<h1 style='font-size:22px;font-weight:800;color:#16324f;margin:0;letter-spacing:-.4px;line-height:1.1;'>"
-        + gkEsc(customer.name) + "</h1>"
-        + "<span style='font-size:12px;color:#94a3b8;font-weight:600;letter-spacing:.2px;'>" + subline + "</span>"
+  var html = "<div class='gk-fade' style='" + gkAccentStyle(customer.name) + "width:100%;'>";
+
+  // ── Hero ─────────────────────────────────────────────────────────────────────
+  html += "<div class='gk-hero'>"
+        + gkMonoHtml(customer.name, "gk-hero-mono")
+        + "<div class='gk-hero-txt'>"
+        + "<div class='gk-hero-name'>" + gkEsc(customer.name) + "</div>"
+        + "<div class='gk-hero-sub'>" + subline + "</div>"
         + "</div>";
+  var heroActs = "";
+  if (gkAllEmails.length) heroActs += "<a class='gk-act' href='" + gkAttr(gkMailto(gkAllEmails, customer.name)) + "'>&#9993; Mail an alle <b>" + gkAllEmails.length + "</b></a>";
+  heroActs += gkEdekaLagerNmsLink(customer);
+  if (heroActs) html += "<div class='gk-actions'>" + heroActs + "</div>";
+  html += "</div>";
 
   // ════════════════════════════════════════════════════════════════════════════
   // BLOCK 1: Standorte
@@ -10382,48 +10487,35 @@ function gkRenderStructured(customer, detail) {{
   }});
   var anyHasAddr = standorte.some(function(s) {{ return s.addrLines.length > 0; }});
 
-  // KNr-Badge-Helper: einheitlich leicht (hellgrau, dunkelblauer Text)
+  // KNr-Badge-Helper (kundenfarben getönt)
   function gkKnrBadge(knr) {{
     if (!knr) return "";
-    return "<span style='display:inline-flex;align-items:baseline;gap:5px;background:#eef4fb;"
-         + "border-radius:4px;padding:3px 9px;'>"
-         + "<span style='font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.55px;color:#1e6091;'>KNr</span>"
-         + "<span style='font-size:13px;font-weight:800;color:#16324f;font-variant-numeric:tabular-nums;letter-spacing:.2px;line-height:1;'>"
-         + gkEsc(knr) + "</span></span>";
+    return "<span class='gk-knr'><span class='gk-knr-l'>KNr</span>"
+         + "<span class='gk-knr-v'>" + gkEsc(knr) + "</span></span>";
   }}
 
-  html += "<div style='background:#fff;border:1px solid #cad7e8;border-radius:8px;margin-bottom:12px;overflow:hidden;box-shadow:0 1px 4px rgba(30,96,145,.04);'>";
-  html += "<div style='padding:9px 14px;background:#eef4fb;border-bottom:1px solid #cad7e8;'>"
-        + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#1e6091;'>Standorte</span>"
-        + "</div>";
+  html += "<div class='gk-card'>";
+  html += "<div class='gk-card-h'><span class='gk-eyebrow'>Standorte</span>"
+        + "<span class='gk-cnt'>" + entryCount + "</span></div>";
 
   if (anyHasAddr) {{
-    // Zeilen-Layout (Name + KNr links, Adresse rechts)
-    standorte.forEach(function(s, ei) {{
-      var borderTop = ei > 0 ? "border-top:1px solid #f1f5f9;" : "";
-      html += "<div style='padding:12px 14px;display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap;" + borderTop + "'>";
-      html += "<div style='min-width:230px;flex:0 0 auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
-            + "<div style='font-size:13.5px;font-weight:700;color:#0f172a;line-height:1.3;'>" + gkEsc(s.name) + "</div>"
-            + gkKnrBadge(s.kundennummer)
-            + "</div>";
+    html += "<div class='gk-card-b'>";
+    standorte.forEach(function(s) {{
+      html += "<div class='gk-loc'>";
+      html += "<div class='gk-loc-name'>" + gkEsc(s.name) + gkKnrBadge(s.kundennummer) + "</div>";
       if (s.addrLines.length) {{
-        html += "<div style='font-size:12.5px;color:#475569;line-height:1.65;flex:1;'>"
-              + s.addrLines.map(gkEsc).join("<br>") + "</div>";
+        html += "<div class='gk-loc-addr'>" + s.addrLines.map(gkEsc).join("<br>") + "</div>";
       }}
       html += "</div>";
     }});
+    html += "</div>";
   }} else {{
-    // Kompaktes Chip-Layout (keine Adressen vorhanden)
-    html += "<div style='padding:12px 14px;display:flex;flex-wrap:wrap;gap:8px;'>";
+    html += "<div class='gk-loc-chips' style='padding-left:16px;padding-right:16px;'>";
     standorte.forEach(function(s) {{
-      html += "<div style='display:inline-flex;align-items:center;gap:9px;padding:7px 11px;background:#f8fbff;border:1px solid #cad7e8;border-radius:6px;'>"
-            + "<span style='font-size:13px;font-weight:700;color:#0f172a;line-height:1.2;'>" + gkEsc(s.name) + "</span>"
-            + gkKnrBadge(s.kundennummer)
-            + "</div>";
+      html += "<div class='gk-loc-chip'>" + gkEsc(s.name) + gkKnrBadge(s.kundennummer) + "</div>";
     }});
     html += "</div>";
   }}
-  html += "</div>";
   html += "</div>";
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -10496,90 +10588,70 @@ function gkRenderStructured(customer, detail) {{
   var rastingNfcEmails = gkRastingNfcEmailsFromRows(customer, allContactRows);
 
   // Zwei-Spalten-Layout: Kontakte links, Hinweise rechts
-  html += "<div style='display:grid;grid-template-columns:minmax(360px,1.1fr) minmax(280px,.9fr);gap:12px;align-items:start;'>";
+  html += "<div class='gk-grid'>";
 
-  // ── LINKE SPALTE: Kontaktkarte ─────────────────────────────────────────────
+  // ── LINKE SPALTE: Kontakte ─────────────────────────────────────────────────
   html += "<div style='min-width:0;'>";
   if (hasAnyContact && allContactRows.length) {{
-    html += "<div style='background:#fff;border:1px solid #cad7e8;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(30,96,145,.04);'>";
-    html += "<div style='padding:9px 14px;background:#eef4fb;border-bottom:1px solid #cad7e8;display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
-          + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#1e6091;flex:1;'>Kontakte</span>"
-          + gkEdekaLagerNmsLink(customer)
-          + "</div>";
-    html += "<div style='padding:4px 14px 12px;'>";
+    html += "<div class='gk-card'>";
+    html += "<div class='gk-card-h'><span class='gk-eyebrow'>Kontakte</span></div>";
+    html += "<div class='gk-card-b'>";
     allContactRows.forEach(function(cr, ri) {{
       if (cr.isLabel) {{
         var sectionName = cr.text.replace(/:$/, "");
         var sKey = sectionName.toLowerCase().trim();
-        html += "<div style='margin:14px 0 6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-bottom:5px;border-bottom:1px solid #cad7e8;'>"
-              + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1e6091;'>"
-              + gkEsc(sectionName) + "</span>";
+        html += "<div class='gk-c-sec'><span class='gk-c-sec-l'>" + gkEsc(sectionName) + "</span>";
         if (sKey === "nfc" && rastingNfcEmails.length) {{
           html += gkDistributorLinkHtml(rastingNfcEmails, "Mail an den Verteiler", "Rasting / NFC");
         }}
         html += "</div>";
       }} else if (cr.isOther) {{
-        html += "<div style='padding:7px 0;border-bottom:1px solid #f1f5f9;display:flex;gap:12px;align-items:baseline;'>"
-              + "<span style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;white-space:nowrap;flex-shrink:0;min-width:90px;'>" + gkEsc(cr.header) + "</span>"
-              + "<span style='font-size:12.5px;color:#334155;line-height:1.5;'>" + cr.vals.map(gkEsc).join("<br>") + "</span>"
+        html += "<div class='gk-c-other'>"
+              + "<span class='gk-c-other-l'>" + gkEsc(cr.header) + "</span>"
+              + "<span class='gk-c-other-v'>" + cr.vals.map(gkEsc).join("<br>") + "</span>"
               + "</div>";
       }} else {{
-        // Kontaktzeile: (Email oder LabelText) + Tel als Paar
         var hasEmail     = cr.emails && cr.emails.length;
         var hasLabelText = cr.labelText && cr.labelText.length;
         var hasTel       = cr.tels && cr.tels.length;
-        html += "<div style='display:flex;align-items:center;gap:0;padding:7px 0;border-bottom:1px solid #f1f5f9;'>";
-        // Linke Seite: Email-Link ODER Beschriftungstext ODER Strich
-        html += "<span style='flex:1;min-width:0;'>";
+        html += "<div class='gk-c-row'><span class='gk-c-left'>";
         if (hasEmail) {{
           html += cr.emails.map(function(em) {{
-            var m = em.match(/^[^\s@]+@[^\s@]+/);
-            var isMailAddr = m !== null;
+            var isMailAddr = em.match(/^[^\s@]+@[^\s@]+/) !== null;
             return isMailAddr
-              ? "<a href='mailto:" + gkEsc(em) + "' style='color:#1e6091;font-size:12.5px;font-weight:600;text-decoration:none;'>" + gkEsc(em) + "</a>"
-              : "<span style='font-size:12.5px;color:#334155;'>" + gkEsc(em) + "</span>";
+              ? "<a class='gk-mail' href='mailto:" + gkEsc(em) + "'>" + gkEsc(em) + "</a>"
+              : "<span class='gk-c-label'>" + gkEsc(em) + "</span>";
           }}).join(" ");
         }} else if (hasLabelText) {{
-          html += "<span style='font-size:12.5px;font-weight:600;color:#1e6091;'>" + gkEsc(cr.labelText) + "</span>";
+          html += "<span class='gk-c-label'>" + gkEsc(cr.labelText) + "</span>";
         }} else {{
-          html += "<span style='color:#cbd5e1;font-size:12px;'>&ndash;</span>";
+          html += "<span class='gk-c-dash'>&ndash;</span>";
         }}
         html += "</span>";
-        // Rechte Seite: Telefon
         if (hasTel) {{
-          html += "<span style='display:flex;align-items:center;gap:6px;flex-shrink:0;padding-left:14px;'>"
-                + cr.tels.map(function(t) {{
-                    var href = "tel:" + t.replace(/[^\d\+]/g,"");
-                    return "<a href='" + href + "' style='font-size:12.5px;font-weight:600;color:#1e6091;"
-                         + "font-variant-numeric:tabular-nums;white-space:nowrap;text-decoration:none;letter-spacing:.2px;'>"
-                         + "<span style='color:#7aa0c4;font-weight:400;margin-right:4px;'>&#9742;</span>" + gkEsc(t) + "</a>";
-                  }}).join(" ")
-                + "</span>";
+          html += cr.tels.map(function(t) {{
+              var href = "tel:" + t.replace(/[^\d\+]/g,"");
+              return "<a class='gk-tel' href='" + href + "'>"
+                   + "<span class='gk-tel-i'>&#9742;</span>" + gkEsc(t) + "</a>";
+            }}).join("");
         }}
         html += "</div>";
       }}
     }});
-    html += "</div></div>"; // padding + card
+    html += "</div></div>"; // body + card
   }}
   html += "</div>"; // linke Spalte
 
   // ── RECHTE SPALTE: Hinweise ────────────────────────────────────────────────
   html += "<div style='min-width:0;'>";
   if (allHints.length) {{
-    html += "<div style='background:#fff;border:1px solid #cad7e8;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(30,96,145,.04);'>";
-    html += "<div style='padding:9px 14px;background:#eef4fb;border-bottom:1px solid #cad7e8;display:flex;align-items:center;gap:8px;'>"
-          + "<span style='display:inline-block;width:6px;height:6px;border-radius:50%;background:#1e6091;'></span>"
-          + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#1e6091;flex:1;'>Hinweise</span>"
-          + "<span style='font-size:10.5px;font-weight:700;color:#94a3b8;font-variant-numeric:tabular-nums;'>" + allHints.length + "</span>"
-          + "</div>";
+    html += "<div class='gk-card'>";
+    html += "<div class='gk-card-h'><span class='gk-eyebrow'>Hinweise</span>"
+          + "<span class='gk-cnt'>" + allHints.length + "</span></div>";
     html += "<div>";
     allHints.forEach(function(h, i) {{
-      html += "<div style='display:flex;align-items:flex-start;gap:12px;padding:9px 14px;"
-            + (i < allHints.length-1 ? "border-bottom:1px solid #f1f5f9;" : "") + "'>"
-            + "<span style='font-size:11px;font-weight:700;color:#94a3b8;flex-shrink:0;margin-top:2px;"
-            + "min-width:18px;text-align:right;font-variant-numeric:tabular-nums;'>" + (i+1) + "</span>"
-            + "<span style='font-size:12.5px;color:#334155;line-height:1.55;'>" + gkEsc(h) + "</span>"
-            + "</div>";
+      html += "<div class='gk-hint'><span class='gk-hint-n'>" + (i+1) + "</span>"
+            + "<span class='gk-hint-t'>" + gkEsc(h) + "</span></div>";
     }});
     html += "</div></div>";
   }}
@@ -10595,14 +10667,19 @@ function gkRenderStructured(customer, detail) {{
 function gkRenderFreeform(customer, detail) {{
   var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   var rastingNfcEmails = gkRastingNfcEmailsFromLines(customer);
-  var html = "<div style='max-width:760px;'>";
+  var allMails = gkUniqEmails((customer.lines || []).reduce(function(acc, l){{ return acc.concat(gkExtractEmails(l)); }}, []));
+  var html = "<div class='gk-fade' style='" + gkAccentStyle(customer.name) + "max-width:780px;'>";
 
-  html += "<div style='margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;'>"
-        + "<h1 style='font-size:22px;font-weight:800;color:#16324f;margin:0;letter-spacing:-.4px;line-height:1.1;'>" + gkEsc(customer.name) + "</h1>"
-        + gkEdekaLagerNmsLink(customer)
-        + "</div>";
+  html += "<div class='gk-hero'>"
+        + gkMonoHtml(customer.name, "gk-hero-mono")
+        + "<div class='gk-hero-txt'><div class='gk-hero-name'>" + gkEsc(customer.name) + "</div></div>";
+  var ffActs = "";
+  if (allMails.length) ffActs += "<a class='gk-act' href='" + gkAttr(gkMailto(allMails, customer.name)) + "'>&#9993; Mail an alle <b>" + allMails.length + "</b></a>";
+  ffActs += gkEdekaLagerNmsLink(customer);
+  if (ffActs) html += "<div class='gk-actions'>" + ffActs + "</div>";
+  html += "</div>";
 
-  html += "<div style='background:#fff;border:1px solid #cad7e8;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(30,96,145,.04);'>";
+  html += "<div class='gk-card'>";
 
   (customer.lines || []).forEach(function(line) {{
     var t = line.trim();
@@ -10615,27 +10692,21 @@ function gkRenderFreeform(customer, detail) {{
     if (isSection) {{
       var sectionName = t.replace(/:$/, "");
       var sectionKey = sectionName.toLowerCase().trim();
-      html += "<div style='padding:10px 14px 8px;background:#eef4fb;border-bottom:1px solid #cad7e8;"
-            + "display:flex;align-items:center;gap:10px;flex-wrap:wrap;'>"
-            + "<span style='font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1e6091;'>"
-            + gkEsc(sectionName) + "</span>";
+      html += "<div class='gk-c-sec' style='margin:0;padding:11px 16px;border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#fbfdff,#fff);'>"
+            + "<span class='gk-c-sec-l'>" + gkEsc(sectionName) + "</span>";
       if (sectionKey === "nfc" && rastingNfcEmails.length) {{
         html += gkDistributorLinkHtml(rastingNfcEmails, "Mail an den Verteiler", "Rasting / NFC");
       }}
       html += "</div>";
     }} else if (isEmail) {{
-      html += "<div style='padding:8px 14px;border-bottom:1px solid #f1f5f9;'>"
-            + "<a href='mailto:" + gkEsc(t) + "' style='color:#1e6091;font-size:12.5px;font-weight:600;text-decoration:none;'>" + gkEsc(t) + "</a>"
-            + "</div>";
+      html += "<div class='gk-ff-row'><a class='gk-mail' href='mailto:" + gkEsc(t) + "'>" + gkEsc(t) + "</a></div>";
     }} else if (hasTelNum) {{
-      html += "<div style='padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:12.5px;font-weight:600;color:#334155;font-variant-numeric:tabular-nums;letter-spacing:.2px;'>"
-            + "<span style='color:#7aa0c4;font-weight:400;margin-right:5px;'>&#9742;</span>" + gkEsc(t) + "</div>";
+      html += "<div class='gk-ff-row'><a class='gk-tel' href='tel:" + gkEsc(t.replace(/[^\d\+]/g,"")) + "'>"
+            + "<span class='gk-tel-i'>&#9742;</span>" + gkEsc(t) + "</a></div>";
     }} else if (isLong) {{
-      html += "<div style='padding:10px 14px;border-bottom:1px solid #f1f5f9;"
-            + "background:#f8fbff;"
-            + "font-size:12.5px;color:#334155;line-height:1.6;'>" + gkEsc(t) + "</div>";
+      html += "<div class='gk-ff-row gk-ff-long'>" + gkEsc(t) + "</div>";
     }} else {{
-      html += "<div style='padding:8px 14px;border-bottom:1px solid #f1f5f9;font-size:12.5px;color:#334155;'>" + gkEsc(t) + "</div>";
+      html += "<div class='gk-ff-row'>" + gkEsc(t) + "</div>";
     }}
   }});
 
