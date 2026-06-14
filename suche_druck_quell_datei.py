@@ -7984,8 +7984,10 @@ function faBewStyleBlock() {
     + ".fabew-table td:first-child,.fabew-table td:nth-child(2){text-align:left;}"
     + ".fabew-table tr:nth-child(even) td{background:#fbfdff;}"
     + ".fabew-table tr:hover td{background:#eef6ff;}"
-    + ".fabew-monthfocus{border:1.5px solid #bcd4ec;border-radius:18px;background:linear-gradient(180deg,#f2f8ff 0%,#ffffff 72%);box-shadow:0 12px 30px rgba(30,96,145,.10);padding:14px 16px 16px;}"
+    + "@keyframes fabewPulse{0%{box-shadow:0 0 0 0 rgba(30,96,145,.32),0 12px 30px rgba(30,96,145,.10);}60%{box-shadow:0 0 0 8px rgba(30,96,145,0),0 12px 30px rgba(30,96,145,.10);}100%{box-shadow:0 0 0 0 rgba(30,96,145,0),0 12px 30px rgba(30,96,145,.10);}}"
+    + ".fabew-monthfocus{border:1.5px solid #bcd4ec;border-radius:18px;background:linear-gradient(180deg,#f2f8ff 0%,#ffffff 72%);box-shadow:0 12px 30px rgba(30,96,145,.10);padding:14px 16px 16px;animation:fabewPulse .7s ease-out;}"
     + ".fabew-mf-head{display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin-bottom:12px;}"
+    + ".fabew-mf-delta{font-size:12px;font-weight:900;border:1px solid;border-radius:999px;padding:4px 11px;font-variant-numeric:tabular-nums;white-space:nowrap;}"
     + ".fabew-mf-badge{font-size:10.5px;font-weight:950;letter-spacing:.6px;text-transform:uppercase;color:#fff;background:#1e6091;border-radius:999px;padding:5px 12px;}"
     + ".fabew-mf-month{font-size:18px;font-weight:1000;color:#0f172a;letter-spacing:-.4px;font-variant-numeric:tabular-nums;}"
     + ".fabew-mf-count{font-size:12px;font-weight:900;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:999px;padding:4px 11px;font-variant-numeric:tabular-nums;}"
@@ -8116,19 +8118,77 @@ function faBewRender() {
   html += "<div class='fabew-shell'>";
 
   // ── Monatsfokus: reagiert sichtbar auf die Monatsauswahl ──────────────────────
-  // Diese beiden Auswertungen ändern sich beim Monatswechsel – darum stehen sie ganz oben.
+  // Diese Auswertungen ändern sich beim Monatswechsel – darum stehen sie ganz oben.
   var mFocusTotal = faBewInt((data.g_months[m1] || {})._t);
+
+  // Vormonat bestimmen (für Delta-Anzeige und Veränderungs-Board)
+  var focusMonths = faBewMonths();
+  var mIdx   = focusMonths.indexOf(m1);
+  var mPrev  = mIdx > 0 ? focusMonths[mIdx - 1] : "";
+  var prevTotal = mPrev ? faBewInt((data.g_months[mPrev] || {})._t) : null;
+  var dTotal = prevTotal == null ? null : (mFocusTotal - prevTotal);
+
+  // Delta-Badge im Kopf: rot = mehr Ereignisse (schlechter), grün = weniger (besser)
+  var deltaHtml = "";
+  if (dTotal != null) {
+    var up = dTotal > 0, zero = dTotal === 0;
+    var dc  = zero ? "#64748b" : (up ? "#dc2626" : "#16a34a");
+    var dbg = zero ? "#f1f5f9" : (up ? "#fef2f2" : "#ecfdf5");
+    var arrow = zero ? "&#177;" : (up ? "&#9650;" : "&#9660;");
+    deltaHtml = "<span class='fabew-mf-delta' style='color:" + dc + ";border-color:" + dc + "33;background:" + dbg + ";'>"
+      + arrow + " " + faBewNum(Math.abs(dTotal)) + " ggü. " + faBewEsc(faBewMonthLabel(mPrev)) + "</span>";
+  }
+
   html += "<div class='fabew-monthfocus'>";
   html += "<div class='fabew-mf-head'>"
     + "<span class='fabew-mf-badge'>Monatsfokus</span>"
     + "<span class='fabew-mf-month'>" + faBewEsc(faBewMonthLabel(m1)) + "</span>"
     + "<span class='fabew-mf-count'>" + faBewNum(mFocusTotal) + " Ereignisse</span>"
+    + deltaHtml
     + "<span class='fabew-mf-hint'>Diese Auswertung wechselt mit der Monatsauswahl oben</span>"
     + "</div>";
   html += "<div class='fabew-grid2' style='grid-template-columns:.82fr 1.18fr;'>";
   html += "<div class='fabew-card'><div class='fabew-card-pad'><div class='fabew-title'>Ereignisarten</div><div class='fabew-sub'>" + faBewEsc(monthTitle) + "</div>" + faBewTypePills(m1, m2, compare) + "<div style='height:300px;margin-top:8px;'><canvas id='fabew-chart-type'></canvas></div></div></div>";
   html += "<div class='fabew-card'><div class='fabew-card-pad'><div class='fabew-title'>Top Fahrer nach Ereignissen</div><div class='fabew-sub'>" + faBewEsc(monthTitle) + " · maximal 15 Fahrer · horizontal lesbar</div><div style='height:" + topEventHeight + "px;margin-top:12px;'><canvas id='fabew-chart-top'></canvas></div></div></div>";
-  html += "</div></div>";
+  html += "</div>";
+
+  // Stärkste Veränderung ggü. Vormonat (Auf-/Absteiger) – pro Fahrer aus d.months
+  var changeList = filtered.map(function(d){
+    var cur = faBewDriverMonthEvents(d, m1);
+    var prv = mPrev ? faBewDriverMonthEvents(d, mPrev) : 0;
+    return { name: d.name, cur: cur, prev: prv, delta: cur - prv };
+  }).filter(function(x){ return (x.cur || x.prev) && x.delta !== 0; });
+  changeList.sort(function(a,b){ return Math.abs(b.delta) - Math.abs(a.delta) || String(a.name||"").localeCompare(String(b.name||""), "de"); });
+  var changeTop = changeList.slice(0, 12);
+
+  html += "<div class='fabew-card' style='margin-top:14px;'>";
+  html += "<div class='fabew-card-pad' style='border-bottom:1px solid #eef2f7;background:linear-gradient(180deg,#fbfdff,#fff);'>"
+    + "<div class='fabew-title'>Stärkste Veränderung ggü. Vormonat</div>"
+    + "<div class='fabew-sub'>" + (mPrev ? (faBewEsc(faBewMonthLabel(mPrev)) + " &rarr; " + faBewEsc(faBewMonthLabel(m1)) + " &middot; rot = mehr, grün = weniger Ereignisse") : "Kein Vormonat im Datensatz vorhanden") + "</div>"
+    + "</div>";
+  if (mPrev && changeTop.length) {
+    html += "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:9px;padding:14px;'>";
+    changeTop.forEach(function(x){
+      var cUp = x.delta > 0;
+      var cc  = cUp ? "#dc2626" : "#16a34a";
+      var cbg = cUp ? "#fef2f2" : "#ecfdf5";
+      var car = cUp ? "&#9650;" : "&#9660;";
+      html += "<div style='display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #eef2f7;border-radius:10px;padding:8px 11px;background:#fff;'>"
+        + "<div style='min-width:0;'>"
+        + "<div style='font-size:12px;font-weight:850;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' title='" + faBewEsc(x.name) + "'>" + faBewEsc(x.name) + "</div>"
+        + "<div style='font-size:11px;font-weight:750;color:#64748b;font-variant-numeric:tabular-nums;'>" + faBewNum(x.prev) + " &rarr; " + faBewNum(x.cur) + "</div>"
+        + "</div>"
+        + "<span style='font-size:12.5px;font-weight:950;color:" + cc + ";background:" + cbg + ";border:1px solid " + cc + "33;border-radius:999px;padding:4px 10px;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + car + " " + faBewNum(Math.abs(x.delta)) + "</span>"
+        + "</div>";
+    });
+    html += "</div>";
+  } else {
+    html += "<div style='padding:24px;text-align:center;color:#94a3b8;font-size:12px;font-weight:750;'>"
+      + (mPrev ? "Keine Veränderung ggü. Vormonat" : "Erster Monat im Datensatz &ndash; kein Vergleich möglich") + "</div>";
+  }
+  html += "</div>";
+
+  html += "</div>";  // Ende Monatsfokus
 
   // ── Gesamtkennzahlen (über den ganzen Datensatz, monatsunabhängig) ────────────
   html += "<div class='fabew-grid4'>";
