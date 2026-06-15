@@ -12506,7 +12506,7 @@ var VERSP_ABFAHRT = {versp_abfahrt_json};
       if (r.unfertig) bg = i % 2 ? "#fffbeb" : "#fef3c7";
       var found = r.tour && r.tour !== "nicht gefunden";
       var unfertigBadge = r.unfertig
-        ? " <span title='Karte nach der Tour noch nicht ausgelesen – Zeit unvollständig' style='display:inline-block;margin-left:5px;padding:1px 6px;border-radius:999px;background:#f59e0b;color:#fff;font-size:8.5px;font-weight:950;text-transform:uppercase;letter-spacing:.4px;vertical-align:middle;'>Unfertig</span>"
+        ? "<div style='margin-top:3px;'><span title='Karte nach der Tour noch nicht ausgelesen – Zeit unvollständig' style='display:inline-block;padding:1px 7px;border-radius:999px;background:#f59e0b;color:#fff;font-size:8.5px;font-weight:950;text-transform:uppercase;letter-spacing:.4px;'>Unfertig</span></div>"
         : "";
       html += "<tr style='background:" + bg + ";border-bottom:1px solid #f1f5f9;'>";
       html += "<td style='padding:7px 9px;font-weight:900;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + faEsc(r.fahrer) + "</td>";
