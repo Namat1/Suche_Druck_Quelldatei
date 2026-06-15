@@ -8207,7 +8207,7 @@ function faBewRender() {
     + "</div>";
   html += "<div class='fabew-grid2' style='grid-template-columns:.82fr 1.18fr;'>";
   html += "<div class='fabew-card'><div class='fabew-card-pad'><div class='fabew-title'>Ereignisarten</div><div class='fabew-sub'>" + faBewEsc(monthTitle) + "</div>" + faBewTypePills(m1, m2, compare) + "<div style='height:300px;margin-top:8px;'><canvas id='fabew-chart-type'></canvas></div></div></div>";
-  html += "<div class='fabew-card'><div class='fabew-card-pad'><div class='fabew-title'>Top Fahrer nach Ereignissen</div><div class='fabew-sub'>" + faBewEsc(monthTitle) + " · maximal 15 Fahrer · horizontal lesbar</div><div style='height:" + topEventHeight + "px;margin-top:12px;'><canvas id='fabew-chart-top'></canvas></div></div></div>";
+  html += "<div class='fabew-card'><div class='fabew-card-pad'><div class='fabew-title'>Top Fahrer nach Ereignissen</div><div class='fabew-sub'>" + faBewEsc(monthTitle) + " · maximal 15 Fahrer · kritische Fahrereignisse</div><div style='height:" + topEventHeight + "px;margin-top:12px;'><canvas id='fabew-chart-top'></canvas></div></div></div>";
   html += "</div>";
 
   // Stärkste Veränderung ggü. Vormonat/Vorjahr (Auf-/Absteiger) – pro Fahrer aus d.months
