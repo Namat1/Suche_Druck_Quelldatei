@@ -12102,6 +12102,72 @@ var VERSP_ABFAHRT = {versp_abfahrt_json};
     return m[3] + "." + m[2] + "." + m[1];
   }}
 
+  // ── 10H "Unfertig"-Erkennung ─────────────────────────────────────────────
+  // Wenn die Fahrerkarte nach der Tour noch nicht erneut ausgelesen wurde, setzt
+  // der Tachograph-Download als Schichtende den Auslesezeitpunkt ein. Dadurch wird
+  // die Schicht künstlich lang. Erkennbar daran, dass viele lange Schichten exakt
+  // im selben Zeitfenster "enden" (= Moment der Massen-Auslesung) ODER dass eine
+  // Schichtdauer völlig unrealistisch ist (> 16:00). Eine echte 10H-Tour (z.B.
+  // Ende 13:27 / Dauer 10:57) wird so NICHT fälschlich markiert.
+  var _faCutoffData = null;
+
+  function _faEndDateKey(s) {{
+    var m = String(_faComputeEndDate(s)).match(/^(\d{{2}})\.(\d{{2}})\.(\d{{4}})$/);
+    return m ? (m[3] + "-" + m[2] + "-" + m[1]) : "";
+  }}
+
+  function _faEndMinutes(s) {{
+    var m = String((s && s.ende) || "").match(/^(\d{{1,2}}):(\d{{2}})/);
+    if (!m) return -1;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  }}
+
+  // Schwellen
+  var FA_CUTOFF_LONG_MIN   = 720;  // ab 12:00 Schichtdauer gilt eine Schicht als "lang/auffällig"
+  var FA_CUTOFF_ABSURD_MIN = 960;  // ab 16:00 Schichtdauer = einzeln schon unmöglich
+  var FA_CUTOFF_WINDOW     = 12;   // Minuten-Fenster für gemeinsames Ende
+  var FA_CUTOFF_CLUSTER    = 3;    // so viele lange Schichten im Fenster = Massen-Auslesung
+
+  function _faGetCutoffData() {{
+    if (_faCutoffData) return _faCutoffData;
+    var byDay = {{}};
+    Object.keys(TIMEREC_DATA || {{}}).forEach(function(name) {{
+      (TIMEREC_DATA[name] || []).forEach(function(s) {{
+        if (!s.ende) return;
+        if (_toMin(s.schichtdauer) <= FA_CUTOFF_LONG_MIN) return;
+        var dk = _faEndDateKey(s);
+        var em = _faEndMinutes(s);
+        if (!dk || em < 0) return;
+        (byDay[dk] = byDay[dk] || []).push(em);
+      }});
+    }});
+    _faCutoffData = byDay;
+    return _faCutoffData;
+  }}
+
+  function _faIsShiftReadoutCutoff(s) {{
+    if (!s.ende) return false;
+    var gross = _toMin(s.schichtdauer);
+    // a) einzelne, völlig unrealistische Schichtdauer
+    if (gross > FA_CUTOFF_ABSURD_MIN) return true;
+    // b) lange Schicht, die mit weiteren im selben Fenster endet (Massen-Auslesung)
+    if (gross <= FA_CUTOFF_LONG_MIN) return false;
+    var em = _faEndMinutes(s);
+    if (em < 0) return false;
+    var list = _faGetCutoffData()[_faEndDateKey(s)] || [];
+    var n = 0;
+    for (var i = 0; i < list.length; i++) {{
+      if (Math.abs(list[i] - em) <= FA_CUTOFF_WINDOW) n++;
+    }}
+    return n >= FA_CUTOFF_CLUSTER;
+  }}
+
+  function _faIs10hUnfertig(s) {{
+    if (_faIsShiftReadoutCutoff(s)) return true;  // fuzzy: Ende-Fenster / unmögliche Dauer
+    if (_faIsShiftCutoff(s)) return true;          // exakt identisches Ende (Altlogik)
+    return false;
+  }}
+
   function _faNormLkw(value) {{
     var s = String(value == null ? "" : value).toLowerCase();
     try {{ s = s.normalize("NFKD").replace(/[̀-ͯ]/g, ""); }} catch(e) {{}}
@@ -12348,7 +12414,8 @@ var VERSP_ABFAHRT = {versp_abfahrt_json};
           planZeit: plan && plan.zeit ? String(plan.zeit).trim() : "",
           planDatum: plan ? _faDateLabelFromKey(_faPlanDateKey(plan)) : "",
           planFahrer: plan && plan._matchDriverName ? String(plan._matchDriverName).trim() : "",
-          matchSource: plan && plan._matchSource ? String(plan._matchSource).trim() : ""
+          matchSource: plan && plan._matchSource ? String(plan._matchSource).trim() : "",
+          unfertig: _faIs10hUnfertig(s)
         }});
       }});
     }});
@@ -12436,10 +12503,14 @@ var VERSP_ABFAHRT = {versp_abfahrt_json};
     html += "</tr></thead><tbody>";
     rows.forEach(function(r, i) {{
       var bg = i % 2 ? "#fff" : "#fff7f8";
+      if (r.unfertig) bg = i % 2 ? "#fffbeb" : "#fef3c7";
       var found = r.tour && r.tour !== "nicht gefunden";
+      var unfertigBadge = r.unfertig
+        ? " <span title='Karte nach der Tour noch nicht ausgelesen – Zeit unvollständig' style='display:inline-block;margin-left:5px;padding:1px 6px;border-radius:999px;background:#f59e0b;color:#fff;font-size:8.5px;font-weight:950;text-transform:uppercase;letter-spacing:.4px;vertical-align:middle;'>Unfertig</span>"
+        : "";
       html += "<tr style='background:" + bg + ";border-bottom:1px solid #f1f5f9;'>";
       html += "<td style='padding:7px 9px;font-weight:900;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + faEsc(r.fahrer) + "</td>";
-      html += "<td style='padding:7px 9px;font-weight:800;color:#0f172a;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc((r.wochentag ? r.wochentag + " " : "") + r.datum) + "</td>";
+      html += "<td style='padding:7px 9px;font-weight:800;color:#0f172a;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc((r.wochentag ? r.wochentag + " " : "") + r.datum) + unfertigBadge + "</td>";
       html += "<td style='padding:7px 9px;color:#475569;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc(r.beginn) + "</td>";
       html += "<td style='padding:7px 9px;color:#475569;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc(r.ende) + "</td>";
       html += "<td style='padding:7px 9px;text-align:right;color:#1e3a5f;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;'>" + faEsc(r.schichtdauer) + "</td>";
