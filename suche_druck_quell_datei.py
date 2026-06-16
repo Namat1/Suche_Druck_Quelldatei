@@ -9183,7 +9183,7 @@ function waRenderHeat() {
   var instName = (INSTANCES[currentInst] ? INSTANCES[currentInst].name : "");
 
   var h = "";
-  h += "<div style='display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-bottom:15px;'>";
+  h += "<div style='display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-bottom:14px;flex-shrink:0;'>";
   h += "<h2 style='margin:0;font-size:18.5px;font-weight:800;color:#0f172a;letter-spacing:-.3px;'>&#128293; Wochenauslastung &middot; Heatmap</h2>";
   h += "<span style='font-size:11.5px;font-weight:700;color:#475569;background:#eef1f5;border:1px solid #d6dbe3;border-radius:5px;padding:3px 10px;'>" + instName + "</span>";
   h += "<div style='margin-left:auto;display:flex;border:1px solid #b02525;border-radius:6px;overflow:hidden;'>";
@@ -9191,41 +9191,43 @@ function waRenderHeat() {
   h += waToggleBtn("touren","Touren/Tag",metric,"waSetMetricHeat");
   h += "</div></div>";
 
-  h += "<div style='display:flex;gap:11px;flex-wrap:wrap;margin-bottom:15px;'>";
+  h += "<div style='display:flex;gap:11px;flex-wrap:wrap;margin-bottom:14px;flex-shrink:0;'>";
   h += waKpi("Gesamt " + label + "/Woche", waNum(grand) + " " + label, "#1e293b");
   h += waKpi("St&auml;rkster Tag", days[peakIdx] + " &middot; " + colSum[peakIdx] + " " + label + " &middot; " + waPct(colSum[peakIdx],grand), "#b02525");
   h += waKpi("Schw&auml;chster Tag", days[loIdx] + " &middot; " + colSum[loIdx] + " " + label + " &middot; " + waPct(colSum[loIdx],grand), "#334155");
   h += "</div>";
 
-  h += "<div style='background:#fff;border:1px solid #dfe4ea;border-radius:8px;padding:14px;overflow-x:auto;'>";
-  h += "<table style='width:100%;border-collapse:separate;border-spacing:5px;'>";
+  h += "<div style='flex:1;min-height:0;background:#fff;border:1px solid #dfe4ea;border-radius:8px;padding:16px 16px 12px;display:flex;flex-direction:column;'>";
+  h += "<div style='flex:1;min-height:0;overflow:auto;'>";
+  h += "<table style='width:100%;height:100%;border-collapse:separate;border-spacing:6px;'>";
   h += "<thead><tr><th style='text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;padding:0 8px;'>Depot</th>";
   days.forEach(function(d,c){
     var hot = (c===peakIdx);
-    h += "<th style='font-size:12.5px;font-weight:800;color:" + (hot?"#b02525":"#334155") + ";text-align:center;min-width:66px;'>" + d + "</th>";
+    h += "<th style='font-size:13px;font-weight:800;color:" + (hot?"#b02525":"#334155") + ";text-align:center;min-width:66px;padding-bottom:4px;'>" + d + "</th>";
   });
-  h += "<th style='font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;text-align:center;min-width:72px;'>Summe</th></tr></thead><tbody>";
+  h += "<th style='font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;text-align:center;min-width:78px;'>Summe</th></tr></thead><tbody>";
   depots.forEach(function(dp){
-    h += "<tr><td style='font-size:13px;font-weight:700;color:#1e293b;padding:0 8px;white-space:nowrap;'>" + dp + "</td>";
+    h += "<tr><td style='font-size:13.5px;font-weight:700;color:#1e293b;padding:0 8px;white-space:nowrap;'>" + dp + "</td>";
     (vals[dp]||[]).forEach(function(v,c){
       var t = cellMax ? Math.pow(v/cellMax, 0.6) : 0;
       var col = waHeatColor(t), tc = waHeatTextColor(t);
       var pct = colSum[c] ? waPct(v, colSum[c]) : "";
-      var inner = v ? ("<div style='font-size:13.5px;font-weight:800;line-height:1.1;'>" + v + "</div><div style='font-size:9.5px;font-weight:600;opacity:.78;'>" + pct + "</div>") : "<span style='opacity:.5;'>&middot;</span>";
-      h += "<td style='height:46px;border-radius:5px;text-align:center;vertical-align:middle;background:" + col + ";color:" + tc + ";font-variant-numeric:tabular-nums;'>" + inner + "</td>";
+      var inner = v ? ("<div style='font-size:15px;font-weight:800;line-height:1.15;'>" + v + "</div><div style='font-size:10.5px;font-weight:600;opacity:.78;'>" + pct + "</div>") : "<span style='opacity:.5;'>&middot;</span>";
+      h += "<td style='min-height:46px;border-radius:5px;text-align:center;vertical-align:middle;background:" + col + ";color:" + tc + ";font-variant-numeric:tabular-nums;'>" + inner + "</td>";
     });
-    h += "<td style='text-align:center;vertical-align:middle;background:#eef1f5;border-radius:5px;font-variant-numeric:tabular-nums;'><div style='font-size:13.5px;font-weight:800;color:#1e293b;line-height:1.1;'>" + rowSum[dp] + "</div><div style='font-size:9.5px;font-weight:600;color:#64748b;'>" + waPct(rowSum[dp],grand) + "</div></td></tr>";
+    h += "<td style='text-align:center;vertical-align:middle;background:#eef1f5;border-radius:5px;font-variant-numeric:tabular-nums;'><div style='font-size:15px;font-weight:800;color:#1e293b;line-height:1.15;'>" + rowSum[dp] + "</div><div style='font-size:10.5px;font-weight:600;color:#64748b;'>" + waPct(rowSum[dp],grand) + "</div></td></tr>";
   });
   // Summenzeile als dunkles Band
   h += "<tr><td style='font-size:11px;font-weight:800;color:#1e293b;text-transform:uppercase;letter-spacing:.5px;padding:8px 8px 0;'>&Sigma; Gesamt</td>";
   colSum.forEach(function(v,c){
     var hot = (c===peakIdx);
     var bg = hot ? "#b02525" : "#1e293b";
-    h += "<td style='text-align:center;vertical-align:middle;background:" + bg + ";border-radius:5px;font-variant-numeric:tabular-nums;'><div style='font-size:15px;font-weight:800;color:#fff;line-height:1.1;'>" + v + "</div><div style='font-size:9.5px;font-weight:600;color:rgba(255,255,255,.72);'>" + waPct(v,grand) + "</div></td>";
+    h += "<td style='text-align:center;vertical-align:middle;background:" + bg + ";border-radius:5px;font-variant-numeric:tabular-nums;'><div style='font-size:16.5px;font-weight:800;color:#fff;line-height:1.15;'>" + v + "</div><div style='font-size:10.5px;font-weight:600;color:rgba(255,255,255,.72);'>" + waPct(v,grand) + "</div></td>";
   });
-  h += "<td style='text-align:center;vertical-align:middle;background:#0f172a;border-radius:5px;'><div style='font-size:16px;font-weight:800;color:#fff;line-height:1.1;font-variant-numeric:tabular-nums;'>" + grand + "</div><div style='font-size:9px;font-weight:600;color:rgba(255,255,255,.6);'>100%</div></td></tr>";
+  h += "<td style='text-align:center;vertical-align:middle;background:#0f172a;border-radius:5px;'><div style='font-size:17.5px;font-weight:800;color:#fff;line-height:1.15;font-variant-numeric:tabular-nums;'>" + grand + "</div><div style='font-size:10px;font-weight:600;color:rgba(255,255,255,.6);'>100%</div></td></tr>";
   h += "</tbody></table>";
-  h += "<div style='display:flex;align-items:center;gap:8px;margin-top:13px;font-size:11px;color:#64748b;flex-wrap:wrap;'>";
+  h += "</div>";
+  h += "<div style='display:flex;align-items:center;gap:8px;margin-top:12px;font-size:11px;color:#64748b;flex-wrap:wrap;flex-shrink:0;'>";
   h += "<span>wenig</span><span style='flex:0 0 150px;height:8px;border-radius:4px;background:linear-gradient(to right,#f4d9d9,#dd7373,#b02525,#6b0f0f);'></span><span>viel</span>";
   h += "<span style='margin-left:8px;'>&mdash; " + label + " pro Tag &middot; Prozent = Anteil am jeweiligen Tag</span></div>";
   h += "</div>";
@@ -9260,17 +9262,17 @@ function waRenderGruppe() {
   h += waToggleBtn("touren","Touren/Tag",metric,"waSetMetricGruppe","#1e293b");
   h += "</div></div>";
 
-  h += "<div style='display:flex;gap:11px;flex-wrap:wrap;margin-bottom:15px;'>";
+  h += "<div style='display:flex;gap:11px;flex-wrap:wrap;margin-bottom:14px;flex-shrink:0;'>";
   h += waKpi("Gesamt " + label + "/Woche", waNum(grand) + " " + label, "#1e293b");
   h += waKpi("St&auml;rkster Tag", days[peakIdx] + " &middot; " + colSum[peakIdx] + " " + label + " &middot; " + waPct(colSum[peakIdx],grand), "#1f3a5f");
   h += waKpi("Schw&auml;chster Tag", days[loIdx] + " &middot; " + colSum[loIdx] + " " + label + " &middot; " + waPct(colSum[loIdx],grand), "#334155");
   h += "</div>";
 
-  h += "<div style='background:#fff;border:1px solid #dfe4ea;border-radius:8px;padding:16px;'>";
-  h += "<div style='font-size:13px;font-weight:800;color:#0f172a;margin-bottom:2px;'>" + label + " pro Wochentag, gestapelt nach Kundengruppe (Depot)</div>";
-  h += "<div style='font-size:11px;font-weight:600;color:#64748b;margin-bottom:12px;'>S&auml;ulenwert = Tagessumme &middot; jedes Segment mit Anteil am Tag (%)</div>";
-  h += "<div id='wa-gruppe-legend' style='display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px;'></div>";
-  h += "<div style='height:400px;'><canvas id='wa-gruppe-chart'></canvas></div>";
+  h += "<div style='flex:1;min-height:0;background:#fff;border:1px solid #dfe4ea;border-radius:8px;padding:16px;display:flex;flex-direction:column;'>";
+  h += "<div style='font-size:13px;font-weight:800;color:#0f172a;margin-bottom:2px;flex-shrink:0;'>" + label + " pro Wochentag, gestapelt nach Kundengruppe (Depot)</div>";
+  h += "<div style='font-size:11px;font-weight:600;color:#64748b;margin-bottom:12px;flex-shrink:0;'>S&auml;ulenwert = Tagessumme &middot; jedes Segment mit Anteil am Tag (%)</div>";
+  h += "<div id='wa-gruppe-legend' style='display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px;flex-shrink:0;'></div>";
+  h += "<div style='flex:1;min-height:0;position:relative;'><canvas id='wa-gruppe-chart'></canvas></div>";
   h += "</div>";
   body.innerHTML = h;
 
@@ -9385,14 +9387,16 @@ function waRenderKurve() {
   var grand = colSum.reduce(function(a,b){return a+b;},0);
   var peakIdx = colSum.indexOf(Math.max.apply(null,colSum));
   var loIdx   = colSum.indexOf(Math.min.apply(null,colSum));
-  var spann = colSum[peakIdx] - colSum[loIdx];
+  var half = grand/2;
+  var halfDayIdx = -1, halfCum = 0, _run = 0;
+  for(var hc=0; hc<days.length; hc++){ _run += colSum[hc]; if(halfDayIdx<0 && _run >= half){ halfDayIdx = hc; halfCum = _run; } }
 
   function cum(arr){ var s=0; return arr.map(function(v){ s+=v; return s; }); }
   var depotSeries = depots.map(function(dp){ var a=(vals[dp]||[]).slice(); return cumul?cum(a):a; });
   var totalSeries = cumul ? cum(colSum) : colSum.slice();
 
   var h = "";
-  h += "<div style='display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-bottom:15px;'>";
+  h += "<div style='display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-bottom:14px;flex-shrink:0;'>";
   h += "<h2 style='margin:0;font-size:18.5px;font-weight:800;color:#0f172a;letter-spacing:-.3px;'>&#128200; Wochenauslastung &middot; Kurven</h2>";
   h += "<span style='font-size:11.5px;font-weight:700;color:#475569;background:#eef1f5;border:1px solid #d6dbe3;border-radius:5px;padding:3px 10px;'>" + instName + "</span>";
   h += "<div style='margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;'>";
@@ -9405,18 +9409,18 @@ function waRenderKurve() {
   h += waToggleBtn("touren","Touren/Tag",metric,"waSetMetricKurve","#1e293b");
   h += "</div></div></div>";
 
-  h += "<div style='display:flex;gap:11px;flex-wrap:wrap;margin-bottom:15px;'>";
+  h += "<div style='display:flex;gap:11px;flex-wrap:wrap;margin-bottom:14px;flex-shrink:0;'>";
   h += waKpi("Gesamt " + label + "/Woche", waNum(grand) + " " + label, "#1e293b");
   h += waKpi("St&auml;rkster Tag", days[peakIdx] + " &middot; " + colSum[peakIdx] + " " + label + " &middot; " + waPct(colSum[peakIdx],grand), "#1f3a5f");
   h += waKpi("Schw&auml;chster Tag", days[loIdx] + " &middot; " + colSum[loIdx] + " " + label + " &middot; " + waPct(colSum[loIdx],grand), "#334155");
-  h += waKpi("Spannweite Mo&ndash;Sa", spann + " " + label, "#b02525");
+  h += waKpi("50 % der Woche erreicht", (halfDayIdx>=0 ? ("bis " + days[halfDayIdx] + " &middot; " + halfCum + " " + label + " &middot; " + waPct(halfCum,grand)) : "&ndash;"), "#b02525");
   h += "</div>";
 
-  h += "<div style='background:#fff;border:1px solid #dfe4ea;border-radius:8px;padding:16px;'>";
-  h += "<div style='font-size:13px;font-weight:800;color:#0f172a;margin-bottom:2px;'>" + label + (cumul ? " kumuliert &uuml;ber die Woche" : " pro Wochentag") + ", je Kundengruppe (Depot)</div>";
-  h += "<div style='font-size:11px;font-weight:600;color:#64748b;margin-bottom:12px;'>" + (cumul ? "Aufsummiert Mo&rarr;Sa" : "Tageswerte Mo&ndash;Sa") + " &middot; dicke schwarze Linie = Gesamt</div>";
-  h += "<div id='wa-kurve-legend' style='display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px;'></div>";
-  h += "<div style='height:400px;'><canvas id='wa-kurve-chart'></canvas></div>";
+  h += "<div style='flex:1;min-height:0;background:#fff;border:1px solid #dfe4ea;border-radius:8px;padding:16px;display:flex;flex-direction:column;'>";
+  h += "<div style='font-size:13px;font-weight:800;color:#0f172a;margin-bottom:2px;flex-shrink:0;'>" + label + (cumul ? " kumuliert &uuml;ber die Woche" : " pro Wochentag") + ", je Kundengruppe (Depot)</div>";
+  h += "<div style='font-size:11px;font-weight:600;color:#64748b;margin-bottom:12px;flex-shrink:0;'>" + (cumul ? "Aufsummiert Mo&rarr;Sa &middot; rote Linie = 50 % der Woche" : "Tageswerte Mo&ndash;Sa") + " &middot; dicke schwarze Linie = Gesamt</div>";
+  h += "<div id='wa-kurve-legend' style='display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px;flex-shrink:0;'></div>";
+  h += "<div style='flex:1;min-height:0;position:relative;'><canvas id='wa-kurve-chart'></canvas></div>";
   h += "</div>";
   body.innerHTML = h;
 
@@ -9453,6 +9457,16 @@ function waRenderKurve() {
       var c = chart.ctx, ds = chart.data.datasets;
       var unit = waUnit(waMetricKurve);
       c.save();
+      if(cumul && chart.scales && chart.scales.y) {
+        var yPix = chart.scales.y.getPixelForValue(half);
+        var area = chart.chartArea;
+        c.strokeStyle = "#b02525"; c.lineWidth = 1.5; c.setLineDash([6,4]);
+        c.beginPath(); c.moveTo(area.left, yPix); c.lineTo(area.right, yPix); c.stroke();
+        c.setLineDash([]);
+        c.fillStyle = "#b02525"; c.font = "700 11px 'Segoe UI',Arial,sans-serif";
+        c.textAlign = "left"; c.textBaseline = "bottom";
+        c.fillText("50 % = " + Math.round(half) + " " + unit, area.left + 6, yPix - 4);
+      }
       c.textAlign = "center"; c.textBaseline = "bottom";
       ds.forEach(function(d,di){
         if(d.label !== "Gesamt") return;
@@ -10094,16 +10108,16 @@ iframe.active{{display:block}}
   </div>
 
   <!-- ── Großkunden Panel ───────────────────────────────────────────────────── -->
-  <div id="panel-wa-heat" style="display:none;flex:1;flex-direction:column;overflow-y:auto;padding:16px 18px 28px;background:linear-gradient(180deg,#eef1f5 0%,#e5e9ef 100%);font-family:'Segoe UI',Arial,sans-serif">
-    <div id="wa-heat-body"></div>
+  <div id="panel-wa-heat" style="display:none;flex:1;flex-direction:column;overflow:hidden;padding:16px 18px 18px;background:linear-gradient(180deg,#eef1f5 0%,#e5e9ef 100%);font-family:'Segoe UI',Arial,sans-serif">
+    <div id="wa-heat-body" style="flex:1;display:flex;flex-direction:column;min-height:0;"></div>
   </div>
 
-  <div id="panel-wa-gruppe" style="display:none;flex:1;flex-direction:column;overflow-y:auto;padding:16px 18px 28px;background:linear-gradient(180deg,#eef1f5 0%,#e5e9ef 100%);font-family:'Segoe UI',Arial,sans-serif">
-    <div id="wa-gruppe-body"></div>
+  <div id="panel-wa-gruppe" style="display:none;flex:1;flex-direction:column;overflow:hidden;padding:16px 18px 18px;background:linear-gradient(180deg,#eef1f5 0%,#e5e9ef 100%);font-family:'Segoe UI',Arial,sans-serif">
+    <div id="wa-gruppe-body" style="flex:1;display:flex;flex-direction:column;min-height:0;"></div>
   </div>
 
-  <div id="panel-wa-kurve" style="display:none;flex:1;flex-direction:column;overflow-y:auto;padding:16px 18px 28px;background:linear-gradient(180deg,#eef1f5 0%,#e5e9ef 100%);font-family:'Segoe UI',Arial,sans-serif">
-    <div id="wa-kurve-body"></div>
+  <div id="panel-wa-kurve" style="display:none;flex:1;flex-direction:column;overflow:hidden;padding:16px 18px 18px;background:linear-gradient(180deg,#eef1f5 0%,#e5e9ef 100%);font-family:'Segoe UI',Arial,sans-serif">
+    <div id="wa-kurve-body" style="flex:1;display:flex;flex-direction:column;min-height:0;"></div>
   </div>
 
   <div id="panel-gk" style="display:none;flex:1;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
