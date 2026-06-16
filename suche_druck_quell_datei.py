@@ -1387,6 +1387,28 @@ def _patch_suche_template_kundenart_absetzer_rampe(template: str) -> str:
     )
     return template
 
+def _patch_suche_template_enter_search(template: str) -> str:
+    """Enter im Suchfeld loest nur die zum fokussierten Feld passende Suche aus.
+    Vorher rief der Enter-Handler onSmart() UND onKey() auf – bei leerem Exakt-Feld
+    leerte onKey() die gerade gefuellte Trefferliste sofort wieder."""
+    old = (
+        "    if(e.key === 'Enter'){\n"
+        "      const a = document.activeElement;\n"
+        "      if(a && (a.id==='smartSearch' || a.id==='keySearch')){\n"
+        "        onSmart();\n"
+        "        onKey();\n"
+        "      }\n"
+        "    }"
+    )
+    new = (
+        "    if(e.key === 'Enter'){\n"
+        "      const a = document.activeElement;\n"
+        "      if(a && a.id==='smartSearch'){ e.preventDefault(); onSmart(); }\n"
+        "      else if(a && a.id==='keySearch'){ e.preventDefault(); onKey(); }\n"
+        "    }"
+    )
+    return template.replace(old, new)
+
 def get_suche_template() -> str:
     """Baut das Suche-Template einmalig (nach Re-import gecached).
     Spart bei jedem Streamlit-Re-Run die ~11 String-Patches uebers ~700 KB Template."""
@@ -1399,6 +1421,7 @@ def get_suche_template() -> str:
         _patch_suche_template_tour_summary_collapsible,
         _patch_suche_template_tour_summary_collapsible_fix,
         _patch_suche_template_search_all_inputs,
+        _patch_suche_template_enter_search,
         _patch_suche_template_kisoft_rahmentour,
         _patch_suche_template_rahmentour_list_in_rows,
         _patch_suche_template_sonderliste_marktkauf,
@@ -9674,16 +9697,16 @@ function waRenderRhythm() {
   h += waKpi("H&auml;ufigste Frequenz", bestFreq + "&times;/Woche &middot; " + freq[bestFreq] + " Kunden", "#334155");
   h += "</div>";
 
-  // Frequenz – kompakte Leiste
-  h += "<div style='background:#fff;border:1px solid #dfe4ea;border-radius:8px;padding:12px 14px;margin-bottom:12px;flex-shrink:0;'>";
-  h += "<div style='font-size:12.5px;font-weight:800;color:#0f172a;margin-bottom:9px;'>Lieferungen pro Woche je Kunde</div>";
-  h += "<div style='display:flex;gap:10px;'>";
+  // Frequenz – prominente rote Leiste
+  h += "<div style='background:linear-gradient(180deg,#fdf2f2 0%,#fff 70%);border:1.5px solid #e7b3b3;border-top:4px solid #b02525;border-radius:8px;padding:13px 16px 14px;margin-bottom:12px;flex-shrink:0;box-shadow:0 1px 4px rgba(176,37,37,.10);'>";
+  h += "<div style='font-size:14px;font-weight:900;color:#b02525;letter-spacing:-.2px;margin-bottom:11px;'>&#128666; Lieferungen pro Woche je Kunde</div>";
+  h += "<div style='display:flex;gap:12px;'>";
   for(var n=1; n<=6; n++){
     var w = Math.round(freq[n]/freqMax*100);
     h += "<div style='flex:1;text-align:center;'>";
-    h += "<div style='font-size:11px;font-weight:800;color:#1e293b;margin-bottom:4px;'>" + n + "&times; <span style='color:#94a3b8;font-weight:700;'>" + waPct(freq[n],total) + "</span></div>";
-    h += "<div style='height:8px;background:#eef1f5;border-radius:4px;overflow:hidden;'><span style='display:block;height:100%;width:" + w + "%;background:#1e6091;'></span></div>";
-    h += "<div style='font-size:12.5px;font-weight:800;color:#334155;margin-top:4px;font-variant-numeric:tabular-nums;'>" + freq[n] + "</div>";
+    h += "<div style='font-size:12px;font-weight:900;color:#7a1414;margin-bottom:5px;'>" + n + "&times; <span style='color:#c98a8a;font-weight:800;'>" + waPct(freq[n],total) + "</span></div>";
+    h += "<div style='height:12px;background:#f6e0e0;border-radius:6px;overflow:hidden;'><span style='display:block;height:100%;width:" + w + "%;background:linear-gradient(90deg,#d23f3f,#b02525);'></span></div>";
+    h += "<div style='font-size:18px;font-weight:900;color:#7a1414;margin-top:5px;font-variant-numeric:tabular-nums;'>" + freq[n] + "</div>";
     h += "</div>";
   }
   h += "</div></div>";
