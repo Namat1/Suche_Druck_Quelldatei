@@ -9125,23 +9125,30 @@ function buildWaDdMenu() {
 }
 
 function waHeatColor(t) {
-  var stops = ["#fdecec","#f9c9c9","#f29d9d","#e76a6a","#cf3a3a","#9e1c1c"];
-  if(t <= 0) return stops[0];
+  // t in [0,1]; 0 = neutral leer, sonst saturierte Rot-Rampe (technisch, nicht rosa)
+  if(t <= 0) return "#eceff3";
+  var stops = ["#f4d9d9","#e9a6a6","#dd7373","#cc4444","#b02525","#8a1717","#6b0f0f"];
   var i = Math.min(stops.length-1, Math.floor(t * stops.length));
   return stops[i];
 }
-function waHeatTextColor(t) { return t > 0.5 ? "#fff" : "#7a1414"; }
+function waHeatTextColor(t) { return t > 0.42 ? "#fff" : "#5a1212"; }
+function waPct(part, whole) {
+  if(!whole) return "0%";
+  var p = (part/whole)*100;
+  return (Math.round(p*10)/10).toString().replace(".", ",") + "%";
+}
 
 function waToggleBtn(val, text, current, fn, accent) {
-  accent = accent || "#cf3a3a";
+  accent = accent || "#b02525";
   var on = (val === current);
-  return "<button onclick=\"" + fn + "('" + val + "')\" style='padding:6px 14px;border:none;cursor:pointer;font-weight:800;font-size:12.5px;background:"
-       + (on?accent:"#fff") + ";color:" + (on?"#fff":accent) + ";'>" + text + "</button>";
+  return "<button onclick=\"" + fn + "('" + val + "')\" style='padding:6px 15px;border:none;cursor:pointer;font-weight:700;font-size:12.5px;letter-spacing:.2px;background:"
+       + (on?accent:"#fff") + ";color:" + (on?"#fff":"#475569") + ";'>" + text + "</button>";
 }
-function waKpi(title, value) {
-  return "<div style='flex:1 1 150px;min-width:140px;background:#fff;border:1.5px solid #f1c9c9;border-radius:9px;padding:11px 14px;'>"
-       + "<div style='font-size:11px;font-weight:700;color:#a14b4b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;'>" + title + "</div>"
-       + "<div style='font-size:22px;font-weight:900;color:#7a1414;'>" + value + "</div></div>";
+function waKpi(title, value, accent) {
+  accent = accent || "#0f172a";
+  return "<div style='flex:1 1 150px;min-width:140px;background:#fff;border:1px solid #dfe4ea;border-top:3px solid " + accent + ";border-radius:6px;padding:11px 14px;'>"
+       + "<div style='font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px;'>" + title + "</div>"
+       + "<div style='font-size:23px;font-weight:800;color:" + accent + ";font-variant-numeric:tabular-nums;'>" + value + "</div></div>";
 }
 function waEmptyMsg() {
   return "<div style='color:#94a3b8;padding:50px;text-align:center;font-size:14px;line-height:1.6;'>Keine Wochenauslastungs-Daten f&uuml;r diese Woche.<br>Bitte die Wochen-Excel neu generieren (Quelldatei mit den Depot-Bl&auml;ttern DIREKT / MK / HUPA_NMS / HUPA_MALCHOW).</div>";
@@ -9169,47 +9176,52 @@ function waRenderHeat() {
   var instName = (INSTANCES[currentInst] ? INSTANCES[currentInst].name : "");
 
   var h = "";
-  h += "<div style='display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px;'>";
-  h += "<h2 style='margin:0;font-size:19px;font-weight:900;color:#7a1414;'>&#128293; Wochenauslastung &middot; Heatmap</h2>";
-  h += "<span style='font-size:12px;font-weight:700;color:#a14b4b;background:#fbe3e3;border:1px solid #f1bcbc;border-radius:999px;padding:3px 11px;'>" + instName + "</span>";
-  h += "<div style='margin-left:auto;display:flex;border:1.5px solid #cf3a3a;border-radius:6px;overflow:hidden;'>";
+  h += "<div style='display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-bottom:15px;'>";
+  h += "<h2 style='margin:0;font-size:18.5px;font-weight:800;color:#0f172a;letter-spacing:-.3px;'>&#128293; Wochenauslastung &middot; Heatmap</h2>";
+  h += "<span style='font-size:11.5px;font-weight:700;color:#475569;background:#eef1f5;border:1px solid #d6dbe3;border-radius:5px;padding:3px 10px;'>" + instName + "</span>";
+  h += "<div style='margin-left:auto;display:flex;border:1px solid #b02525;border-radius:6px;overflow:hidden;'>";
   h += waToggleBtn("kunden","Kunden/Tag",metric,"waSetMetricHeat");
   h += waToggleBtn("touren","Touren/Tag",metric,"waSetMetricHeat");
   h += "</div></div>";
 
-  h += "<div style='display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;'>";
-  h += waKpi("Gesamt " + label + "/Woche", grand);
-  h += waKpi("St&auml;rkster Tag", days[peakIdx] + " (" + colSum[peakIdx] + ")");
-  h += waKpi("Schw&auml;chster Tag", days[loIdx] + " (" + colSum[loIdx] + ")");
-  h += waKpi("&Oslash; pro Tag", Math.round(grand/days.length));
+  h += "<div style='display:flex;gap:11px;flex-wrap:wrap;margin-bottom:15px;'>";
+  h += waKpi("Gesamt " + label + "/Woche", grand.toLocaleString("de-DE"), "#1e293b");
+  h += waKpi("St&auml;rkster Tag", days[peakIdx] + " &middot; " + colSum[peakIdx] + " &middot; " + waPct(colSum[peakIdx],grand), "#b02525");
+  h += waKpi("Schw&auml;chster Tag", days[loIdx] + " &middot; " + colSum[loIdx] + " &middot; " + waPct(colSum[loIdx],grand), "#334155");
+  h += waKpi("&Oslash; pro Tag", Math.round(grand/days.length).toLocaleString("de-DE"), "#334155");
   h += "</div>";
 
-  h += "<div style='background:#fff;border:1.5px solid #f1c9c9;border-radius:10px;padding:14px;overflow-x:auto;'>";
+  h += "<div style='background:#fff;border:1px solid #dfe4ea;border-radius:8px;padding:14px;overflow-x:auto;'>";
   h += "<table style='width:100%;border-collapse:separate;border-spacing:5px;'>";
-  h += "<thead><tr><th style='text-align:left;font-size:12px;color:#7a1414;padding:0 8px;'>Depot</th>";
+  h += "<thead><tr><th style='text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;padding:0 8px;'>Depot</th>";
   days.forEach(function(d,c){
     var hot = (c===peakIdx);
-    h += "<th style='font-size:12.5px;font-weight:800;color:" + (hot?"#cf3a3a":"#7a1414") + ";text-align:center;min-width:58px;'>" + d + "</th>";
+    h += "<th style='font-size:12.5px;font-weight:800;color:" + (hot?"#b02525":"#334155") + ";text-align:center;min-width:66px;'>" + d + "</th>";
   });
-  h += "<th style='font-size:12.5px;font-weight:800;color:#7a1414;text-align:center;min-width:62px;'>&Sigma;</th></tr></thead><tbody>";
+  h += "<th style='font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;text-align:center;min-width:72px;'>Summe</th></tr></thead><tbody>";
   depots.forEach(function(dp){
-    h += "<tr><td style='font-size:13px;font-weight:800;color:#3a1010;padding:0 8px;white-space:nowrap;'>" + dp + "</td>";
-    (vals[dp]||[]).forEach(function(v){
-      var t = cellMax ? (v/cellMax) : 0;
-      h += "<td style='height:40px;border-radius:6px;text-align:center;font-size:13px;font-weight:700;background:" + waHeatColor(t) + ";color:" + waHeatTextColor(t) + ";'>" + (v||"&middot;") + "</td>";
+    h += "<tr><td style='font-size:13px;font-weight:700;color:#1e293b;padding:0 8px;white-space:nowrap;'>" + dp + "</td>";
+    (vals[dp]||[]).forEach(function(v,c){
+      var t = cellMax ? Math.pow(v/cellMax, 0.6) : 0;
+      var col = waHeatColor(t), tc = waHeatTextColor(t);
+      var pct = colSum[c] ? waPct(v, colSum[c]) : "";
+      var inner = v ? ("<div style='font-size:13.5px;font-weight:800;line-height:1.1;'>" + v + "</div><div style='font-size:9.5px;font-weight:600;opacity:.78;'>" + pct + "</div>") : "<span style='opacity:.5;'>&middot;</span>";
+      h += "<td style='height:46px;border-radius:5px;text-align:center;vertical-align:middle;background:" + col + ";color:" + tc + ";font-variant-numeric:tabular-nums;'>" + inner + "</td>";
     });
-    h += "<td style='text-align:center;font-size:13px;font-weight:800;color:#7a1414;background:#fbe3e3;border-radius:6px;'>" + rowSum[dp] + "</td></tr>";
+    h += "<td style='text-align:center;vertical-align:middle;background:#eef1f5;border-radius:5px;font-variant-numeric:tabular-nums;'><div style='font-size:13.5px;font-weight:800;color:#1e293b;line-height:1.1;'>" + rowSum[dp] + "</div><div style='font-size:9.5px;font-weight:600;color:#64748b;'>" + waPct(rowSum[dp],grand) + "</div></td></tr>";
   });
-  h += "<tr><td style='font-size:13px;font-weight:900;color:#7a1414;padding:6px 8px 0;'>&Sigma; Gesamt</td>";
+  // Summenzeile als dunkles Band
+  h += "<tr><td style='font-size:11px;font-weight:800;color:#1e293b;text-transform:uppercase;letter-spacing:.5px;padding:8px 8px 0;'>&Sigma; Gesamt</td>";
   colSum.forEach(function(v,c){
     var hot = (c===peakIdx);
-    h += "<td style='text-align:center;font-size:13.5px;font-weight:900;color:" + (hot?"#cf3a3a":"#7a1414") + ";padding-top:6px;'>" + v + "</td>";
+    var bg = hot ? "#b02525" : "#1e293b";
+    h += "<td style='text-align:center;vertical-align:middle;background:" + bg + ";border-radius:5px;font-variant-numeric:tabular-nums;'><div style='font-size:15px;font-weight:800;color:#fff;line-height:1.1;'>" + v + "</div><div style='font-size:9.5px;font-weight:600;color:rgba(255,255,255,.72);'>" + waPct(v,grand) + "</div></td>";
   });
-  h += "<td style='text-align:center;font-size:13.5px;font-weight:900;color:#7a1414;padding-top:6px;'>" + grand + "</td></tr>";
+  h += "<td style='text-align:center;vertical-align:middle;background:#0f172a;border-radius:5px;'><div style='font-size:16px;font-weight:800;color:#fff;line-height:1.1;font-variant-numeric:tabular-nums;'>" + grand + "</div><div style='font-size:9px;font-weight:600;color:rgba(255,255,255,.6);'>100%</div></td></tr>";
   h += "</tbody></table>";
-  h += "<div style='display:flex;align-items:center;gap:8px;margin-top:12px;font-size:11px;color:#a14b4b;flex-wrap:wrap;'>";
-  h += "<span>wenig</span><span style='flex:0 0 160px;height:9px;border-radius:5px;background:linear-gradient(to right,#fdecec,#f29d9d,#cf3a3a,#9e1c1c);'></span><span>viel</span>";
-  h += "<span style='margin-left:6px;'>&mdash; " + label + " pro Tag, je Zelle eingef&auml;rbt</span></div>";
+  h += "<div style='display:flex;align-items:center;gap:8px;margin-top:13px;font-size:11px;color:#64748b;flex-wrap:wrap;'>";
+  h += "<span>wenig</span><span style='flex:0 0 150px;height:8px;border-radius:4px;background:linear-gradient(to right,#f4d9d9,#dd7373,#b02525,#6b0f0f);'></span><span>viel</span>";
+  h += "<span style='margin-left:8px;'>&mdash; " + label + " pro Tag &middot; Prozent = Anteil am jeweiligen Tag</span></div>";
   h += "</div>";
   body.innerHTML = h;
 }
@@ -9225,36 +9237,49 @@ function waRenderGruppe() {
   var metric = waMetricGruppe;
   var label = (metric==="touren") ? "Touren" : "Kunden";
   var instName = (INSTANCES[currentInst] ? INSTANCES[currentInst].name : "");
+  var days = data.days, depots = data.depots;
+  var vals = (metric==="touren") ? data.touren : data.kunden;
+
+  var colSum = days.map(function(_,c){ return depots.reduce(function(a,dp){ return a + (vals[dp]?vals[dp][c]:0); }, 0); });
+  var grand = colSum.reduce(function(a,b){return a+b;},0);
+  var peakIdx = colSum.indexOf(Math.max.apply(null,colSum));
+  var loIdx   = colSum.indexOf(Math.min.apply(null,colSum));
 
   var h = "";
-  h += "<div style='display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px;'>";
-  h += "<h2 style='margin:0;font-size:19px;font-weight:900;color:#1b66b3;'>&#128202; Wochenauslastung &middot; Kundengruppe</h2>";
-  h += "<span style='font-size:12px;font-weight:700;color:#3a6ea5;background:#e8f1fb;border:1px solid #cfe0f1;border-radius:999px;padding:3px 11px;'>" + instName + "</span>";
-  h += "<div style='margin-left:auto;display:flex;border:1.5px solid #1b66b3;border-radius:6px;overflow:hidden;'>";
-  h += waToggleBtn("kunden","Kunden/Tag",metric,"waSetMetricGruppe","#1b66b3");
-  h += waToggleBtn("touren","Touren/Tag",metric,"waSetMetricGruppe","#1b66b3");
+  h += "<div style='display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-bottom:15px;'>";
+  h += "<h2 style='margin:0;font-size:18.5px;font-weight:800;color:#0f172a;letter-spacing:-.3px;'>&#128202; Wochenauslastung &middot; Kundengruppe</h2>";
+  h += "<span style='font-size:11.5px;font-weight:700;color:#475569;background:#eef1f5;border:1px solid #d6dbe3;border-radius:5px;padding:3px 10px;'>" + instName + "</span>";
+  h += "<div style='margin-left:auto;display:flex;border:1px solid #1e293b;border-radius:6px;overflow:hidden;'>";
+  h += waToggleBtn("kunden","Kunden/Tag",metric,"waSetMetricGruppe","#1e293b");
+  h += waToggleBtn("touren","Touren/Tag",metric,"waSetMetricGruppe","#1e293b");
   h += "</div></div>";
 
-  h += "<div style='background:#fff;border:1.5px solid #d4e0ee;border-radius:10px;padding:16px;'>";
-  h += "<div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>" + label + " pro Wochentag, gestapelt nach Depot</div>";
-  h += "<div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:10px;'>Jede S&auml;ule = ein Wochentag &middot; Segmente = Depots</div>";
-  h += "<div id='wa-gruppe-legend' style='display:flex;flex-wrap:wrap;gap:14px;margin-bottom:10px;font-size:12px;color:#475569;'></div>";
+  h += "<div style='display:flex;gap:11px;flex-wrap:wrap;margin-bottom:15px;'>";
+  h += waKpi("Gesamt " + label + "/Woche", grand.toLocaleString("de-DE"), "#1e293b");
+  h += waKpi("St&auml;rkster Tag", days[peakIdx] + " &middot; " + colSum[peakIdx] + " &middot; " + waPct(colSum[peakIdx],grand), "#1f3a5f");
+  h += waKpi("Schw&auml;chster Tag", days[loIdx] + " &middot; " + colSum[loIdx] + " &middot; " + waPct(colSum[loIdx],grand), "#334155");
+  h += waKpi("&Oslash; pro Tag", Math.round(grand/days.length).toLocaleString("de-DE"), "#334155");
+  h += "</div>";
+
+  h += "<div style='background:#fff;border:1px solid #dfe4ea;border-radius:8px;padding:16px;'>";
+  h += "<div style='font-size:13px;font-weight:800;color:#0f172a;margin-bottom:2px;'>" + label + " pro Wochentag, gestapelt nach Depot</div>";
+  h += "<div style='font-size:11px;font-weight:600;color:#64748b;margin-bottom:12px;'>S&auml;ulenwert = Tagessumme &middot; Segment-% = Anteil am Tag</div>";
+  h += "<div id='wa-gruppe-legend' style='display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px;font-size:12px;color:#475569;'></div>";
   h += "<div style='height:380px;'><canvas id='wa-gruppe-chart'></canvas></div>";
   h += "</div>";
   body.innerHTML = h;
 
-  var days = data.days, depots = data.depots;
-  var vals = (metric==="touren") ? data.touren : data.kunden;
-  var palette = ["#cf3a3a","#1e6091","#3aa0d8","#e0a93b","#5b8c5a","#8a5fb0"];
+  var palette = ["#1f3a5f","#3d7ea6","#4f9d8a","#c08a3e","#7a5ea8","#9c4646"];
   var datasets = depots.map(function(dp,i){
-    return { label: dp, data: (vals[dp]||[]).slice(), backgroundColor: palette[i % palette.length], borderWidth:0, borderRadius:3 };
+    return { label: dp, data: (vals[dp]||[]).slice(), backgroundColor: palette[i % palette.length], borderWidth:0, borderRadius:2 };
   });
 
   var leg = document.getElementById("wa-gruppe-legend");
   if(leg){
     var totals = {}; depots.forEach(function(dp){ totals[dp] = (vals[dp]||[]).reduce(function(a,b){return a+b;},0); });
     leg.innerHTML = depots.map(function(dp,i){
-      return "<span style='display:flex;align-items:center;gap:5px;'><span style='width:11px;height:11px;border-radius:2px;background:" + palette[i%palette.length] + ";'></span>" + dp + " <b style='color:#0f172a;'>" + totals[dp] + "</b></span>";
+      return "<span style='display:flex;align-items:center;gap:6px;'><span style='width:11px;height:11px;border-radius:2px;background:" + palette[i%palette.length] + ";'></span>"
+           + dp + " <b style='color:#0f172a;font-variant-numeric:tabular-nums;'>" + totals[dp] + "</b> <span style='color:#94a3b8;'>" + waPct(totals[dp],grand) + "</span></span>";
     }).join("");
   }
 
@@ -9262,18 +9287,56 @@ function waRenderGruppe() {
   if(waGruppeChart) { try { waGruppeChart.destroy(); } catch(e){} waGruppeChart = null; }
   var ctx = document.getElementById("wa-gruppe-chart");
   if(!ctx) return;
+
+  var waBarLabels = {
+    id: "waBarLabels",
+    afterDatasetsDraw: function(chart) {
+      var c = chart.ctx, ds = chart.data.datasets;
+      if(!ds.length) return;
+      var tot = chart.data.labels.map(function(_,i){ return ds.reduce(function(a,d){ return a + (d.data[i]||0); }, 0); });
+      c.save();
+      c.textAlign = "center"; c.textBaseline = "middle";
+      ds.forEach(function(d,di){
+        var meta = chart.getDatasetMeta(di);
+        meta.data.forEach(function(bar,i){
+          var v = d.data[i]||0; if(!v || !tot[i]) return;
+          var hgt = Math.abs((bar.base!=null?bar.base:bar.y) - bar.y);
+          if(hgt >= 20) {
+            c.font = "600 10px 'Segoe UI',Arial,sans-serif";
+            c.fillStyle = "rgba(255,255,255,.92)";
+            c.fillText(Math.round(v/tot[i]*100) + "%", bar.x, (bar.y + (bar.base!=null?bar.base:bar.y))/2);
+          }
+        });
+      });
+      var lastMeta = chart.getDatasetMeta(ds.length-1);
+      c.font = "700 12.5px 'Segoe UI',Arial,sans-serif";
+      c.fillStyle = "#0f172a"; c.textBaseline = "alphabetic";
+      lastMeta.data.forEach(function(bar,i){ if(tot[i]) c.fillText(tot[i], bar.x, bar.y - 7); });
+      c.restore();
+    }
+  };
+
   waGruppeChart = new Chart(ctx, {
     type: "bar",
     data: { labels: days, datasets: datasets },
+    plugins: [waBarLabels],
     options: {
       responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 18 } },
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { footer: function(items){ var sum=0; items.forEach(function(it){ sum += it.parsed.y; }); return "Summe: " + sum; } } }
+        tooltip: { callbacks: {
+          label: function(it){
+            var t = it.chart.data.datasets.reduce(function(a,d){ return a + (d.data[it.dataIndex]||0); }, 0);
+            var pct = t ? Math.round(it.parsed.y/t*100) : 0;
+            return it.dataset.label + ": " + it.parsed.y + " (" + pct + "%)";
+          },
+          footer: function(items){ var s=0; items.forEach(function(it){ s += it.parsed.y; }); return "Tagessumme: " + s; }
+        } }
       },
       scales: {
-        x: { stacked: true, grid: { display:false } },
-        y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } }
+        x: { stacked: true, grid: { display:false }, ticks: { font: { weight: "700" }, color: "#334155" } },
+        y: { stacked: true, beginAtZero: true, grid: { color: "#eef1f5" }, ticks: { precision: 0, color: "#64748b" } }
       }
     }
   });
@@ -9886,11 +9949,11 @@ iframe.active{{display:block}}
   </div>
 
   <!-- ── Großkunden Panel ───────────────────────────────────────────────────── -->
-  <div id="panel-wa-heat" style="display:none;flex:1;flex-direction:column;overflow-y:auto;padding:16px 18px 28px;background:linear-gradient(180deg,#fdf3f3 0%,#f8e8e8 100%);font-family:'Segoe UI',Arial,sans-serif">
+  <div id="panel-wa-heat" style="display:none;flex:1;flex-direction:column;overflow-y:auto;padding:16px 18px 28px;background:linear-gradient(180deg,#eef1f5 0%,#e5e9ef 100%);font-family:'Segoe UI',Arial,sans-serif">
     <div id="wa-heat-body"></div>
   </div>
 
-  <div id="panel-wa-gruppe" style="display:none;flex:1;flex-direction:column;overflow-y:auto;padding:16px 18px 28px;background:linear-gradient(180deg,#f3f7fb 0%,#e8f0f7 100%);font-family:'Segoe UI',Arial,sans-serif">
+  <div id="panel-wa-gruppe" style="display:none;flex:1;flex-direction:column;overflow-y:auto;padding:16px 18px 28px;background:linear-gradient(180deg,#eef1f5 0%,#e5e9ef 100%);font-family:'Segoe UI',Arial,sans-serif">
     <div id="wa-gruppe-body"></div>
   </div>
 
