@@ -2395,6 +2395,8 @@ def compute_woche_data(excel_file) -> dict:
         pos = {str(c): idx for idx, c in enumerate(cols_list)}
         name_pos = pos.get("Name")
         csb_pos = pos.get("CSB")
+        sap_pos = pos.get("SAP")
+        ort_pos = pos.get("Ort")
         day_pos = [pos.get(LIEFERTAGE_MAPPING.get(sn)) for sn in WOCHE_DAY_COLS]
         n_cols = len(cols_list)
 
@@ -2424,17 +2426,27 @@ def compute_woche_data(excel_file) -> dict:
                 row_bits |= (1 << c)
 
             if row_bits:
+                csb_val = ""
+                if csb_pos is not None and csb_pos < n_cols and row[csb_pos] is not None:
+                    csb_val = normalize_digits_py(row[csb_pos])
+                sap_val = ""
+                if sap_pos is not None and sap_pos < n_cols and row[sap_pos] is not None:
+                    sap_val = normalize_digits_py(row[sap_pos])
+                ort_val = ""
+                if ort_pos is not None and ort_pos < n_cols and row[ort_pos] is not None and not (isinstance(row[ort_pos], float) and row[ort_pos] != row[ort_pos]):
+                    ort_val = str(row[ort_pos]).strip()
                 # Kunde eindeutig per CSB (sonst Name) – Tage vereinigen
-                ckey = ""
-                if csb_pos is not None and csb_pos < n_cols:
-                    ckey = normalize_digits_py(row[csb_pos]) if row[csb_pos] is not None else ""
-                if not ckey:
-                    ckey = "n:" + nm_low
+                ckey = csb_val if csb_val else ("n:" + nm_low)
                 ent = cust.get(ckey)
                 if ent is None:
-                    cust[ckey] = {"bits": row_bits, "grp": grp, "name": nm_raw}
+                    cust[ckey] = {"bits": row_bits, "grp": grp, "name": nm_raw,
+                                  "csb": csb_val, "sap": sap_val, "ort": ort_val}
                 else:
                     ent["bits"] |= row_bits
+                    if not ent.get("sap"):
+                        ent["sap"] = sap_val
+                    if not ent.get("ort"):
+                        ent["ort"] = ort_val
 
     # Anzeige-Reihenfolge: vorhandene Depots, dann Sonderkunden mit Daten
     out_depots = [d for d in depot_labels if d in seen_depot]
@@ -2459,7 +2471,7 @@ def compute_woche_data(excel_file) -> dict:
         key = str(bits)
         patterns[key] = patterns.get(key, 0) + 1
         gi = grp_index.get(ent["grp"], 0)
-        kunden_liste.append([ent["name"], gi, bits])
+        kunden_liste.append([ent["name"], gi, bits, ent.get("csb", ""), ent.get("sap", ""), ent.get("ort", "")])
     # Kompakt + stabil sortiert (nach Name)
     kunden_liste.sort(key=lambda x: x[0].lower())
 
@@ -9216,8 +9228,7 @@ var waMetricHeat   = "kunden";   // "kunden" | "touren"
 var waMetricGruppe = "kunden";
 var waMetricKurve  = "kunden";
 var waKurveMode    = "verlauf";  // "verlauf" | "kumuliert"
-var waRhythmSearch = "";
-var waRhythmGroup  = "all";
+var waRhythmSel    = null;       // aktuell gewähltes Rhythmus-Bitmuster
 var waGruppeChart  = null;
 var waKurveChart   = null;
 var WA_PALETTE = ["#1f3a5f","#3d7ea6","#4f9d8a","#c08a3e","#7a5ea8","#9c4646"];
@@ -9628,9 +9639,8 @@ function waRenderKurve() {
     }
   });
 }
-function waInitRhythm() { waRenderRhythm(); }
-function waRhythmSetSearch(v) { waRhythmSearch = v; waRenderRhythmList(); }
-function waRhythmSetGroup(v) { waRhythmGroup = v; waRenderRhythmList(); }
+function waInitRhythm() { waRhythmSel = null; waRenderRhythm(); }
+function waRhythmSelect(bits) { waRhythmSel = bits; waRenderRhythmMD(); }
 
 function waRenderRhythm() {
   var body = document.getElementById("wa-rhythm-body");
@@ -9664,87 +9674,84 @@ function waRenderRhythm() {
   h += waKpi("H&auml;ufigste Frequenz", bestFreq + "&times;/Woche &middot; " + freq[bestFreq] + " Kunden", "#334155");
   h += "</div>";
 
-  h += "<div style='display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;flex-shrink:0;'>";
-  // Frequenz
-  h += "<div style='flex:1 1 280px;background:#fff;border:1px solid #dfe4ea;border-radius:8px;padding:14px;'>";
-  h += "<div style='font-size:13px;font-weight:800;color:#0f172a;margin-bottom:2px;'>Lieferungen pro Woche je Kunde</div>";
-  h += "<div style='font-size:11px;font-weight:600;color:#64748b;margin-bottom:12px;'>Wie oft ein Kunde in der Woche beliefert wird</div>";
+  // Frequenz – kompakte Leiste
+  h += "<div style='background:#fff;border:1px solid #dfe4ea;border-radius:8px;padding:12px 14px;margin-bottom:12px;flex-shrink:0;'>";
+  h += "<div style='font-size:12.5px;font-weight:800;color:#0f172a;margin-bottom:9px;'>Lieferungen pro Woche je Kunde</div>";
+  h += "<div style='display:flex;gap:10px;'>";
   for(var n=1; n<=6; n++){
     var w = Math.round(freq[n]/freqMax*100);
-    h += "<div style='display:flex;align-items:center;gap:8px;margin-bottom:6px;'>";
-    h += "<span style='width:30px;font-size:12px;font-weight:800;color:#1e293b;'>" + n + "&times;</span>";
-    h += "<span style='flex:1;height:18px;background:#eef1f5;border-radius:4px;overflow:hidden;'><span style='display:block;height:100%;width:" + w + "%;background:#1e6091;'></span></span>";
-    h += "<span style='width:118px;text-align:right;font-size:11.5px;font-weight:700;color:#334155;font-variant-numeric:tabular-nums;'>" + freq[n] + " <span style='color:#94a3b8;'>" + waPct(freq[n],total) + "</span></span>";
+    h += "<div style='flex:1;text-align:center;'>";
+    h += "<div style='font-size:11px;font-weight:800;color:#1e293b;margin-bottom:4px;'>" + n + "&times; <span style='color:#94a3b8;font-weight:700;'>" + waPct(freq[n],total) + "</span></div>";
+    h += "<div style='height:8px;background:#eef1f5;border-radius:4px;overflow:hidden;'><span style='display:block;height:100%;width:" + w + "%;background:#1e6091;'></span></div>";
+    h += "<div style='font-size:12.5px;font-weight:800;color:#334155;margin-top:4px;font-variant-numeric:tabular-nums;'>" + freq[n] + "</div>";
     h += "</div>";
   }
-  h += "</div>";
-  // Top-Rhythmen
-  h += "<div style='flex:2 1 420px;background:#fff;border:1px solid #dfe4ea;border-radius:8px;padding:14px;'>";
-  h += "<div style='font-size:13px;font-weight:800;color:#0f172a;margin-bottom:2px;'>Top-Liefer-Rhythmen</div>";
-  h += "<div style='font-size:11px;font-weight:600;color:#64748b;margin-bottom:12px;'>Welche Wochentag-Kombination wie viele Kunden haben</div>";
-  var patMax = topPat[1] || 1;
-  var show = pats.slice(0,12);
-  var restCount = 0, restPats = 0;
-  pats.slice(12).forEach(function(p){ restCount += p[1]; restPats++; });
-  show.forEach(function(p){
-    var w = Math.round(p[1]/patMax*100);
-    h += "<div style='display:flex;align-items:center;gap:10px;margin-bottom:6px;'>";
-    h += waBitsStrip(p[0], true);
-    h += "<span style='flex:1;height:16px;background:#f3f6f9;border-radius:4px;overflow:hidden;'><span style='display:block;height:100%;width:" + w + "%;background:#3d7ea6;'></span></span>";
-    h += "<span style='width:118px;text-align:right;font-size:11.5px;font-weight:700;color:#334155;font-variant-numeric:tabular-nums;'>" + p[1] + " <span style='color:#94a3b8;'>" + waPct(p[1],total) + "</span></span>";
-    h += "</div>";
-  });
-  if(restPats>0){
-    h += "<div style='display:flex;align-items:center;gap:10px;margin-top:8px;padding-top:8px;border-top:1px solid #eef2f7;font-size:11.5px;color:#64748b;'>";
-    h += "<span style='font-weight:700;'>+ " + restPats + " weitere Rhythmen</span><span style='margin-left:auto;font-weight:700;'>" + restCount + " Kunden</span>";
-    h += "</div>";
-  }
-  h += "</div>";
-  h += "</div>";
+  h += "</div></div>";
 
-  // Einzelkunden
-  h += "<div style='flex:1;min-height:0;background:#fff;border:1px solid #dfe4ea;border-radius:8px;padding:14px;display:flex;flex-direction:column;'>";
-  h += "<div style='display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;flex-shrink:0;'>";
-  h += "<div style='font-size:13px;font-weight:800;color:#0f172a;'>Einzelne Kunden &middot; Wochenverteilung</div>";
-  h += "<input id='wa-rhythm-search' oninput=\"waRhythmSetSearch(this.value)\" placeholder='Kunde suchen\u2026' value=\"" + waEscAttr(waRhythmSearch) + "\" style='margin-left:auto;min-width:200px;padding:6px 10px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:12px;font-family:inherit;outline:none;'>";
-  h += "<select id='wa-rhythm-group' onchange=\"waRhythmSetGroup(this.value)\" style='padding:6px 10px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:12px;font-family:inherit;background:#fff;cursor:pointer;'>";
-  h += "<option value='all'>Alle Gruppen</option>";
-  depots.forEach(function(d,i){ h += "<option value='" + i + "'" + (waRhythmGroup===String(i)?" selected":"") + ">" + waEscHtml(d) + "</option>"; });
-  h += "</select></div>";
-  h += "<div id='wa-rhythm-list' style='flex:1;min-height:0;overflow:auto;'></div>";
-  h += "</div>";
+  // Master-Detail: links alle Rhythmen (klickbar), rechts die Kunden dazu
+  h += "<div id='wa-rhythm-md' style='flex:1;min-height:0;display:flex;gap:12px;'></div>";
 
   body.innerHTML = h;
-  waRenderRhythmList();
+  waRenderRhythmMD();
 }
 
-function waRenderRhythmList() {
-  var el = document.getElementById("wa-rhythm-list");
-  if(!el) return;
+function waRenderRhythmMD() {
+  var md = document.getElementById("wa-rhythm-md");
+  if(!md) return;
   var data = waGetData();
-  if(!data || !data.kunden_liste){ el.innerHTML = ""; return; }
-  var depots = data.depots || [];
-  var q = waRhythmSearch.toLowerCase().trim();
-  var grp = waRhythmGroup;
-  var rows = data.kunden_liste.filter(function(c){
-    if(grp !== "all" && String(c[1]) !== grp) return false;
-    if(q && c[0].toLowerCase().indexOf(q) === -1) return false;
-    return true;
+  if(!data || !data.kunden_liste) return;
+  var liste = data.kunden_liste, patterns = data.patterns || {}, depots = data.depots || [];
+  var total = liste.length;
+  var pats = Object.keys(patterns).map(function(k){ return [parseInt(k,10), patterns[k]]; }).sort(function(a,b){ return b[1]-a[1]; });
+  var patMax = pats.length ? pats[0][1] : 1;
+  if((waRhythmSel === null || !(String(waRhythmSel) in patterns)) && pats.length) waRhythmSel = pats[0][0];
+
+  // ── links: alle Rhythmen, klickbar ──
+  var left = "<div style='flex:1 1 380px;min-width:300px;background:#fff;border:1px solid #dfe4ea;border-radius:8px;display:flex;flex-direction:column;min-height:0;'>";
+  left += "<div style='padding:12px 14px 8px;flex-shrink:0;'><div style='font-size:13px;font-weight:800;color:#0f172a;'>Alle Liefer-Rhythmen (" + pats.length + ")</div><div style='font-size:11px;font-weight:600;color:#64748b;'>Rhythmus anklicken &rarr; Kunden erscheinen rechts</div></div>";
+  left += "<div style='flex:1;min-height:0;overflow:auto;padding:0 8px 8px;'>";
+  pats.forEach(function(p){
+    var on = (p[0] === waRhythmSel);
+    var w = Math.round(p[1]/patMax*100);
+    var hv = on ? "false" : "true";
+    left += "<div onclick=\"waRhythmSelect(" + p[0] + ")\""
+          + " onmouseover=\"if(" + hv + ")this.style.background='#f3f6f9'\" onmouseout=\"if(" + hv + ")this.style.background='transparent'\""
+          + " style='display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:6px;cursor:pointer;margin-bottom:3px;border:1px solid " + (on?"#1e6091":"transparent") + ";background:" + (on?"#eaf3fb":"transparent") + ";'>";
+    left += waBitsStrip(p[0], true);
+    left += "<span style='flex:1;height:14px;background:#f3f6f9;border-radius:3px;overflow:hidden;'><span style='display:block;height:100%;width:" + w + "%;background:" + (on?"#1e6091":"#9db8d4") + ";'></span></span>";
+    left += "<span style='width:92px;text-align:right;font-size:11.5px;font-weight:700;color:#334155;font-variant-numeric:tabular-nums;'>" + p[1] + " <span style='color:#94a3b8;'>" + waPct(p[1],total) + "</span></span>";
+    left += "<span style='color:" + (on?"#1e6091":"#cbd5e1") + ";font-weight:900;font-size:15px;flex-shrink:0;'>&rsaquo;</span>";
+    left += "</div>";
   });
-  var CAP = 300;
-  var shown = rows.slice(0, CAP);
-  var h = "<div style='font-size:11px;color:#64748b;font-weight:700;margin-bottom:8px;'>" + rows.length + " Kunden" + (rows.length>CAP ? (" &middot; erste " + CAP + " angezeigt &ndash; bitte eingrenzen") : "") + "</div>";
-  h += "<div style='display:flex;flex-direction:column;gap:4px;'>";
-  shown.forEach(function(c){
+  left += "</div></div>";
+
+  // ── rechts: Kunden des gewählten Rhythmus ──
+  var selBits = waRhythmSel;
+  var custs = liste.filter(function(c){ return c[2] === selBits; })
+                   .sort(function(a,b){ return a[0].toLowerCase().localeCompare(b[0].toLowerCase(), "de"); });
+  var right = "<div style='flex:2 1 0;min-width:280px;background:#fff;border:1px solid #dfe4ea;border-radius:8px;display:flex;flex-direction:column;min-height:0;'>";
+  right += "<div style='padding:12px 14px;flex-shrink:0;border-bottom:1px solid #eef2f7;display:flex;align-items:center;gap:11px;flex-wrap:wrap;'>";
+  right += waBitsStrip(selBits, false);
+  right += "<div><div style='font-size:13.5px;font-weight:800;color:#0f172a;'>Rhythmus " + (waBitsLabel(selBits) || "&ndash;") + "</div>"
+         + "<div style='font-size:11px;font-weight:600;color:#64748b;'>" + custs.length + " Kunden &middot; " + waPct(custs.length,total) + " aller Kunden</div></div>";
+  right += "</div>";
+  right += "<div style='flex:1;min-height:0;overflow:auto;padding:8px 10px;'><div style='display:flex;flex-direction:column;gap:4px;'>";
+  custs.forEach(function(c){
     var gi = c[1], col = WA_PALETTE[gi % WA_PALETTE.length];
-    h += "<div style='display:flex;align-items:center;gap:10px;padding:5px 8px;border-radius:5px;background:#f8fafc;'>";
-    h += waBitsStrip(c[2], true);
-    h += "<span style='font-size:12.5px;font-weight:700;color:#0f172a;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + waEscHtml(c[0]) + "</span>";
-    h += "<span style='font-size:10px;font-weight:700;color:#fff;background:" + col + ";border-radius:4px;padding:2px 8px;flex-shrink:0;'>" + waEscHtml(depots[gi]||"") + "</span>";
-    h += "</div>";
+    var meta = [];
+    if(c[3]) meta.push("CSB " + waEscHtml(c[3]));
+    if(c[4]) meta.push("SAP " + waEscHtml(c[4]));
+    if(c[5]) meta.push(waEscHtml(c[5]));
+    var metaHtml = meta.length ? ("<div style='font-size:10px;color:#94a3b8;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + meta.join(" &middot; ") + "</div>") : "";
+    right += "<div style='display:flex;align-items:center;gap:10px;padding:5px 8px;border-radius:5px;background:#f8fafc;'>";
+    right += "<span style='flex:1;min-width:0;'><div style='font-size:12.5px;font-weight:700;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + waEscHtml(c[0]) + "</div>" + metaHtml + "</span>";
+    right += "<span style='font-size:10px;font-weight:700;color:#fff;background:" + col + ";border-radius:4px;padding:2px 8px;flex-shrink:0;'>" + waEscHtml(depots[gi]||"") + "</span>";
+    right += "</div>";
   });
-  h += "</div>";
-  el.innerHTML = h;
+  if(!custs.length) right += "<div style='color:#94a3b8;padding:30px;text-align:center;font-size:13px;'>Keine Kunden.</div>";
+  right += "</div></div></div>";
+
+  md.innerHTML = left + right;
 }
 """
 
