@@ -9103,7 +9103,14 @@ function verspDownload() {
 // ── Wochenauslastung ──────────────────────────────────────────────────────────
 var waMetricHeat   = "kunden";   // "kunden" | "touren"
 var waMetricGruppe = "kunden";
+var waMetricKurve  = "kunden";
+var waKurveMode    = "verlauf";  // "verlauf" | "kumuliert"
 var waGruppeChart  = null;
+var waKurveChart   = null;
+var WA_PALETTE = ["#1f3a5f","#3d7ea6","#4f9d8a","#c08a3e","#7a5ea8","#9c4646"];
+
+function waUnit(metric) { return (metric === "touren") ? "Touren" : "Kunden"; }
+function waNum(n) { return (typeof n === "number" ? n : 0).toLocaleString("de-DE"); }
 
 function waGetData() {
   var inst = (typeof INSTANCES !== "undefined" && INSTANCES[currentInst]) ? INSTANCES[currentInst] : null;
@@ -9113,7 +9120,7 @@ function waGetData() {
 function buildWaDdMenu() {
   var menu = document.getElementById("ddmenu-wa");
   if(!menu) return;
-  var items = [["wa_heat","&#128293; Heatmap"],["wa_gruppe","&#128202; Kundengruppe"]];
+  var items = [["wa_heat","&#128293; Heatmap"],["wa_gruppe","&#128202; Kundengruppe"],["wa_kurve","&#128200; Kurven"]];
   var html = "";
   items.forEach(function(it){
     var active = (currentArea === it[0]);
@@ -9185,10 +9192,9 @@ function waRenderHeat() {
   h += "</div></div>";
 
   h += "<div style='display:flex;gap:11px;flex-wrap:wrap;margin-bottom:15px;'>";
-  h += waKpi("Gesamt " + label + "/Woche", grand.toLocaleString("de-DE"), "#1e293b");
-  h += waKpi("St&auml;rkster Tag", days[peakIdx] + " &middot; " + colSum[peakIdx] + " &middot; " + waPct(colSum[peakIdx],grand), "#b02525");
-  h += waKpi("Schw&auml;chster Tag", days[loIdx] + " &middot; " + colSum[loIdx] + " &middot; " + waPct(colSum[loIdx],grand), "#334155");
-  h += waKpi("&Oslash; pro Tag", Math.round(grand/days.length).toLocaleString("de-DE"), "#334155");
+  h += waKpi("Gesamt " + label + "/Woche", waNum(grand) + " " + label, "#1e293b");
+  h += waKpi("St&auml;rkster Tag", days[peakIdx] + " &middot; " + colSum[peakIdx] + " " + label + " &middot; " + waPct(colSum[peakIdx],grand), "#b02525");
+  h += waKpi("Schw&auml;chster Tag", days[loIdx] + " &middot; " + colSum[loIdx] + " " + label + " &middot; " + waPct(colSum[loIdx],grand), "#334155");
   h += "</div>";
 
   h += "<div style='background:#fff;border:1px solid #dfe4ea;border-radius:8px;padding:14px;overflow-x:auto;'>";
@@ -9255,21 +9261,20 @@ function waRenderGruppe() {
   h += "</div></div>";
 
   h += "<div style='display:flex;gap:11px;flex-wrap:wrap;margin-bottom:15px;'>";
-  h += waKpi("Gesamt " + label + "/Woche", grand.toLocaleString("de-DE"), "#1e293b");
-  h += waKpi("St&auml;rkster Tag", days[peakIdx] + " &middot; " + colSum[peakIdx] + " &middot; " + waPct(colSum[peakIdx],grand), "#1f3a5f");
-  h += waKpi("Schw&auml;chster Tag", days[loIdx] + " &middot; " + colSum[loIdx] + " &middot; " + waPct(colSum[loIdx],grand), "#334155");
-  h += waKpi("&Oslash; pro Tag", Math.round(grand/days.length).toLocaleString("de-DE"), "#334155");
+  h += waKpi("Gesamt " + label + "/Woche", waNum(grand) + " " + label, "#1e293b");
+  h += waKpi("St&auml;rkster Tag", days[peakIdx] + " &middot; " + colSum[peakIdx] + " " + label + " &middot; " + waPct(colSum[peakIdx],grand), "#1f3a5f");
+  h += waKpi("Schw&auml;chster Tag", days[loIdx] + " &middot; " + colSum[loIdx] + " " + label + " &middot; " + waPct(colSum[loIdx],grand), "#334155");
   h += "</div>";
 
   h += "<div style='background:#fff;border:1px solid #dfe4ea;border-radius:8px;padding:16px;'>";
-  h += "<div style='font-size:13px;font-weight:800;color:#0f172a;margin-bottom:2px;'>" + label + " pro Wochentag, gestapelt nach Depot</div>";
-  h += "<div style='font-size:11px;font-weight:600;color:#64748b;margin-bottom:12px;'>S&auml;ulenwert = Tagessumme &middot; Segment-% = Anteil am Tag</div>";
-  h += "<div id='wa-gruppe-legend' style='display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px;font-size:12px;color:#475569;'></div>";
-  h += "<div style='height:380px;'><canvas id='wa-gruppe-chart'></canvas></div>";
+  h += "<div style='font-size:13px;font-weight:800;color:#0f172a;margin-bottom:2px;'>" + label + " pro Wochentag, gestapelt nach Kundengruppe (Depot)</div>";
+  h += "<div style='font-size:11px;font-weight:600;color:#64748b;margin-bottom:12px;'>S&auml;ulenwert = Tagessumme &middot; jedes Segment mit Anteil am Tag (%)</div>";
+  h += "<div id='wa-gruppe-legend' style='display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px;'></div>";
+  h += "<div style='height:400px;'><canvas id='wa-gruppe-chart'></canvas></div>";
   h += "</div>";
   body.innerHTML = h;
 
-  var palette = ["#1f3a5f","#3d7ea6","#4f9d8a","#c08a3e","#7a5ea8","#9c4646"];
+  var palette = WA_PALETTE;
   var datasets = depots.map(function(dp,i){
     return { label: dp, data: (vals[dp]||[]).slice(), backgroundColor: palette[i % palette.length], borderWidth:0, borderRadius:2 };
   });
@@ -9278,8 +9283,11 @@ function waRenderGruppe() {
   if(leg){
     var totals = {}; depots.forEach(function(dp){ totals[dp] = (vals[dp]||[]).reduce(function(a,b){return a+b;},0); });
     leg.innerHTML = depots.map(function(dp,i){
-      return "<span style='display:flex;align-items:center;gap:6px;'><span style='width:11px;height:11px;border-radius:2px;background:" + palette[i%palette.length] + ";'></span>"
-           + dp + " <b style='color:#0f172a;font-variant-numeric:tabular-nums;'>" + totals[dp] + "</b> <span style='color:#94a3b8;'>" + waPct(totals[dp],grand) + "</span></span>";
+      var col = palette[i%palette.length];
+      return "<span style='display:inline-flex;align-items:center;gap:8px;background:" + col + ";color:#fff;border-radius:7px;padding:6px 12px;font-size:12.5px;font-weight:700;'>"
+           + "<span style='width:9px;height:9px;border-radius:50%;background:#fff;opacity:.85;'></span>"
+           + dp + " <b style='font-weight:800;font-variant-numeric:tabular-nums;'>" + totals[dp] + " " + label + "</b>"
+           + " <span style='background:rgba(255,255,255,.22);border-radius:4px;padding:1px 6px;'>" + waPct(totals[dp],grand) + "</span></span>";
     }).join("");
   }
 
@@ -9295,23 +9303,40 @@ function waRenderGruppe() {
       if(!ds.length) return;
       var tot = chart.data.labels.map(function(_,i){ return ds.reduce(function(a,d){ return a + (d.data[i]||0); }, 0); });
       c.save();
-      c.textAlign = "center"; c.textBaseline = "middle";
+      var rightY = {};  // i -> letzte y-Position der Aussen-Labels
       ds.forEach(function(d,di){
         var meta = chart.getDatasetMeta(di);
         meta.data.forEach(function(bar,i){
           var v = d.data[i]||0; if(!v || !tot[i]) return;
-          var hgt = Math.abs((bar.base!=null?bar.base:bar.y) - bar.y);
-          if(hgt >= 20) {
+          var base = (bar.base!=null ? bar.base : bar.y);
+          var hgt = Math.abs(base - bar.y);
+          var mid = (bar.y + base) / 2;
+          var raw = v/tot[i]*100;
+          var txt = (raw >= 10 ? Math.round(raw) : (Math.round(raw*10)/10).toString().replace(".",",")) + "%";
+          if(hgt >= 14) {
+            c.textAlign = "center"; c.textBaseline = "middle";
             c.font = "600 10px 'Segoe UI',Arial,sans-serif";
-            c.fillStyle = "rgba(255,255,255,.92)";
-            c.fillText(Math.round(v/tot[i]*100) + "%", bar.x, (bar.y + (bar.base!=null?bar.base:bar.y))/2);
+            c.fillStyle = "rgba(255,255,255,.95)";
+            c.fillText(txt, bar.x, mid);
+          } else {
+            var bw = bar.width || 30;
+            var x = bar.x + bw/2 + 5;
+            var y = mid;
+            if(rightY[i] != null && Math.abs(y - rightY[i]) < 11) y = rightY[i] - 11;
+            rightY[i] = y;
+            c.textAlign = "left"; c.textBaseline = "middle";
+            c.font = "600 9.5px 'Segoe UI',Arial,sans-serif";
+            c.fillStyle = d.backgroundColor || "#475569";
+            c.fillText(txt, x, y);
           }
         });
       });
+      var unit = waUnit(waMetricGruppe);
       var lastMeta = chart.getDatasetMeta(ds.length-1);
+      c.textAlign = "center"; c.textBaseline = "alphabetic";
       c.font = "700 12.5px 'Segoe UI',Arial,sans-serif";
-      c.fillStyle = "#0f172a"; c.textBaseline = "alphabetic";
-      lastMeta.data.forEach(function(bar,i){ if(tot[i]) c.fillText(tot[i], bar.x, bar.y - 7); });
+      c.fillStyle = "#0f172a";
+      lastMeta.data.forEach(function(bar,i){ if(tot[i]) c.fillText(tot[i] + " " + unit, bar.x, bar.y - 7); });
       c.restore();
     }
   };
@@ -9322,21 +9347,141 @@ function waRenderGruppe() {
     plugins: [waBarLabels],
     options: {
       responsive: true, maintainAspectRatio: false,
-      layout: { padding: { top: 18 } },
+      layout: { padding: { top: 22 } },
       plugins: {
         legend: { display: false },
         tooltip: { callbacks: {
           label: function(it){
             var t = it.chart.data.datasets.reduce(function(a,d){ return a + (d.data[it.dataIndex]||0); }, 0);
             var pct = t ? Math.round(it.parsed.y/t*100) : 0;
-            return it.dataset.label + ": " + it.parsed.y + " (" + pct + "%)";
+            return it.dataset.label + ": " + it.parsed.y + " " + waUnit(waMetricGruppe) + " (" + pct + "%)";
           },
-          footer: function(items){ var s=0; items.forEach(function(it){ s += it.parsed.y; }); return "Tagessumme: " + s; }
+          footer: function(items){ var s=0; items.forEach(function(it){ s += it.parsed.y; }); return "Tagessumme: " + s + " " + waUnit(waMetricGruppe); }
         } }
       },
       scales: {
         x: { stacked: true, grid: { display:false }, ticks: { font: { weight: "700" }, color: "#334155" } },
-        y: { stacked: true, beginAtZero: true, grid: { color: "#eef1f5" }, ticks: { precision: 0, color: "#64748b" } }
+        y: { stacked: true, beginAtZero: true, grid: { color: "#eef1f5" }, title: { display:true, text: waUnit(waMetricGruppe), color:"#64748b", font:{ size:11, weight:"700" } }, ticks: { precision: 0, color: "#64748b" } }
+      }
+    }
+  });
+}
+function waInitKurve() { waRenderKurve(); }
+function waSetMetricKurve(m) { waMetricKurve = m; waRenderKurve(); }
+function waSetKurveMode(m) { waKurveMode = m; waRenderKurve(); }
+
+function waRenderKurve() {
+  var body = document.getElementById("wa-kurve-body");
+  if(!body) return;
+  var data = waGetData();
+  if(!data) { body.innerHTML = waEmptyMsg(); return; }
+  var metric = waMetricKurve, label = waUnit(metric);
+  var instName = (INSTANCES[currentInst] ? INSTANCES[currentInst].name : "");
+  var days = data.days, depots = data.depots;
+  var vals = (metric==="touren") ? data.touren : data.kunden;
+  var cumul = (waKurveMode === "kumuliert");
+
+  var colSum = days.map(function(_,c){ return depots.reduce(function(a,dp){ return a + (vals[dp]?vals[dp][c]:0); }, 0); });
+  var grand = colSum.reduce(function(a,b){return a+b;},0);
+  var peakIdx = colSum.indexOf(Math.max.apply(null,colSum));
+  var loIdx   = colSum.indexOf(Math.min.apply(null,colSum));
+  var spann = colSum[peakIdx] - colSum[loIdx];
+
+  function cum(arr){ var s=0; return arr.map(function(v){ s+=v; return s; }); }
+  var depotSeries = depots.map(function(dp){ var a=(vals[dp]||[]).slice(); return cumul?cum(a):a; });
+  var totalSeries = cumul ? cum(colSum) : colSum.slice();
+
+  var h = "";
+  h += "<div style='display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-bottom:15px;'>";
+  h += "<h2 style='margin:0;font-size:18.5px;font-weight:800;color:#0f172a;letter-spacing:-.3px;'>&#128200; Wochenauslastung &middot; Kurven</h2>";
+  h += "<span style='font-size:11.5px;font-weight:700;color:#475569;background:#eef1f5;border:1px solid #d6dbe3;border-radius:5px;padding:3px 10px;'>" + instName + "</span>";
+  h += "<div style='margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;'>";
+  h += "<div style='display:flex;border:1px solid #475569;border-radius:6px;overflow:hidden;'>";
+  h += waToggleBtn("verlauf","Verlauf",waKurveMode,"waSetKurveMode","#475569");
+  h += waToggleBtn("kumuliert","Kumuliert",waKurveMode,"waSetKurveMode","#475569");
+  h += "</div>";
+  h += "<div style='display:flex;border:1px solid #1e293b;border-radius:6px;overflow:hidden;'>";
+  h += waToggleBtn("kunden","Kunden/Tag",metric,"waSetMetricKurve","#1e293b");
+  h += waToggleBtn("touren","Touren/Tag",metric,"waSetMetricKurve","#1e293b");
+  h += "</div></div></div>";
+
+  h += "<div style='display:flex;gap:11px;flex-wrap:wrap;margin-bottom:15px;'>";
+  h += waKpi("Gesamt " + label + "/Woche", waNum(grand) + " " + label, "#1e293b");
+  h += waKpi("St&auml;rkster Tag", days[peakIdx] + " &middot; " + colSum[peakIdx] + " " + label + " &middot; " + waPct(colSum[peakIdx],grand), "#1f3a5f");
+  h += waKpi("Schw&auml;chster Tag", days[loIdx] + " &middot; " + colSum[loIdx] + " " + label + " &middot; " + waPct(colSum[loIdx],grand), "#334155");
+  h += waKpi("Spannweite Mo&ndash;Sa", spann + " " + label, "#b02525");
+  h += "</div>";
+
+  h += "<div style='background:#fff;border:1px solid #dfe4ea;border-radius:8px;padding:16px;'>";
+  h += "<div style='font-size:13px;font-weight:800;color:#0f172a;margin-bottom:2px;'>" + label + (cumul ? " kumuliert &uuml;ber die Woche" : " pro Wochentag") + ", je Kundengruppe (Depot)</div>";
+  h += "<div style='font-size:11px;font-weight:600;color:#64748b;margin-bottom:12px;'>" + (cumul ? "Aufsummiert Mo&rarr;Sa" : "Tageswerte Mo&ndash;Sa") + " &middot; dicke schwarze Linie = Gesamt</div>";
+  h += "<div id='wa-kurve-legend' style='display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px;'></div>";
+  h += "<div style='height:400px;'><canvas id='wa-kurve-chart'></canvas></div>";
+  h += "</div>";
+  body.innerHTML = h;
+
+  var leg = document.getElementById("wa-kurve-legend");
+  if(leg){
+    var totals = {}; depots.forEach(function(dp){ totals[dp] = (vals[dp]||[]).reduce(function(a,b){return a+b;},0); });
+    var html = depots.map(function(dp,i){
+      var col = WA_PALETTE[i%WA_PALETTE.length];
+      return "<span style='display:inline-flex;align-items:center;gap:8px;background:" + col + ";color:#fff;border-radius:7px;padding:6px 12px;font-size:12.5px;font-weight:700;'>"
+           + "<span style='width:14px;height:3px;border-radius:2px;background:#fff;opacity:.9;'></span>"
+           + dp + " <b style='font-weight:800;font-variant-numeric:tabular-nums;'>" + totals[dp] + " " + label + "</b>"
+           + " <span style='background:rgba(255,255,255,.22);border-radius:4px;padding:1px 6px;'>" + waPct(totals[dp],grand) + "</span></span>";
+    }).join("");
+    html += "<span style='display:inline-flex;align-items:center;gap:8px;background:#0f172a;color:#fff;border-radius:7px;padding:6px 12px;font-size:12.5px;font-weight:700;'>"
+          + "<span style='width:14px;height:4px;border-radius:2px;background:#fff;'></span>"
+          + "Gesamt <b style='font-weight:800;font-variant-numeric:tabular-nums;'>" + grand + " " + label + "</b></span>";
+    leg.innerHTML = html;
+  }
+
+  if(typeof Chart === "undefined") return;
+  if(waKurveChart) { try { waKurveChart.destroy(); } catch(e){} waKurveChart = null; }
+  var ctx = document.getElementById("wa-kurve-chart");
+  if(!ctx) return;
+
+  var datasets = depots.map(function(dp,i){
+    var col = WA_PALETTE[i%WA_PALETTE.length];
+    return { label: dp, data: depotSeries[i], borderColor: col, backgroundColor: col, borderWidth: 2, pointRadius: 3, pointHoverRadius: 5, tension: 0.3, fill: false };
+  });
+  datasets.push({ label: "Gesamt", data: totalSeries, borderColor: "#0f172a", backgroundColor: "#0f172a", borderWidth: 3.5, pointRadius: 4, pointHoverRadius: 6, tension: 0.25, fill: false });
+
+  var waKurveLabels = {
+    id: "waKurveLabels",
+    afterDatasetsDraw: function(chart) {
+      var c = chart.ctx, ds = chart.data.datasets;
+      var unit = waUnit(waMetricKurve);
+      c.save();
+      c.textAlign = "center"; c.textBaseline = "bottom";
+      ds.forEach(function(d,di){
+        if(d.label !== "Gesamt") return;
+        var meta = chart.getDatasetMeta(di);
+        c.font = "700 11.5px 'Segoe UI',Arial,sans-serif";
+        c.fillStyle = "#0f172a";
+        meta.data.forEach(function(pt,i){ c.fillText(d.data[i] + " " + unit, pt.x, pt.y - 9); });
+      });
+      c.restore();
+    }
+  };
+
+  waKurveChart = new Chart(ctx, {
+    type: "line",
+    data: { labels: days, datasets: datasets },
+    plugins: [waKurveLabels],
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 24 } },
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: {
+          label: function(it){ return it.dataset.label + ": " + it.parsed.y + " " + waUnit(waMetricKurve); }
+        } }
+      },
+      scales: {
+        x: { grid: { display:false }, ticks: { font: { weight: "700" }, color: "#334155" } },
+        y: { beginAtZero: true, grid: { color: "#eef1f5" }, title: { display:true, text: waUnit(waMetricKurve), color:"#64748b", font:{ size:11, weight:"700" } }, ticks: { precision: 0, color: "#64748b" } }
       }
     }
   });
@@ -9957,6 +10102,10 @@ iframe.active{{display:block}}
     <div id="wa-gruppe-body"></div>
   </div>
 
+  <div id="panel-wa-kurve" style="display:none;flex:1;flex-direction:column;overflow-y:auto;padding:16px 18px 28px;background:linear-gradient(180deg,#eef1f5 0%,#e5e9ef 100%);font-family:'Segoe UI',Arial,sans-serif">
+    <div id="wa-kurve-body"></div>
+  </div>
+
   <div id="panel-gk" style="display:none;flex:1;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
     <style>
       #panel-gk{{--ink:#0f1f33;background:linear-gradient(180deg,#eef3f9 0%,#f5f8fc 100%);}}
@@ -10152,8 +10301,10 @@ async function loadInst(i) {{
   // Wochenauslastung neu berechnen lassen (Daten haengen an der Instanz)
   var _wh = document.getElementById("panel-wa-heat");   if(_wh) _wh.dataset.loaded = "";
   var _wg = document.getElementById("panel-wa-gruppe"); if(_wg) _wg.dataset.loaded = "";
+  var _wk = document.getElementById("panel-wa-kurve");  if(_wk) _wk.dataset.loaded = "";
   if(currentArea === "wa_heat"   && typeof waInitHeat   === "function") {{ waInitHeat();   if(_wh) _wh.dataset.loaded="1"; }}
   if(currentArea === "wa_gruppe" && typeof waInitGruppe === "function") {{ waInitGruppe(); if(_wg) _wg.dataset.loaded="1"; }}
+  if(currentArea === "wa_kurve"  && typeof waInitKurve  === "function") {{ waInitKurve();  if(_wk) _wk.dataset.loaded="1"; }}
 }}
 
 function buildDdMenu(area) {{
@@ -10333,8 +10484,10 @@ function showArea(s) {{
   if(waHeatPanel) waHeatPanel.style.display = (s==="wa_heat") ? "flex" : "none";
   var waGruppePanel = document.getElementById("panel-wa-gruppe");
   if(waGruppePanel) waGruppePanel.style.display = (s==="wa_gruppe") ? "flex" : "none";
+  var waKurvePanel = document.getElementById("panel-wa-kurve");
+  if(waKurvePanel) waKurvePanel.style.display = (s==="wa_kurve") ? "flex" : "none";
   var waBtn = document.getElementById("btn-wa");
-  if(waBtn) waBtn.className = "nav-dd-btn" + ((s==="wa_heat" || s==="wa_gruppe") ? " active" : "");
+  if(waBtn) waBtn.className = "nav-dd-btn" + ((s==="wa_heat" || s==="wa_gruppe" || s==="wa_kurve") ? " active" : "");
   if(typeof buildWaDdMenu === "function") buildWaDdMenu();
   if(s==="wa_heat") {{
     if(waHeatPanel && !waHeatPanel.dataset.loaded) {{ waInitHeat(); waHeatPanel.dataset.loaded="1"; }}
@@ -10343,6 +10496,10 @@ function showArea(s) {{
   if(s==="wa_gruppe") {{
     if(waGruppePanel && !waGruppePanel.dataset.loaded) {{ waInitGruppe(); waGruppePanel.dataset.loaded="1"; }}
     else {{ waRenderGruppe(); }}
+  }}
+  if(s==="wa_kurve") {{
+    if(waKurvePanel && !waKurvePanel.dataset.loaded) {{ waInitKurve(); waKurvePanel.dataset.loaded="1"; }}
+    else {{ waRenderKurve(); }}
   }}
 }}
 
