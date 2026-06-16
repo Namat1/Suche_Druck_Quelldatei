@@ -2338,6 +2338,91 @@ def generate_suche_html(excel_file, key_file, logo_file,
 
 
 # =============================================================================
+# WOCHENAUSLASTUNG: Aggregation aus der Quelldatei
+# =============================================================================
+# Liest die vier Depot-Blaetter und zaehlt pro Wochentag:
+#   - Kunden/Tag = gefuellte (gueltige) Tournummer-Zellen
+#   - Touren/Tag = distinkte Tournummern
+# Rueckgabe-Struktur (kompakt, wird per Instanz in INSTANCES eingebettet):
+#   {"days":[...], "depots":[...], "kunden":{depot:[6 Werte]}, "touren":{depot:[6 Werte]}}
+WOCHE_DEPOT_LABELS = [
+    ("DIREKT", "Direkt"),
+    ("MK", "Marktkauf"),
+    ("HUPA_NMS", "Neumünster"),
+    ("HUPA_MALCHOW", "Malchow"),
+]
+WOCHE_DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa"]
+# Reihenfolge passend zu WOCHE_DAYS; Schluessel = Spaltenname in LIEFERTAGE_MAPPING
+WOCHE_DAY_COLS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"]
+
+
+def compute_woche_data(excel_file) -> dict:
+    try:
+        excel_bytes = read_upload_bytes(excel_file)
+    except Exception:
+        return {}
+    if not excel_bytes:
+        return {}
+
+    try:
+        book = pd.ExcelFile(io.BytesIO(excel_bytes), engine=EXCEL_READ_ENGINE)
+        available = list(book.sheet_names)
+    except Exception:
+        return {}
+
+    out_depots = []
+    kunden = {}
+    touren = {}
+
+    for target, label in WOCHE_DEPOT_LABELS:
+        sheet = find_existing_sheet_name(available, *BLATT_ALIASE.get(target, [target]))
+        if not sheet:
+            continue
+        try:
+            df = pd.read_excel(book, sheet_name=sheet)
+        except (ValueError, KeyError):
+            continue
+        col_index = {str(c): c for c in df.columns}
+        # Tag -> tatsaechliche Spalte aufloesen (ueber LIEFERTAGE_MAPPING)
+        day_series = []
+        for spaltenname in WOCHE_DAY_COLS:
+            real_col = LIEFERTAGE_MAPPING.get(spaltenname)
+            day_series.append(col_index.get(real_col))
+
+        k_row = []
+        t_row = []
+        for col in day_series:
+            if col is None or col not in df.columns:
+                k_row.append(0)
+                t_row.append(0)
+                continue
+            vals = []
+            for v in df[col]:
+                if v is None or (isinstance(v, float) and v != v):
+                    continue
+                s = str(v).strip()
+                if not s or not s.replace(".", "", 1).isdigit():
+                    continue
+                vals.append(normalize_digits_py(s))
+            k_row.append(len(vals))
+            t_row.append(len(set(vals)))
+
+        out_depots.append(label)
+        kunden[label] = k_row
+        touren[label] = t_row
+
+    if not out_depots:
+        return {}
+
+    return {
+        "days": WOCHE_DAYS,
+        "depots": out_depots,
+        "kunden": kunden,
+        "touren": touren,
+    }
+
+
+# =============================================================================
 # HTML-ERZEUGUNG: DRUCK
 # =============================================================================
 
@@ -6880,11 +6965,17 @@ function verstossPdfOne(name) {
         if idx > 0 and versp_json in ("{}", "", None):
             versp_json = normal_versp_start_json
         versp_js = _safe_json_obj(versp_json)
+        woche_obj = inst.get("woche_data") or {}
+        try:
+            woche_js = json.dumps(woche_obj, ensure_ascii=False, separators=(",", ":"))
+        except Exception:
+            woche_js = "{}"
         inst_js_parts.append(
             f'{{name:"{name_escaped}",'
             f's:[{s_js}],'
             f'd:[{d_js}],'
-            f'versp:{versp_js}}}'
+            f'versp:{versp_js},'
+            f'woche:{woche_js}}}'
         )
     instances_js = ",\n".join(inst_js_parts)
 
@@ -9008,6 +9099,187 @@ function verspDownload() {
 }
 """
 
+    wa_js_code = r"""
+// ── Wochenauslastung ──────────────────────────────────────────────────────────
+var waMetricHeat   = "kunden";   // "kunden" | "touren"
+var waMetricGruppe = "kunden";
+var waGruppeChart  = null;
+
+function waGetData() {
+  var inst = (typeof INSTANCES !== "undefined" && INSTANCES[currentInst]) ? INSTANCES[currentInst] : null;
+  return (inst && inst.woche && inst.woche.depots) ? inst.woche : null;
+}
+
+function buildWaDdMenu() {
+  var menu = document.getElementById("ddmenu-wa");
+  if(!menu) return;
+  var items = [["wa_heat","&#128293; Heatmap"],["wa_gruppe","&#128202; Kundengruppe"]];
+  var html = "";
+  items.forEach(function(it){
+    var active = (currentArea === it[0]);
+    html += "<div class='dd-item" + (active ? " active" : "") + "'"
+          + " onclick=\"showArea('" + it[0] + "');document.querySelectorAll('.nav-dd').forEach(function(d){d.classList.remove('open');});\">"
+          + it[1] + "</div>";
+  });
+  menu.innerHTML = html;
+}
+
+function waHeatColor(t) {
+  var stops = ["#fdecec","#f9c9c9","#f29d9d","#e76a6a","#cf3a3a","#9e1c1c"];
+  if(t <= 0) return stops[0];
+  var i = Math.min(stops.length-1, Math.floor(t * stops.length));
+  return stops[i];
+}
+function waHeatTextColor(t) { return t > 0.5 ? "#fff" : "#7a1414"; }
+
+function waToggleBtn(val, text, current, fn, accent) {
+  accent = accent || "#cf3a3a";
+  var on = (val === current);
+  return "<button onclick=\"" + fn + "('" + val + "')\" style='padding:6px 14px;border:none;cursor:pointer;font-weight:800;font-size:12.5px;background:"
+       + (on?accent:"#fff") + ";color:" + (on?"#fff":accent) + ";'>" + text + "</button>";
+}
+function waKpi(title, value) {
+  return "<div style='flex:1 1 150px;min-width:140px;background:#fff;border:1.5px solid #f1c9c9;border-radius:9px;padding:11px 14px;'>"
+       + "<div style='font-size:11px;font-weight:700;color:#a14b4b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;'>" + title + "</div>"
+       + "<div style='font-size:22px;font-weight:900;color:#7a1414;'>" + value + "</div></div>";
+}
+function waEmptyMsg() {
+  return "<div style='color:#94a3b8;padding:50px;text-align:center;font-size:14px;line-height:1.6;'>Keine Wochenauslastungs-Daten f&uuml;r diese Woche.<br>Bitte die Wochen-Excel neu generieren (Quelldatei mit den Depot-Bl&auml;ttern DIREKT / MK / HUPA_NMS / HUPA_MALCHOW).</div>";
+}
+
+function waInitHeat() { waRenderHeat(); }
+function waSetMetricHeat(m) { waMetricHeat = m; waRenderHeat(); }
+
+function waRenderHeat() {
+  var body = document.getElementById("wa-heat-body");
+  if(!body) return;
+  var data = waGetData();
+  if(!data) { body.innerHTML = waEmptyMsg(); return; }
+  var metric = waMetricHeat;
+  var vals = (metric === "touren") ? data.touren : data.kunden;
+  var days = data.days, depots = data.depots;
+
+  var colSum = days.map(function(_,c){ return depots.reduce(function(a,dp){ return a + (vals[dp]?vals[dp][c]:0); }, 0); });
+  var rowSum = {}; depots.forEach(function(dp){ rowSum[dp] = (vals[dp]||[]).reduce(function(a,b){return a+b;},0); });
+  var grand = colSum.reduce(function(a,b){return a+b;},0);
+  var cellMax = 1; depots.forEach(function(dp){ (vals[dp]||[]).forEach(function(v){ if(v>cellMax) cellMax=v; }); });
+  var peakIdx = colSum.indexOf(Math.max.apply(null,colSum));
+  var loIdx   = colSum.indexOf(Math.min.apply(null,colSum));
+  var label = (metric==="touren") ? "Touren" : "Kunden";
+  var instName = (INSTANCES[currentInst] ? INSTANCES[currentInst].name : "");
+
+  var h = "";
+  h += "<div style='display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px;'>";
+  h += "<h2 style='margin:0;font-size:19px;font-weight:900;color:#7a1414;'>&#128293; Wochenauslastung &middot; Heatmap</h2>";
+  h += "<span style='font-size:12px;font-weight:700;color:#a14b4b;background:#fbe3e3;border:1px solid #f1bcbc;border-radius:999px;padding:3px 11px;'>" + instName + "</span>";
+  h += "<div style='margin-left:auto;display:flex;border:1.5px solid #cf3a3a;border-radius:6px;overflow:hidden;'>";
+  h += waToggleBtn("kunden","Kunden/Tag",metric,"waSetMetricHeat");
+  h += waToggleBtn("touren","Touren/Tag",metric,"waSetMetricHeat");
+  h += "</div></div>";
+
+  h += "<div style='display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;'>";
+  h += waKpi("Gesamt " + label + "/Woche", grand);
+  h += waKpi("St&auml;rkster Tag", days[peakIdx] + " (" + colSum[peakIdx] + ")");
+  h += waKpi("Schw&auml;chster Tag", days[loIdx] + " (" + colSum[loIdx] + ")");
+  h += waKpi("&Oslash; pro Tag", Math.round(grand/days.length));
+  h += "</div>";
+
+  h += "<div style='background:#fff;border:1.5px solid #f1c9c9;border-radius:10px;padding:14px;overflow-x:auto;'>";
+  h += "<table style='width:100%;border-collapse:separate;border-spacing:5px;'>";
+  h += "<thead><tr><th style='text-align:left;font-size:12px;color:#7a1414;padding:0 8px;'>Depot</th>";
+  days.forEach(function(d,c){
+    var hot = (c===peakIdx);
+    h += "<th style='font-size:12.5px;font-weight:800;color:" + (hot?"#cf3a3a":"#7a1414") + ";text-align:center;min-width:58px;'>" + d + "</th>";
+  });
+  h += "<th style='font-size:12.5px;font-weight:800;color:#7a1414;text-align:center;min-width:62px;'>&Sigma;</th></tr></thead><tbody>";
+  depots.forEach(function(dp){
+    h += "<tr><td style='font-size:13px;font-weight:800;color:#3a1010;padding:0 8px;white-space:nowrap;'>" + dp + "</td>";
+    (vals[dp]||[]).forEach(function(v){
+      var t = cellMax ? (v/cellMax) : 0;
+      h += "<td style='height:40px;border-radius:6px;text-align:center;font-size:13px;font-weight:700;background:" + waHeatColor(t) + ";color:" + waHeatTextColor(t) + ";'>" + (v||"&middot;") + "</td>";
+    });
+    h += "<td style='text-align:center;font-size:13px;font-weight:800;color:#7a1414;background:#fbe3e3;border-radius:6px;'>" + rowSum[dp] + "</td></tr>";
+  });
+  h += "<tr><td style='font-size:13px;font-weight:900;color:#7a1414;padding:6px 8px 0;'>&Sigma; Gesamt</td>";
+  colSum.forEach(function(v,c){
+    var hot = (c===peakIdx);
+    h += "<td style='text-align:center;font-size:13.5px;font-weight:900;color:" + (hot?"#cf3a3a":"#7a1414") + ";padding-top:6px;'>" + v + "</td>";
+  });
+  h += "<td style='text-align:center;font-size:13.5px;font-weight:900;color:#7a1414;padding-top:6px;'>" + grand + "</td></tr>";
+  h += "</tbody></table>";
+  h += "<div style='display:flex;align-items:center;gap:8px;margin-top:12px;font-size:11px;color:#a14b4b;flex-wrap:wrap;'>";
+  h += "<span>wenig</span><span style='flex:0 0 160px;height:9px;border-radius:5px;background:linear-gradient(to right,#fdecec,#f29d9d,#cf3a3a,#9e1c1c);'></span><span>viel</span>";
+  h += "<span style='margin-left:6px;'>&mdash; " + label + " pro Tag, je Zelle eingef&auml;rbt</span></div>";
+  h += "</div>";
+  body.innerHTML = h;
+}
+
+function waInitGruppe() { waRenderGruppe(); }
+function waSetMetricGruppe(m) { waMetricGruppe = m; waRenderGruppe(); }
+
+function waRenderGruppe() {
+  var body = document.getElementById("wa-gruppe-body");
+  if(!body) return;
+  var data = waGetData();
+  if(!data) { body.innerHTML = waEmptyMsg(); return; }
+  var metric = waMetricGruppe;
+  var label = (metric==="touren") ? "Touren" : "Kunden";
+  var instName = (INSTANCES[currentInst] ? INSTANCES[currentInst].name : "");
+
+  var h = "";
+  h += "<div style='display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px;'>";
+  h += "<h2 style='margin:0;font-size:19px;font-weight:900;color:#1b66b3;'>&#128202; Wochenauslastung &middot; Kundengruppe</h2>";
+  h += "<span style='font-size:12px;font-weight:700;color:#3a6ea5;background:#e8f1fb;border:1px solid #cfe0f1;border-radius:999px;padding:3px 11px;'>" + instName + "</span>";
+  h += "<div style='margin-left:auto;display:flex;border:1.5px solid #1b66b3;border-radius:6px;overflow:hidden;'>";
+  h += waToggleBtn("kunden","Kunden/Tag",metric,"waSetMetricGruppe","#1b66b3");
+  h += waToggleBtn("touren","Touren/Tag",metric,"waSetMetricGruppe","#1b66b3");
+  h += "</div></div>";
+
+  h += "<div style='background:#fff;border:1.5px solid #d4e0ee;border-radius:10px;padding:16px;'>";
+  h += "<div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>" + label + " pro Wochentag, gestapelt nach Depot</div>";
+  h += "<div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:10px;'>Jede S&auml;ule = ein Wochentag &middot; Segmente = Depots</div>";
+  h += "<div id='wa-gruppe-legend' style='display:flex;flex-wrap:wrap;gap:14px;margin-bottom:10px;font-size:12px;color:#475569;'></div>";
+  h += "<div style='height:380px;'><canvas id='wa-gruppe-chart'></canvas></div>";
+  h += "</div>";
+  body.innerHTML = h;
+
+  var days = data.days, depots = data.depots;
+  var vals = (metric==="touren") ? data.touren : data.kunden;
+  var palette = ["#cf3a3a","#1e6091","#3aa0d8","#e0a93b","#5b8c5a","#8a5fb0"];
+  var datasets = depots.map(function(dp,i){
+    return { label: dp, data: (vals[dp]||[]).slice(), backgroundColor: palette[i % palette.length], borderWidth:0, borderRadius:3 };
+  });
+
+  var leg = document.getElementById("wa-gruppe-legend");
+  if(leg){
+    var totals = {}; depots.forEach(function(dp){ totals[dp] = (vals[dp]||[]).reduce(function(a,b){return a+b;},0); });
+    leg.innerHTML = depots.map(function(dp,i){
+      return "<span style='display:flex;align-items:center;gap:5px;'><span style='width:11px;height:11px;border-radius:2px;background:" + palette[i%palette.length] + ";'></span>" + dp + " <b style='color:#0f172a;'>" + totals[dp] + "</b></span>";
+    }).join("");
+  }
+
+  if(typeof Chart === "undefined") return;
+  if(waGruppeChart) { try { waGruppeChart.destroy(); } catch(e){} waGruppeChart = null; }
+  var ctx = document.getElementById("wa-gruppe-chart");
+  if(!ctx) return;
+  waGruppeChart = new Chart(ctx, {
+    type: "bar",
+    data: { labels: days, datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { footer: function(items){ var sum=0; items.forEach(function(it){ sum += it.parsed.y; }); return "Summe: " + sum; } } }
+      },
+      scales: {
+        x: { stacked: true, grid: { display:false } },
+        y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } }
+      }
+    }
+  });
+}
+"""
+
     return f"""<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -9151,6 +9423,12 @@ iframe.active{{display:block}}
       &#128666; Spediteure <span class="dd-arrow">&#9660;</span>
     </button>
     <div class="dd-menu" id="ddmenu-sped"></div>
+  </div>
+  <div class="nav-dd" id="dd-wa">
+    <button class="nav-dd-btn" id="btn-wa" onclick="ddToggle('wa',event)">
+      &#128202; Wochenauslastung <span class="dd-arrow">&#9660;</span>
+    </button>
+    <div class="dd-menu" id="ddmenu-wa"></div>
   </div>
   <div class="nav-dd" id="dd-infos">
     <button class="nav-dd-btn" id="btn-infos" onclick="ddToggle('infos',event)">
@@ -9608,6 +9886,14 @@ iframe.active{{display:block}}
   </div>
 
   <!-- ── Großkunden Panel ───────────────────────────────────────────────────── -->
+  <div id="panel-wa-heat" style="display:none;flex:1;flex-direction:column;overflow-y:auto;padding:16px 18px 28px;background:linear-gradient(180deg,#fdf3f3 0%,#f8e8e8 100%);font-family:'Segoe UI',Arial,sans-serif">
+    <div id="wa-heat-body"></div>
+  </div>
+
+  <div id="panel-wa-gruppe" style="display:none;flex:1;flex-direction:column;overflow-y:auto;padding:16px 18px 28px;background:linear-gradient(180deg,#f3f7fb 0%,#e8f0f7 100%);font-family:'Segoe UI',Arial,sans-serif">
+    <div id="wa-gruppe-body"></div>
+  </div>
+
   <div id="panel-gk" style="display:none;flex:1;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;">
     <style>
       #panel-gk{{--ink:#0f1f33;background:linear-gradient(180deg,#eef3f9 0%,#f5f8fc 100%);}}
@@ -9800,6 +10086,11 @@ async function loadInst(i) {{
     if(area === "vz") {{ if(typeof buildVzDdMenu === "function") buildVzDdMenu(); }}
     else buildDdMenu(area);
   }});
+  // Wochenauslastung neu berechnen lassen (Daten haengen an der Instanz)
+  var _wh = document.getElementById("panel-wa-heat");   if(_wh) _wh.dataset.loaded = "";
+  var _wg = document.getElementById("panel-wa-gruppe"); if(_wg) _wg.dataset.loaded = "";
+  if(currentArea === "wa_heat"   && typeof waInitHeat   === "function") {{ waInitHeat();   if(_wh) _wh.dataset.loaded="1"; }}
+  if(currentArea === "wa_gruppe" && typeof waInitGruppe === "function") {{ waInitGruppe(); if(_wg) _wg.dataset.loaded="1"; }}
 }}
 
 function buildDdMenu(area) {{
@@ -9829,6 +10120,7 @@ function ddToggle(area, e) {{
     else if(area === "infos") buildInfosDdMenu();
     else if(area === "vz") buildVzDdMenu();
     else if(area === "fa") buildFaDdMenu();
+    else if(area === "wa") buildWaDdMenu();
     else buildDdMenu(area);
     dd.classList.add("open");
     // Position unter dem Button berechnen (fixed, ignoriert iframe)
@@ -9972,6 +10264,22 @@ function showArea(s) {{
   if(s==="sped_graph") {{
     if(spedGraphPanel && !spedGraphPanel.dataset.loaded) {{ spedInitGraph(); spedGraphPanel.dataset.loaded="1"; }}
     else {{ spedRenderGraph(); }}
+  }}
+  // ── Wochenauslastung ──
+  var waHeatPanel = document.getElementById("panel-wa-heat");
+  if(waHeatPanel) waHeatPanel.style.display = (s==="wa_heat") ? "flex" : "none";
+  var waGruppePanel = document.getElementById("panel-wa-gruppe");
+  if(waGruppePanel) waGruppePanel.style.display = (s==="wa_gruppe") ? "flex" : "none";
+  var waBtn = document.getElementById("btn-wa");
+  if(waBtn) waBtn.className = "nav-dd-btn" + ((s==="wa_heat" || s==="wa_gruppe") ? " active" : "");
+  if(typeof buildWaDdMenu === "function") buildWaDdMenu();
+  if(s==="wa_heat") {{
+    if(waHeatPanel && !waHeatPanel.dataset.loaded) {{ waInitHeat(); waHeatPanel.dataset.loaded="1"; }}
+    else {{ waRenderHeat(); }}
+  }}
+  if(s==="wa_gruppe") {{
+    if(waGruppePanel && !waGruppePanel.dataset.loaded) {{ waInitGruppe(); waGruppePanel.dataset.loaded="1"; }}
+    else {{ waRenderGruppe(); }}
   }}
 }}
 
@@ -11147,6 +11455,8 @@ function samToggle(el) {{
 }}
 
 {fa_js_code}
+
+{wa_js_code}
 
 {bus_js_code}
 
@@ -14460,7 +14770,7 @@ def parse_grosskunden_excel(uploaded_file) -> str:
 # =============================================================================
 
 def _empty_inst(name="Normalwochen"):
-    return {"name": name, "suche_html": None, "druck_html": None, "source_sig": None, "versp_start_json": "{}", "versp_start_sig": None}
+    return {"name": name, "suche_html": None, "druck_html": None, "source_sig": None, "versp_start_json": "{}", "versp_start_sig": None, "woche_data": {}}
 
 # Session-State robust initialisieren.
 # Wichtig: nicht per Attributzugriff lesen, bevor der Key sicher existiert.
@@ -14635,6 +14945,10 @@ with tab_wochen:
                             st.session_state["instances"][i]["druck_html"] = generate_druck_html(
                                 excel, _logo, _fcsb, lieferhinweis_csv=_lh_csv
                             )
+                            try:
+                                st.session_state["instances"][i]["woche_data"] = compute_woche_data(excel)
+                            except Exception:
+                                st.session_state["instances"][i]["woche_data"] = {}
                             st.session_state["instances"][i]["source_sig"] = current_source_sig
                         kb_s = len(st.session_state["instances"][i]["suche_html"]) // 1024
                         kb_d = len(st.session_state["instances"][i]["druck_html"]) // 1024
