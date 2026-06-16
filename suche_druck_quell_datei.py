@@ -5065,6 +5065,25 @@ function fwExportLkwPdf(lkwName) {
   var _origZeroCount = window.fwZeroDriverCount;
   var _origGetOverviewRows = window.fwGetOverviewRows;
 
+  // ── Jahr-Gliederung ──────────────────────────────────────────────────────
+  var _fwYearCounts = {};
+  function fwYearOf(r) {
+    if(!r) return "";
+    var iso = String(r.datetime_iso || "");
+    var m = iso.match(/^(\d{4})/);
+    if(m) return m[1];
+    var d = String(r.datum || "");
+    var m2 = d.match(/(\d{4})/);
+    return m2 ? m2[1] : "";
+  }
+  function _fwSelectedYear() {
+    var el = document.getElementById("fw-overview-year");
+    return (el && el.value) ? el.value : "all";
+  }
+  function _fwGroupByYear() {
+    return _fwSelectedYear() === "all" && Object.keys(_fwYearCounts).length > 1;
+  }
+
   // Gecacht: fwAllKnownDrivers (basiert nur auf TIMEREC_DATA)
   window.fwAllKnownDrivers = function() {
     _fwEnsure();
@@ -5120,7 +5139,7 @@ function fwExportLkwPdf(lkwName) {
 
   // Gecacht: fwGetOverviewRows für driver==="all" (häufigster Fall)
   // Sortierung passiert hier — nicht jedes Mal neu sortieren.
-  window.fwGetOverviewRows = function() {
+  function _fwBaseOverviewRows() {
     _fwEnsure();
     var driverEl = document.getElementById("fw-overview-driver");
     var driver = driverEl ? driverEl.value : "all";
@@ -5139,11 +5158,33 @@ function fwExportLkwPdf(lkwName) {
     // Mit Driver-Filter: das Original verwenden (das nutzt schon unsere
     // gecachten Resolve-/KeyForWash-Funktionen)
     return _origGetOverviewRows.apply(this, arguments);
+  }
+  window.fwGetOverviewRows = function() {
+    var rows = _fwBaseOverviewRows();
+    var yr = _fwSelectedYear();
+    if(yr && yr !== "all") {
+      rows = rows.filter(function(r){ return fwYearOf(r) === yr; });
+    }
+    return rows;
   };
 
   // Public-API zum manuellen Cache-Reset (z.B. nach Daten-Update durch postMessage)
   window.fwInvalidateCache = function() {
     _cache.sig = null;
+  };
+
+  // Override: zusätzlich das Jahr-Dropdown befüllen
+  var _origBuildFilters = window.fwBuildOverviewFilters;
+  window.fwBuildOverviewFilters = function() {
+    if(_origBuildFilters) _origBuildFilters.apply(this, arguments);
+    var yearSel = document.getElementById("fw-overview-year");
+    if(!yearSel) return;
+    var cur = yearSel.value || "all";
+    var ys = {};
+    (Array.isArray(FAHRZEUGWAESCHE_DATA) ? FAHRZEUGWAESCHE_DATA : []).forEach(function(r){ var y = fwYearOf(r); if(y) ys[y] = 1; });
+    var years = Object.keys(ys).sort(function(a,b){ return b.localeCompare(a); });
+    yearSel.innerHTML = "<option value='all'>Alle Jahre</option>" + years.map(function(y){ return "<option value='" + y + "'>" + y + "</option>"; }).join("");
+    yearSel.value = years.indexOf(cur) !== -1 ? cur : "all";
   };
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -5171,9 +5212,23 @@ function fwExportLkwPdf(lkwName) {
 
   function _fwBuildRowsChunk(rows, fromIdx, toIdx) {
     // Array.join ist schneller als += Konkatenation bei vielen Zeilen
+    var groupOn = _fwGroupByYear();
     var parts = [];
     for(var i = fromIdx; i < toIdx; i++) {
       var r = rows[i];
+      if(groupOn) {
+        var y = fwYearOf(r) || "ohne Datum";
+        var py = i > 0 ? (fwYearOf(rows[i-1]) || "ohne Datum") : null;
+        if(i === 0 || y !== py) {
+          parts.push(
+            "<tr class='fw-yearhead'><td colspan='7' style='padding:8px 12px;background:#0f2740;color:#fff;font-weight:900;font-size:12px;letter-spacing:.4px;position:sticky;top:38px;z-index:1;'>",
+            fwOverviewEsc(y),
+            " <span style='font-weight:600;color:#9db8d4;'>&middot; ",
+            String(_fwYearCounts[y] || 0),
+            " Eintr&auml;ge</span></td></tr>"
+          );
+        }
+      }
       var bg = i % 2 === 0 ? "#ffffff" : "#f8fafc";
       parts.push(
         "<tr class='fw-row' style='background:" + bg + ";border-bottom:1px solid #eef2f7;'>",
@@ -5234,9 +5289,10 @@ function fwExportLkwPdf(lkwName) {
     var driverCount = allDrivers.length;
     var zeroDriverCount = window.fwZeroDriverCount();
 
-    // LKW-/Waschungen-Count: einmal in einem Pass
+    // LKW-/Waschungen-Count + Jahr-Zählung: einmal in einem Pass
     var lkwSet = {};
     var washSet = {};
+    _fwYearCounts = {};
     for(var i = 0; i < rows.length; i++) {
       var r = rows[i];
       var fz = ((r.fahrzeug || r.fahrzeug_ia || "") + "").trim();
@@ -5244,6 +5300,8 @@ function fwExportLkwPdf(lkwName) {
       var dt = (r.datum || "").trim();
       var key = (dt && fz) ? (dt + "||" + fz) : ("__row_" + i);
       washSet[key] = 1;
+      var _y = fwYearOf(r) || "ohne Datum";
+      _fwYearCounts[_y] = (_fwYearCounts[_y] || 0) + 1;
     }
     var lkwCount = Object.keys(lkwSet).length;
     var waschungenCount = Object.keys(washSet).length;
@@ -5251,7 +5309,9 @@ function fwExportLkwPdf(lkwName) {
     if(stats) {
       var _pc = "display:inline-flex;align-items:baseline;gap:5px;padding:4px 11px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.2";
       var _nc = "font-size:13px;font-weight:900;letter-spacing:-.3px";
-      stats.innerHTML = "<span style=\"" + _pc + ";background:#ecf7f1;color:#165532;border:1px solid #c7e5d4\"><span style=\"" + _nc + "\">" + waschungenCount + "</span> Waschungen</span>" + "<span style=\"" + _pc + ";background:#e8f2fb;color:#1e6091;border:1px solid #bdd0e7\"><span style=\"" + _nc + "\">" + driverCount + "</span> Fahrer</span>" + "<span style=\"" + _pc + ";background:#fee2e2;color:#991b1b;border:1px solid #fecaca\"><span style=\"" + _nc + "\">" + zeroDriverCount + "</span> ohne Waschung</span>" + "<span style=\"" + _pc + ";background:#fff7e6;color:#9a5b00;border:1px solid #f6d9b3\"><span style=\"" + _nc + "\">" + lkwCount + "</span> LKW</span>";
+      var _ysel = _fwSelectedYear();
+      var _yb = (_ysel && _ysel !== "all") ? ("<span style=\"" + _pc + ";background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe\"><span style=\"" + _nc + "\">" + _ysel + "</span> Jahr</span>") : "";
+      stats.innerHTML = _yb + "<span style=\"" + _pc + ";background:#ecf7f1;color:#165532;border:1px solid #c7e5d4\"><span style=\"" + _nc + "\">" + waschungenCount + "</span> Waschungen</span>" + "<span style=\"" + _pc + ";background:#e8f2fb;color:#1e6091;border:1px solid #bdd0e7\"><span style=\"" + _nc + "\">" + driverCount + "</span> Fahrer</span>" + "<span style=\"" + _pc + ";background:#fee2e2;color:#991b1b;border:1px solid #fecaca\"><span style=\"" + _nc + "\">" + zeroDriverCount + "</span> ohne Waschung</span>" + "<span style=\"" + _pc + ";background:#fff7e6;color:#9a5b00;border:1px solid #f6d9b3\"><span style=\"" + _nc + "\">" + lkwCount + "</span> LKW</span>";
     }
 
     if(!rows.length) {
@@ -9735,7 +9795,10 @@ iframe.active{{display:block}}
           <div id="fw-overview-stats" style="display:flex;gap:6px;flex-wrap:wrap"></div>
         </div>
 
-        <div style="padding:14px 20px;border-bottom:1px solid #eef2f7;background:#fbfcfd">
+        <div style="padding:14px 20px;border-bottom:1px solid #eef2f7;background:#fbfcfd;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <select id="fw-overview-year" onchange="fwRenderOverview()"
+            style="min-width:150px;padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:12px;font-weight:600;font-family:inherit;background:#fff;color:#0f172a;outline:none;cursor:pointer;box-shadow:inset 0 1px 2px rgba(15,23,42,.03);transition:border-color .15s"
+            onfocus="this.style.borderColor='#1e6091'" onblur="this.style.borderColor='#b9cce3'"></select>
           <select id="fw-overview-driver" onchange="fwRenderOverview()"
             style="min-width:260px;padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:12px;font-weight:600;font-family:inherit;background:#fff;color:#0f172a;outline:none;cursor:pointer;box-shadow:inset 0 1px 2px rgba(15,23,42,.03);transition:border-color .15s"
             onfocus="this.style.borderColor='#1e6091'" onblur="this.style.borderColor='#b9cce3'"></select>
