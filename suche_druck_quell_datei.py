@@ -2354,6 +2354,9 @@ WOCHE_DEPOT_LABELS = [
 WOCHE_DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa"]
 # Reihenfolge passend zu WOCHE_DAYS; Schluessel = Spaltenname in LIEFERTAGE_MAPPING
 WOCHE_DAY_COLS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"]
+# Kunden, die als eigene Gruppe (statt unter ihrem Depot) gefuehrt werden.
+# (Anzeige-Label, Suchbegriff im Namen [klein]). Reihenfolge = Anzeige-Reihenfolge am Ende.
+WOCHE_SONDERKUNDEN = [("Picnic", "picnic")]
 
 
 def compute_woche_data(excel_file) -> dict:
@@ -2370,9 +2373,12 @@ def compute_woche_data(excel_file) -> dict:
     except Exception:
         return {}
 
-    out_depots = []
-    kunden = {}
-    touren = {}
+    depot_labels = [label for _, label in WOCHE_DEPOT_LABELS]
+    sonder_labels = [lab for lab, _ in WOCHE_SONDERKUNDEN]
+    # Akkumulatoren fuer alle moeglichen Gruppen
+    kunden = {g: [0] * len(WOCHE_DAYS) for g in depot_labels + sonder_labels}
+    touren_sets = {g: [set() for _ in WOCHE_DAYS] for g in depot_labels + sonder_labels}
+    seen_depot = set()
 
     for target, label in WOCHE_DEPOT_LABELS:
         sheet = find_existing_sheet_name(available, *BLATT_ALIASE.get(target, [target]))
@@ -2382,37 +2388,46 @@ def compute_woche_data(excel_file) -> dict:
             df = pd.read_excel(book, sheet_name=sheet)
         except (ValueError, KeyError):
             continue
-        col_index = {str(c): c for c in df.columns}
-        # Tag -> tatsaechliche Spalte aufloesen (ueber LIEFERTAGE_MAPPING)
-        day_series = []
-        for spaltenname in WOCHE_DAY_COLS:
-            real_col = LIEFERTAGE_MAPPING.get(spaltenname)
-            day_series.append(col_index.get(real_col))
+        seen_depot.add(label)
 
-        k_row = []
-        t_row = []
-        for col in day_series:
-            if col is None or col not in df.columns:
-                k_row.append(0)
-                t_row.append(0)
-                continue
-            vals = []
-            for v in df[col]:
+        cols_list = list(df.columns)
+        pos = {str(c): idx for idx, c in enumerate(cols_list)}
+        name_pos = pos.get("Name")
+        day_pos = [pos.get(LIEFERTAGE_MAPPING.get(sn)) for sn in WOCHE_DAY_COLS]
+        n_cols = len(cols_list)
+
+        for row in df.itertuples(index=False, name=None):
+            # Zielgruppe bestimmen: Sonderkunde (z. B. Picnic) oder Depot
+            grp = label
+            if name_pos is not None and name_pos < n_cols:
+                nm = str(row[name_pos]).strip().lower()
+                for lab, needle in WOCHE_SONDERKUNDEN:
+                    if needle in nm:
+                        grp = lab
+                        break
+            for c, dp in enumerate(day_pos):
+                if dp is None or dp >= n_cols:
+                    continue
+                v = row[dp]
                 if v is None or (isinstance(v, float) and v != v):
                     continue
                 s = str(v).strip()
                 if not s or not s.replace(".", "", 1).isdigit():
                     continue
-                vals.append(normalize_digits_py(s))
-            k_row.append(len(vals))
-            t_row.append(len(set(vals)))
+                kunden[grp][c] += 1
+                touren_sets[grp][c].add(normalize_digits_py(s))
 
-        out_depots.append(label)
-        kunden[label] = k_row
-        touren[label] = t_row
+    # Anzeige-Reihenfolge: vorhandene Depots, dann Sonderkunden mit Daten
+    out_depots = [d for d in depot_labels if d in seen_depot]
+    for lab in sonder_labels:
+        if any(kunden[lab]):
+            out_depots.append(lab)
 
     if not out_depots:
         return {}
+
+    touren = {g: [len(s) for s in touren_sets[g]] for g in out_depots}
+    kunden = {g: kunden[g] for g in out_depots}
 
     return {
         "days": WOCHE_DAYS,
