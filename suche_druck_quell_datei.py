@@ -7217,11 +7217,10 @@ function verstossRender() {
   }
 
   function verstossMiniCard(label, value, sub, accent, bg, icon) {
-    return "<div style='background:" + bg + ";border:1px solid " + accent + "28;border-radius:12px;padding:16px 18px;min-width:0;position:relative;overflow:hidden;'>"
-      + "<div style='position:absolute;top:12px;right:14px;font-size:22px;line-height:1;opacity:.55;'>" + icon + "</div>"
-      + "<div style='font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;'>" + verstossEsc(label) + "</div>"
-      + "<div style='font-size:26px;font-weight:950;color:" + accent + ";letter-spacing:-.6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.15;'>" + value + "</div>"
-      + "<div style='font-size:11.5px;font-weight:700;color:#64748b;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + verstossEsc(sub || "") + "</div>"
+    return "<div style='background:#fff;border:1px solid #e2e8f0;border-top:3px solid " + accent + ";border-radius:8px;padding:15px 18px;min-width:0;'>"
+      + "<div style='font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.6px;margin-bottom:9px;'>" + verstossEsc(label) + "</div>"
+      + "<div style='font-size:23px;font-weight:800;color:#0f172a;letter-spacing:-.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.1;'>" + value + "</div>"
+      + "<div style='font-size:11.5px;font-weight:600;color:#94a3b8;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>" + verstossEsc(sub || "") + "</div>"
       + "</div>";
   }
 
@@ -7237,10 +7236,7 @@ function verstossRender() {
   function vsPenaltyPill(amount, color) {
     amount = Number(amount) || 0;
     if (!amount) return "<span style='color:#cbd5e1;font-size:12px;'>—</span>";
-    var intensity = Math.min(1, amount / 500);
-    var bg = intensity > 0.5 ? color + "18" : color + "0c";
-    var fw = intensity > 0.5 ? "950" : "800";
-    return "<span style='display:inline-flex;justify-content:flex-end;min-width:76px;background:" + bg + ";color:" + color + ";border-radius:6px;padding:4px 10px;font-weight:" + fw + ";font-variant-numeric:tabular-nums;font-size:12px;'>" + verstossFmtEuro(amount) + "</span>";
+    return "<span style='color:" + color + ";font-weight:800;font-variant-numeric:tabular-nums;font-size:12.5px;'>" + verstossFmtEuro(amount) + "</span>";
   }
 
   function vsMonthLabel(v) {
@@ -7255,7 +7251,7 @@ function verstossRender() {
   }
 
   var html = "";
-  html += "<div style='display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:14px;margin:0 18px 16px 0;'>";
+  html += "<div style='display:grid;grid-template-columns:repeat(4,minmax(180px,1fr));gap:14px;margin:0 0 16px 0;'>";
   html += verstossMiniCard("Verstöße gesamt", String(totV), drivers.length + " Fahrer betroffen", "#dc2626", "#fef2f2", "&#9888;&#65039;");
   html += verstossMiniCard("Bußgeld Fahrer", verstossFmtEuro(totDP), "Summe aller Fahrer", "#dc2626", "#fff7ed", "&#128179;");
   html += verstossMiniCard("Bußgeld Firma", verstossFmtEuro(totCP), "Summe Unternehmen", "#b45309", "#fffbeb", "&#127970;");
@@ -7263,10 +7259,8 @@ function verstossRender() {
   html += "</div>";
 
   var maxCount = drivers.reduce(function(mx, d) { return Math.max(mx, d.count || 0); }, 1);
-  var podiumColors = ["#d97706", "#6b7280", "#b45309"];  // Gold, Silber, Bronze
-  var podiumBg     = ["#fffbeb", "#f9fafb", "#fff7ed"];
 
-  html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-right:18px;'>";
+  html += "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;'>";
   html += "<table style='width:100%;border-collapse:separate;border-spacing:0;font-size:13px;'>";
   html += "<thead><tr style='position:sticky;top:0;z-index:3;'>";
   html += "<th style='padding:10px 6px;width:44px;background:#f8fafc;border-bottom:2px solid #e2e8f0;text-align:center;font-size:10px;color:#94a3b8;font-weight:700;'>#</th>";
@@ -7284,53 +7278,25 @@ function verstossRender() {
     var lastSort  = last ? last.date_sort : "";
     var isRecent = !!(_latestViolationDay && lastSort && lastSort.substring(0, 10) === _latestViolationDay);
 
-    // Severity: 0-1 basierend auf count vs max
-    var severity = Math.min(1, (d.count || 0) / maxCount);
-    var borderColor = isOpen ? "#1e3a5f" : (isRecent ? "#dc2626" : (severity > 0.6 ? "#dc2626" : severity > 0.3 ? "#f59e0b" : "#22c55e"));
-
-    // Top-3 Podium
-    var isPodium = (_vsSortKey === "count" && _vsSortDir === "desc" && i < 3);
-    var rowBg = isOpen ? "#eef6ff" : (isPodium ? podiumBg[i] : (isRecent ? "#fef2f2" : (i % 2 === 0 ? "#ffffff" : "#f9fafb")));
-
-    // Count bar width
-    var barPct = Math.max(8, Math.round(severity * 100));
-    var countSeverity = d.count >= 15 ? 3 : d.count >= 8 ? 2 : d.count >= 3 ? 1 : 0;
-    var countBarColor = ["#bae6fd", "#fde68a", "#fecaca", "#fca5a5"][countSeverity];
-    var countColor = ["#075985", "#92400e", "#991b1b", "#7f1d1d"][countSeverity];
-
-    // Rang-Display
-    var rankDisplay = "";
-    if (isPodium) {
-      var medal = ["&#129351;", "&#129352;", "&#129353;"][i];
-      rankDisplay = "<span style='font-size:16px;line-height:1;'>" + medal + "</span>";
-    } else {
-      rankDisplay = "<span style='font-size:12px;font-weight:800;color:#94a3b8;'>" + (i + 1) + "</span>";
-    }
+    var rowBg = isOpen ? "#eef4fb" : (i % 2 === 0 ? "#ffffff" : "#fafbfc");
+    var leftBorder = isOpen ? "#1e3a5f" : "transparent";
 
     html += "<tr onclick='verstossToggleDriver(" + JSON.stringify(d.name) + ")' "
-          + "style='background:" + rowBg + ";cursor:pointer;transition:background .1s;border-left:4px solid " + borderColor + ";' "
-          + "onmouseover=\"this.style.background='#f0f4ff'\" onmouseout=\"this.style.background='" + rowBg + "'\">";
-    html += "<td style='padding:10px 4px;text-align:center;border-bottom:1px solid #eef2f7;vertical-align:middle;'>"
-          + "<div style='display:flex;flex-direction:column;align-items:center;gap:2px;'>"
-          + rankDisplay
-          + "<span style='color:" + (isOpen ? "#1e3a5f" : "#cbd5e1") + ";font-size:8px;'>" + (isOpen ? "&#9660;" : "&#9654;") + "</span>"
-          + "</div></td>";
-    html += "<td style='padding:12px 12px;border-bottom:1px solid #eef2f7;'>"
-          + "<span style='font-weight:900;color:#0f172a;font-size:13.5px;'>" + verstossEsc(d.name) + "</span>"
-          + (isPodium ? " <span style='font-size:10px;font-weight:800;color:" + podiumColors[i] + ";'>Top " + (i+1) + "</span>" : "")
+          + "style='background:" + rowBg + ";cursor:pointer;border-left:3px solid " + leftBorder + ";' "
+          + "onmouseover=\"this.style.background='#f1f5fb'\" onmouseout=\"this.style.background='" + rowBg + "'\">";
+    html += "<td style='padding:11px 8px;text-align:center;border-bottom:1px solid #eef2f7;vertical-align:middle;white-space:nowrap;'>"
+          + "<span style='font-size:12px;font-weight:700;color:#94a3b8;font-variant-numeric:tabular-nums;'>" + (i + 1) + "</span>"
+          + " <span style='color:" + (isOpen ? "#1e3a5f" : "#cbd5e1") + ";font-size:9px;'>" + (isOpen ? "&#9660;" : "&#9654;") + "</span>"
           + "</td>";
-    html += "<td style='padding:12px 12px;text-align:right;border-bottom:1px solid #eef2f7;'>"
-          + "<div style='display:flex;align-items:center;justify-content:flex-end;gap:8px;'>"
-          + "<div style='width:80px;height:8px;background:#f1f5f9;border-radius:4px;overflow:hidden;flex:0 0 80px;'>"
-          + "<div style='height:100%;width:" + barPct + "%;background:" + countBarColor + ";border-radius:4px;transition:width .3s;'></div></div>"
-          + "<span style='display:inline-flex;align-items:center;justify-content:center;min-width:40px;background:" + countBarColor + ";color:" + countColor + ";border-radius:6px;padding:4px 10px;font-size:13px;font-weight:950;font-variant-numeric:tabular-nums;'>" + d.count + "</span>"
-          + "</div></td>";
-    html += "<td style='padding:12px 12px;border-bottom:1px solid #eef2f7;color:" + (isRecent ? "#991b1b" : "#334155") + ";font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums;font-size:13px;'>"
+    html += "<td style='padding:11px 14px;border-bottom:1px solid #eef2f7;font-weight:700;color:#0f172a;font-size:13.5px;'>" + verstossEsc(d.name) + "</td>";
+    html += "<td style='padding:11px 14px;text-align:right;border-bottom:1px solid #eef2f7;'>"
+          + "<span style='font-size:14px;font-weight:800;color:#0f172a;font-variant-numeric:tabular-nums;'>" + d.count + "</span></td>";
+    html += "<td style='padding:11px 14px;border-bottom:1px solid #eef2f7;color:#334155;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums;font-size:13px;'>"
           + verstossEsc(lastStart || "—")
-          + (isRecent ? " <span style='display:inline-flex;align-items:center;background:#dc2626;color:#fff;border-radius:4px;padding:2px 7px;font-size:9.5px;font-weight:900;margin-left:6px;letter-spacing:.3px;'>NEU</span>" : "")
+          + (isRecent ? " <span style='display:inline-flex;align-items:center;border:1px solid #fca5a5;color:#b91c1c;border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:800;margin-left:8px;letter-spacing:.3px;'>NEU</span>" : "")
           + "</td>";
-    html += "<td style='padding:12px 12px;text-align:right;border-bottom:1px solid #eef2f7;white-space:nowrap;'>" + vsPenaltyPill(d.sum_driver_penalty, "#dc2626") + "</td>";
-    html += "<td style='padding:12px 14px 12px 12px;text-align:right;border-bottom:1px solid #eef2f7;white-space:nowrap;'>" + vsPenaltyPill(d.sum_company_penalty, "#b45309") + "</td>";
+    html += "<td style='padding:11px 14px;text-align:right;border-bottom:1px solid #eef2f7;white-space:nowrap;'>" + vsPenaltyPill(d.sum_driver_penalty, "#b91c1c") + "</td>";
+    html += "<td style='padding:11px 16px 11px 14px;text-align:right;border-bottom:1px solid #eef2f7;white-space:nowrap;'>" + vsPenaltyPill(d.sum_company_penalty, "#b45309") + "</td>";
     html += "</tr>";
 
     if (isOpen) {
@@ -10820,7 +10786,7 @@ iframe.active{{display:block}}
 
   <!-- ── Verstoßauswertung Panel ───────────────────────────────────── -->
   <div id="panel-verstoss" style="display:none;flex:1;flex-direction:column;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;">
-    <div style="width:100%;max-width:1728px;margin:0 auto;display:flex;flex-direction:column;flex:1;overflow:hidden;">
+    <div style="width:100%;margin:0 auto;display:flex;flex-direction:column;flex:1;overflow:hidden;">
       <div id="verstoss-toolbar" style="display:flex;align-items:center;gap:10px;padding:16px 18px;flex-wrap:wrap;flex-shrink:0;">
         <h2 style="margin:0;font-size:17px;font-weight:900;color:#0f172a;">&#9888;&#65039; Verstoßauswertung</h2>
         <input id="verstoss-search" placeholder="Fahrer suchen..." oninput="verstossFilter(this.value)"
@@ -10835,7 +10801,7 @@ iframe.active{{display:block}}
           Alle anzeigen</button>
         <span id="verstoss-stats" style="font-size:12px;font-weight:700;color:#64748b;margin-left:auto;"></span>
       </div>
-      <div id="verstoss-body" style="flex:1;overflow-y:auto;padding:4px 0 30px 18px;">
+      <div id="verstoss-body" style="flex:1;overflow-y:auto;padding:8px 20px 30px 20px;">
         <div style="color:#94a3b8;padding:60px;text-align:center;font-size:14px;">Keine Verstoßdaten &ndash; bitte Verstoß-CSV in Streamlit hochladen.</div>
       </div>
     </div>
