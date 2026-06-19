@@ -6902,12 +6902,16 @@ function verstossBuildMonthMatrixHtml(matrixTypes, colMonthIdx, monthsShort, mat
      + "<span style='font-size:13px;font-weight:900;color:#0f172a;'>Verstoßarten pro Monat</span>"
      + "<span style='font-size:11px;font-weight:700;color:#64748b;'>Häufigkeit jeder Verstoßart je Monat"
      + (compareMode ? " (gewählte Jahre summiert)" : "") + "</span>"
-     + (filterLabel ? "<span style='margin-left:auto;font-size:11px;font-weight:800;color:#991b1b;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:3px 9px;'>" + verstossEsc(filterLabel) + "</span>" : "")
+     + "<span style='margin-left:auto;display:flex;align-items:center;gap:8px;'>"
+     + (filterLabel ? "<span style='font-size:11px;font-weight:800;color:#991b1b;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:3px 9px;'>" + verstossEsc(filterLabel) + "</span>" : "")
+     + "<button onclick='verstossCopyMatrix(this)' title='Tabelle in die Zwischenablage kopieren (für E-Mail/Excel)' "
+     + "style='display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1.5px solid #1e3a5f;border-radius:7px;background:#1e3a5f;color:#fff;font-size:11.5px;font-weight:800;font-family:inherit;cursor:pointer;white-space:nowrap;'>&#128203; Kopieren</button>"
+     + "</span>"
      + "</div>";
   h += "<div style='overflow-x:auto;'>";
-  h += "<table style='width:100%;border-collapse:collapse;font-size:12px;min-width:" + (260 + colMonthIdx.length * 46 + 70) + "px;'>";
+  h += "<table style='width:100%;border-collapse:collapse;font-size:12px;min-width:" + (320 + colMonthIdx.length * 46 + 80) + "px;'>";
   h += "<thead><tr style='background:#1e3a5f;color:#fff;'>";
-  h += "<th style='padding:9px 12px;text-align:left;font-size:11px;font-weight:800;position:sticky;left:0;background:#1e3a5f;z-index:1;'>Verstoßart</th>";
+  h += "<th style='padding:9px 12px;text-align:left;font-size:11px;font-weight:800;position:sticky;left:0;background:#1e3a5f;z-index:1;min-width:300px;'>Verstoßart</th>";
   colMonthIdx.forEach(function(i) {
     h += "<th style='padding:9px 8px;text-align:center;font-size:11px;font-weight:800;'>" + monthsShort[i] + "</th>";
   });
@@ -6916,9 +6920,8 @@ function verstossBuildMonthMatrixHtml(matrixTypes, colMonthIdx, monthsShort, mat
 
   matrixTypes.forEach(function(x, ri) {
     var stripe = ri % 2 ? "#f9fafb" : "#fff";
-    var nm = x.type.length > 46 ? x.type.substring(0, 44) + "…" : x.type;
     h += "<tr style='border-bottom:1px solid #f1f5f9;'>";
-    h += "<td title='" + verstossEsc(x.type) + "' style='padding:8px 12px;font-weight:800;color:#0f172a;white-space:nowrap;max-width:340px;overflow:hidden;text-overflow:ellipsis;position:sticky;left:0;background:" + stripe + ";'>" + verstossEsc(nm) + "</td>";
+    h += "<td style='padding:8px 12px;font-weight:800;color:#0f172a;white-space:normal;line-height:1.35;min-width:300px;position:sticky;left:0;background:" + stripe + ";'>" + verstossEsc(x.type) + "</td>";
     colMonthIdx.forEach(function(i) {
       var v = x.counts[i];
       h += "<td style='padding:7px 8px;text-align:center;font-variant-numeric:tabular-nums;font-weight:" + (v ? "800" : "400") + ";color:" + (v ? "#0f172a" : "#cbd5e1") + ";background:" + verstossMatrixCellBg(v, matrixMax) + ";'>" + (v || "·") + "</td>";
@@ -6937,6 +6940,129 @@ function verstossBuildMonthMatrixHtml(matrixTypes, colMonthIdx, monthsShort, mat
 
   h += "</tbody></table></div></div>";
   return h;
+}
+
+// ── Matrix "Verstoßarten pro Monat" in die Zwischenablage kopieren ──────────
+// Kopiert sowohl als formatierte HTML-Tabelle (Outlook/Word/E-Mail) als auch
+// als Tab-getrennten Text (Excel/Plaintext), damit es überall sauber einfügt.
+function verstossCopyMatrix(btn) {
+  var d = _vsGraphLast;
+  if (!d || !d.matrixTypes || !d.matrixTypes.length || !d.colMonthIdx) {
+    alert("Keine Matrix-Daten zum Kopieren.");
+    return;
+  }
+  var monthsLong = d.monthsLong || ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+  var colIdx = d.colMonthIdx;
+  var types = d.matrixTypes;
+
+  var colTot = {};
+  colIdx.forEach(function(i) { colTot[i] = 0; });
+  types.forEach(function(x) { colIdx.forEach(function(i) { colTot[i] += x.counts[i] || 0; }); });
+
+  var head = ["Verstoßart"];
+  colIdx.forEach(function(i) { head.push(monthsLong[i]); });
+  head.push("Gesamt");
+
+  // Tab-getrennter Text
+  var lines = [head.join("\t")];
+  types.forEach(function(x) {
+    var r = [x.type];
+    colIdx.forEach(function(i) { r.push(x.counts[i] || 0); });
+    r.push(x.total);
+    lines.push(r.join("\t"));
+  });
+  var gt = ["Gesamt"];
+  colIdx.forEach(function(i) { gt.push(colTot[i] || 0); });
+  gt.push(d.matrixGrand || 0);
+  lines.push(gt.join("\t"));
+  var tsv = lines.join("\n");
+
+  // HTML-Tabelle
+  var titleLine = "Verstoßarten pro Monat"
+    + (d.yearLabel ? " – " + d.yearLabel : "")
+    + (d.filterLabel ? " (" + d.filterLabel + ")" : "");
+  var th = function(t, ci) {
+    return "<th style='background:#1e3a5f;color:#fff;padding:6px 10px;border:1px solid #1e3a5f;text-align:" + (ci === 0 ? "left" : "right") + ";'>" + verstossEsc(t) + "</th>";
+  };
+  var html = "<table style='border-collapse:collapse;font-family:Segoe UI,Arial,sans-serif;font-size:12px;'><thead><tr>";
+  head.forEach(function(t, ci) { html += th(t, ci); });
+  html += "</tr></thead><tbody>";
+  types.forEach(function(x) {
+    html += "<tr><td style='padding:5px 10px;border:1px solid #d0d7e2;font-weight:bold;'>" + verstossEsc(x.type) + "</td>";
+    colIdx.forEach(function(i) {
+      var v = x.counts[i] || 0;
+      html += "<td style='padding:5px 10px;border:1px solid #d0d7e2;text-align:right;'>" + (v || "") + "</td>";
+    });
+    html += "<td style='padding:5px 10px;border:1px solid #d0d7e2;text-align:right;font-weight:bold;color:#991b1b;'>" + x.total + "</td></tr>";
+  });
+  html += "<tr><td style='padding:5px 10px;border:1px solid #d0d7e2;font-weight:bold;background:#eef2f8;'>Gesamt</td>";
+  colIdx.forEach(function(i) { html += "<td style='padding:5px 10px;border:1px solid #d0d7e2;text-align:right;font-weight:bold;background:#eef2f8;'>" + (colTot[i] || "") + "</td>"; });
+  html += "<td style='padding:5px 10px;border:1px solid #d0d7e2;text-align:right;font-weight:bold;background:#eef2f8;color:#991b1b;'>" + (d.matrixGrand || 0) + "</td></tr>";
+  html += "</tbody></table>";
+  var fullHtml = "<div style='font-family:Segoe UI,Arial,sans-serif;font-size:12px;margin-bottom:6px;'><b>" + verstossEsc(titleLine) + "</b></div>" + html;
+
+  verstossDoCopy(tsv, fullHtml, btn);
+}
+
+function verstossCopyFeedback(btn, ok) {
+  if (!btn) { if (!ok) alert("Kopieren nicht möglich."); return; }
+  if (!btn.getAttribute("data-orig")) btn.setAttribute("data-orig", btn.innerHTML);
+  btn.innerHTML = ok ? "\u2713 Kopiert" : "Fehler";
+  btn.style.background = ok ? "#16a34a" : "#dc2626";
+  btn.style.borderColor = ok ? "#16a34a" : "#dc2626";
+  setTimeout(function() {
+    btn.innerHTML = btn.getAttribute("data-orig");
+    btn.style.background = "#1e3a5f";
+    btn.style.borderColor = "#1e3a5f";
+  }, 1600);
+}
+
+function verstossDoCopy(text, html, btn) {
+  if (navigator.clipboard && typeof window.ClipboardItem !== "undefined") {
+    try {
+      var item = new ClipboardItem({
+        "text/html": new Blob([html], { type: "text/html" }),
+        "text/plain": new Blob([text], { type: "text/plain" })
+      });
+      navigator.clipboard.write([item]).then(
+        function() { verstossCopyFeedback(btn, true); },
+        function() { verstossCopyFallback(text, html, btn); }
+      );
+      return;
+    } catch (e) { /* weiter zum Fallback */ }
+  }
+  verstossCopyFallback(text, html, btn);
+}
+
+function verstossCopyFallback(text, html, btn) {
+  // Rich-Copy über contenteditable + execCommand (funktioniert auch unter file://)
+  try {
+    var div = document.createElement("div");
+    div.contentEditable = "true";
+    div.style.position = "fixed";
+    div.style.left = "-9999px";
+    div.style.top = "0";
+    div.style.opacity = "0";
+    div.innerHTML = html;
+    document.body.appendChild(div);
+    var range = document.createRange();
+    range.selectNodeContents(div);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    var ok = document.execCommand("copy");
+    sel.removeAllRanges();
+    document.body.removeChild(div);
+    if (ok) { verstossCopyFeedback(btn, true); return; }
+  } catch (e) { /* weiter */ }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(
+      function() { verstossCopyFeedback(btn, true); },
+      function() { verstossCopyFeedback(btn, false); }
+    );
+  } else {
+    verstossCopyFeedback(btn, false);
+  }
 }
 
 function verstossFilter(q) {
