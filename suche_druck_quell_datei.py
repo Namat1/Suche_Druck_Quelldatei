@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-06-12-v36-fullwidth"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-06-19-v37-schluesseldatei"
 EXTRA_CACHE_VERSION = "extra-parser-2026-06-12-v36-fullwidth"
 
 
@@ -1260,6 +1260,82 @@ def _patch_suche_template_perf_searchindex(template: str) -> str:
 
 
 
+
+def _patch_suche_template_multi_keys(template: str) -> str:
+    """Unterstuetzt mehrere Schluesselnummern je Kundennummer."""
+    normalize_needle = """function normalizeDigits(v){
+  if(v == null) return '';
+  let s = String(v).trim().replace(/\.0$/,'');
+  s = s.replace(/[^0-9]/g,'').replace(/^0+(\d)/,'$1');
+  return s;
+}"""
+    normalize_repl = normalize_needle + """
+function normalizeKeyList(value){
+  const source = Array.isArray(value)
+    ? value
+    : String(value == null ? '' : value).split(/[\s,;|/]+/);
+  const out = [];
+  for(const item of source){
+    const key = normalizeDigits(item);
+    if(key && !out.includes(key)) out.push(key);
+  }
+  return out;
+}
+function customerKeys(customer){
+  const direct = normalizeKeyList(customer && customer.schluessel);
+  if(direct.length) return direct;
+  const csb = customer && customer.csb_nummer ? customer.csb_nummer : '';
+  return normalizeKeyList(keyIndex[csb]);
+}
+function customerKeyText(customer){
+  return customerKeys(customer).join(' / ');
+}"""
+    if normalize_needle in template:
+        template = template.replace(normalize_needle, normalize_repl, 1)
+
+    template = template.replace(
+        "rec.schluessel   = normalizeDigits(rec.schluessel) || (keyIndex[csb]||'');",
+        "rec.schluessel   = normalizeKeyList(rec.schluessel).length ? normalizeKeyList(rec.schluessel) : normalizeKeyList(keyIndex[csb]);",
+        1,
+    )
+
+    template = template.replace(
+        "if(normalizeDigits(k.schluessel) === n) return true;",
+        "if(customerKeys(k).includes(n)) return true;",
+        1,
+    )
+
+    template = template.replace(
+        "c.sap_nummer||'', c.fachberater||'', c.schluessel||'',",
+        "c.sap_nummer||'', c.fachberater||'', customerKeyText(c),",
+        1,
+    )
+
+    old_row = """  const key=(k.schluessel||'')||(keyIndex[csb]||'');
+  keySlot.appendChild(key ? el('span','badge-key',key) : makePlaceholder('Kein Schlüssel'));"""
+    new_row = """  const keys = customerKeys(k);
+  if(keys.length){
+    keys.forEach(key => keySlot.appendChild(el('span','badge-key',key)));
+  } else {
+    keySlot.appendChild(makePlaceholder('Kein Schlüssel'));
+  }"""
+    if old_row in template:
+        template = template.replace(old_row, new_row, 1)
+
+    old_key_search = """  const r=[];
+  for(const k of allCustomers){
+    const key=(k.schluessel||'')||(keyIndex[k.csb_nummer]||'');
+    if(key===n) r.push(k);
+  }"""
+    new_key_search = """  const r=[];
+  for(const k of allCustomers){
+    if(customerKeys(k).includes(n)) r.push(k);
+  }"""
+    if old_key_search in template:
+        template = template.replace(old_key_search, new_key_search, 1)
+
+    return template
+
 def _patch_suche_template_optik(template: str) -> str:
     """Kleinere Optik-Korrekturen (#8 Webfont, #10 Body-Weight)."""
     # #8: Webfont-Cocktail abspecken — nur Inter Tight (3 Weights) + JetBrains Mono (1 Weight)
@@ -1427,6 +1503,7 @@ def get_suche_template() -> str:
         _patch_suche_template_sonderliste_marktkauf,
         _patch_suche_template_perf_searchindex,
         _patch_suche_template_kundenart_absetzer_rampe,
+        _patch_suche_template_multi_keys,
         _patch_suche_template_optik,
     ):
         tpl = patch(tpl)
@@ -1825,17 +1902,72 @@ def norm_de_py(s: str) -> str:
 
 
 def build_key_map(df: pd.DataFrame) -> dict:
-    if df.shape[1] < 6:
-        st.warning("Schluesseldatei hat < 6 Spalten.")
-    csb_col = 0
-    key_col = 5 if df.shape[1] > 5 else df.shape[1] - 1
-    out = {}
-    for row in df.itertuples(index=False, name=None):
+    """Liest alte und neue Schluesseldateien robust ein.
+
+    Neues Format:
+      Titelzeile
+      Knd-Nr. | Schluessel-Nr.
+
+    Das alte Format mit Kundennummer in Spalte 1 und Schluessel in Spalte 6
+    bleibt weiterhin kompatibel. Mehrere Schluessel je Kunde werden erhalten.
+    """
+    if df is None or df.empty:
+        return {}
+
+    raw = df.dropna(how="all").reset_index(drop=True)
+    if raw.empty or raw.shape[1] < 2:
+        st.warning("Schluesseldatei enthaelt keine auswertbaren Spalten.")
+        return {}
+
+    csb_aliases = [
+        "Knd-Nr.", "Knd-Nr", "Knd Nr", "Kundennummer", "Kunden-Nr.",
+        "Kunden-Nr", "Kunden Nr", "CSB", "CSB-Nr.", "CSB-Nr",
+        "CSB Nummer", "CSB-Nummer",
+    ]
+    key_aliases = [
+        "Schluessel-Nr.", "Schluessel-Nr", "Schluessel Nr",
+        "Schluesselnummer", "Schluessel", "Key", "Key-Nr.", "Key Nr",
+    ]
+
+    csb_norms = {normalize_header_py(v) for v in csb_aliases}
+    key_norms = {normalize_header_py(v) for v in key_aliases}
+    header_row = None
+    csb_col = None
+    key_col = None
+
+    # Ueberschriften koennen wegen einer Titelzeile erst in Zeile 2 stehen.
+    for row_idx in range(min(len(raw), 20)):
+        values = raw.iloc[row_idx].tolist()
+        normalized = [normalize_header_py(v) if not pd.isna(v) else "" for v in values]
+        row_csb = next((idx for idx, val in enumerate(normalized) if val in csb_norms), None)
+        row_key = next((idx for idx, val in enumerate(normalized) if val in key_norms), None)
+        if row_csb is not None and row_key is not None and row_csb != row_key:
+            header_row = row_idx
+            csb_col = row_csb
+            key_col = row_key
+            break
+
+    if csb_col is None or key_col is None:
+        # Rueckwaertskompatibilitaet zum bisherigen 6-Spalten-Format.
+        csb_col = 0
+        key_col = 5 if raw.shape[1] > 5 else 1
+        data = raw
+    else:
+        data = raw.iloc[header_row + 1:].reset_index(drop=True)
+
+    collected: dict[str, list[str]] = {}
+    for row in data.itertuples(index=False, name=None):
         csb = normalize_digits_py(row[csb_col] if len(row) > csb_col else "")
         key = normalize_digits_py(row[key_col] if len(row) > key_col else "")
-        if csb:
-            out[csb] = key
-    return out
+        if not csb or not key:
+            continue
+        keys = collected.setdefault(csb, [])
+        if key not in keys:
+            keys.append(key)
+
+    # Einzelschluessel bleiben Strings; nur Mehrfachzuordnungen werden Listen.
+    # So bleiben auch aeltere HTML-Staende weitgehend kompatibel.
+    return {csb: keys[0] if len(keys) == 1 else keys for csb, keys in collected.items()}
 
 
 def build_berater_map(df: pd.DataFrame) -> dict:
@@ -1976,9 +2108,9 @@ def cached_winter_map(excel_bytes: bytes) -> dict:
 def cached_key_map(key_bytes: bytes) -> dict:
     if not key_bytes:
         return {}
-    df = pd.read_excel(io.BytesIO(key_bytes), sheet_name=0, header=0, engine=EXCEL_READ_ENGINE)
-    if df.shape[1] < 2:
-        df = pd.read_excel(io.BytesIO(key_bytes), sheet_name=0, header=None, engine=EXCEL_READ_ENGINE)
+    # header=None ist absichtlich: Die neue Datei hat eine Titelzeile oberhalb
+    # der eigentlichen Spaltennamen. build_key_map erkennt die Kopfzeile selbst.
+    df = pd.read_excel(io.BytesIO(key_bytes), sheet_name=0, header=None, engine=EXCEL_READ_ENGINE)
     return build_key_map(df)
 
 
@@ -15379,7 +15511,7 @@ with tab_stamm:
     col_a, col_b = st.columns(2)
     with col_a:
         _global_uploader("Logo",                       ["png","jpg","jpeg","svg"], "g_logo",      "global_up_logo_v2")
-        _global_uploader("Marktschluessel (Pflicht)",  ["xlsx"],                   "g_key",       "global_up_key_v2")
+        _global_uploader("Schluesseldatei (Pflicht)",  ["xlsx"],                   "g_key",       "global_up_key_v2")
         _global_uploader("Telefonnummern Fachberater", ["xlsx"],                   "g_fach",      "global_up_fach_v2")
     with col_b:
         _global_uploader("Kundenliste Original",       ["xlsx"], "g_fcsb",       "global_up_fcsb_v2")
@@ -15492,7 +15624,7 @@ with tab_wochen:
                 missing = []
                 if not excel: missing.append("Wochen-Excel")
                 if not _logo: missing.append("Logo")
-                if not _key:  missing.append("Marktschluessel")
+                if not _key:  missing.append("Schluesseldatei")
                 if missing: st.caption("Fehlt: " + ", ".join(missing))
 
             if i > 0:
@@ -15680,7 +15812,7 @@ with tab_dl:
         st.caption(f"{len(app_html)//1024} KB, {len(ready)} Woche(n): "
                    f"{', '.join(i['name'] for i in ready)}")
     else:
-        st.info("Mindestens Logo, Marktschluessel und eine Wochen-Excel hochladen.")
+        st.info("Mindestens Logo, Schluesseldatei und eine Wochen-Excel hochladen.")
         zulage_json_state      = st.session_state.get("zulage_json", "{}")
         drittkunden_json_state = st.session_state.get("drittkunden_json", "[]")
         if zulage_json_state not in ("{}", "") or drittkunden_json_state not in ("[]", ""):
