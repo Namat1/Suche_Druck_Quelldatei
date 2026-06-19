@@ -6105,6 +6105,9 @@ function ddSelectFa(area) {
 var _vsGraphYear = "";
 var _vsGraphState = { jahr: null, jahr2: null, compare: false };
 var _vsGraphCharts = {};
+var _vsGraphType = "all";     // Verstoßart-Filter im Graph (all = alle Arten)
+var _vsGraphMonFrom = 1;      // Zeitraum-Filter: Von-Monat (1..12)
+var _vsGraphMonTo = 12;       // Zeitraum-Filter: Bis-Monat (1..12)
 
 function verstossYearOf(v) {
   var ds = String((v && v.date_sort) || "");
@@ -6303,6 +6306,99 @@ function verstossGraphYear2Change(y) {
   verstossRenderGraph();
 }
 
+// ── Filter: Verstoßart + Zeitraum (Von/Bis Monat) ──────────────────────────
+function verstossGraphMonthRange() {
+  var lo = Math.min(_vsGraphMonFrom, _vsGraphMonTo);
+  var hi = Math.max(_vsGraphMonFrom, _vsGraphMonTo);
+  return [lo, hi];
+}
+
+// Voller Zeitraum (Jan–Dez) => kein Monatsfilter, damit Standard-Summen gleich bleiben
+function verstossGraphFullMonthRange() {
+  var mr = verstossGraphMonthRange();
+  return mr[0] === 1 && mr[1] === 12;
+}
+
+function verstossGraphPassesFilters(r) {
+  if (_vsGraphType !== "all" && String(r.type || "\u2014") !== _vsGraphType) return false;
+  if (!verstossGraphFullMonthRange()) {
+    var mr = verstossGraphMonthRange();
+    if (!(r.month >= mr[0] && r.month <= mr[1])) return false;
+  }
+  return true;
+}
+
+function verstossGraphActiveFilterLabel() {
+  var parts = [];
+  if (_vsGraphType !== "all") {
+    var t = _vsGraphType.length > 34 ? _vsGraphType.substring(0, 32) + "\u2026" : _vsGraphType;
+    parts.push("Art: " + t);
+  }
+  if (!verstossGraphFullMonthRange()) {
+    var months = ["Jan", "Feb", "M\u00e4r", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+    var mr = verstossGraphMonthRange();
+    parts.push("Zeitraum: " + months[mr[0] - 1] + "\u2013" + months[mr[1] - 1]);
+  }
+  return parts.join(" \u00b7 ");
+}
+
+function verstossPopulateGraphTypes() {
+  var sel = document.getElementById("verstoss-graph-type");
+  if (!sel) return;
+  var counts = {};
+  verstossGetFlatViolations().forEach(function(r) {
+    var t = String(r.type || "\u2014");
+    counts[t] = (counts[t] || 0) + 1;
+  });
+  var types = Object.keys(counts).sort(function(a, b) {
+    return counts[b] - counts[a] || a.localeCompare(b, "de");
+  });
+  var html = "<option value='all'>Alle Verstoßarten</option>";
+  types.forEach(function(t) {
+    var lbl = t.length > 44 ? t.substring(0, 42) + "\u2026" : t;
+    html += "<option value='" + verstossEsc(t) + "'>" + verstossEsc(lbl) + " (" + counts[t] + ")</option>";
+  });
+  sel.innerHTML = html;
+  if (_vsGraphType !== "all" && types.indexOf(_vsGraphType) === -1) _vsGraphType = "all";
+  sel.value = _vsGraphType;
+}
+
+function verstossPopulateGraphMonths() {
+  var months = ["Januar", "Februar", "M\u00e4rz", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+  ["verstoss-graph-mon-from", "verstoss-graph-mon-to"].forEach(function(id, sIdx) {
+    var sel = document.getElementById(id);
+    if (!sel) return;
+    sel.innerHTML = months.map(function(m, i) {
+      return "<option value='" + (i + 1) + "'>" + (sIdx === 0 ? "ab " : "bis ") + m + "</option>";
+    }).join("");
+    sel.value = String(sIdx === 0 ? _vsGraphMonFrom : _vsGraphMonTo);
+  });
+}
+
+function verstossGraphTypeChange(v) {
+  _vsGraphType = v || "all";
+  verstossRenderGraph();
+}
+
+function verstossGraphMonFromChange(v) {
+  _vsGraphMonFrom = Math.max(1, Math.min(12, Number(v) || 1));
+  verstossRenderGraph();
+}
+
+function verstossGraphMonToChange(v) {
+  _vsGraphMonTo = Math.max(1, Math.min(12, Number(v) || 12));
+  verstossRenderGraph();
+}
+
+function verstossGraphResetFilters() {
+  _vsGraphType = "all";
+  _vsGraphMonFrom = 1;
+  _vsGraphMonTo = 12;
+  verstossPopulateGraphTypes();
+  verstossPopulateGraphMonths();
+  verstossRenderGraph();
+}
+
 function verstossChart(id, cfg) {
   var canvas = document.getElementById(id);
   if (!canvas || typeof Chart === "undefined") return;
@@ -6391,6 +6487,8 @@ function verstossTooltipPct(total, axis) {
 
 function verstossInitGraph() {
   verstossPopulateGraphYears();
+  verstossPopulateGraphTypes();
+  verstossPopulateGraphMonths();
   verstossRenderGraph();
 }
 
@@ -6433,6 +6531,8 @@ function verstossRenderGraph() {
   }
 
   verstossPopulateGraphYears();
+  verstossPopulateGraphTypes();
+  verstossPopulateGraphMonths();
   var compareMode = !!_vsGraphState.compare;
   var selectedYears = verstossGraphSelectedYears();
   var months = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
@@ -6441,7 +6541,10 @@ function verstossRenderGraph() {
 
   var yearLabel = compareMode ? selectedYears.join(" vs ") : (_vsGraphState.jahr || "alle Jahre");
 
-  var rows = all.filter(function(r) {
+  // Verstoßart- und Zeitraum-Filter vorschalten
+  var base = all.filter(verstossGraphPassesFilters);
+
+  var rows = base.filter(function(r) {
     if (compareMode) { return selectedYears.length ? selectedYears.indexOf(r.year) !== -1 : true; }
     return !_vsGraphState.jahr || r.year === _vsGraphState.jahr;
   });
@@ -6450,7 +6553,7 @@ function verstossRenderGraph() {
 
   // Pro-Jahr-Aggregate für Vergleich
   var yearAgg = {};
-  selectedYears.forEach(function(y) { yearAgg[y] = verstossAggregate(all.filter(function(r){ return r.year === y; })); });
+  selectedYears.forEach(function(y) { yearAgg[y] = verstossAggregate(base.filter(function(r){ return r.year === y; })); });
 
   var topDrivers = Object.entries(agg.driverMap).sort(function(a, b) { return b[1] - a[1] || a[0].localeCompare(b[0], "de"); }).slice(0, 15);
   var topTypes = Object.entries(agg.typeMap).sort(function(a, b) { return b[1] - a[1] || a[0].localeCompare(b[0], "de"); }).slice(0, 12);
@@ -6458,16 +6561,43 @@ function verstossRenderGraph() {
   var maxMonthName = maxMonth ? months[agg.monthCount.indexOf(maxMonth)] : "—";
   var topDriver = topDrivers.length ? { name: topDrivers[0][0], count: topDrivers[0][1] } : null;
 
+  // ── Matrix Verstoßart × Monat ───────────────────────────────────────────
+  var mr = verstossGraphMonthRange();
+  var colMonthIdx = [];
+  for (var _cm = mr[0]; _cm <= mr[1]; _cm++) colMonthIdx.push(_cm - 1);
+  var matrixMap = {};
+  rows.forEach(function(r) {
+    if (!(r.month >= 1 && r.month <= 12)) return;
+    var t = String(r.type || "—");
+    if (!matrixMap[t]) matrixMap[t] = Array(12).fill(0);
+    matrixMap[t][r.month - 1] += 1;
+  });
+  var matrixTypes = Object.keys(matrixMap).map(function(t) {
+    var arr = matrixMap[t], sum = 0;
+    colMonthIdx.forEach(function(i) { sum += arr[i]; });
+    return { type: t, counts: arr, total: sum };
+  }).filter(function(x) { return x.total > 0; })
+    .sort(function(a, b) { return b.total - a.total || a.type.localeCompare(b.type, "de"); });
+  var matrixMax = 0, matrixGrand = 0;
+  matrixTypes.forEach(function(x) {
+    matrixGrand += x.total;
+    colMonthIdx.forEach(function(i) { if (x.counts[i] > matrixMax) matrixMax = x.counts[i]; });
+  });
+  var filterLabel = verstossGraphActiveFilterLabel();
+
   // Daten für Excel-Export merken
   _vsGraphLast = {
     compareMode: compareMode, selectedYears: selectedYears, yearLabel: yearLabel,
     months: months, monthsLong: monthsLong, agg: agg, yearAgg: yearAgg,
-    topDrivers: topDrivers, topTypes: topTypes
+    topDrivers: topDrivers, topTypes: topTypes,
+    matrixTypes: matrixTypes, colMonthIdx: colMonthIdx, matrixGrand: matrixGrand,
+    filterLabel: filterLabel, vsType: _vsGraphType, monFrom: mr[0], monTo: mr[1]
   };
 
   if (stats) {
     stats.innerHTML = "Ansicht <b style='color:#991b1b;'>" + (compareMode ? "Jahre vergleichen" : "Ein Jahr") + "</b> &middot; "
-      + "Jahr <b style='color:#991b1b;'>" + verstossEsc(yearLabel) + "</b> &middot; <b>" + total + "</b> Verstöße";
+      + "Jahr <b style='color:#991b1b;'>" + verstossEsc(yearLabel) + "</b> &middot; <b>" + total + "</b> Verstöße"
+      + (filterLabel ? " &middot; <b style='color:#991b1b;'>" + verstossEsc(filterLabel) + "</b>" : "");
   }
 
   var html = "";
@@ -6501,6 +6631,8 @@ function verstossRenderGraph() {
   html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:360px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>" + (compareMode ? "Jahresvergleich nach Monat" : "Verstöße nach Monat") + "</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>" + (compareMode ? "Die gewählten Jahre werden pro Monat nebeneinander gestellt" : "Anzahl und Anteil an allen Verstößen") + "</div><div style='height:300px;'><canvas id='verstoss-chart-month'></canvas></div></div>";
   html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;min-height:470px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Verstoßarten</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anteil je Verstoßart" + (compareMode ? " (beide Jahre)" : "") + "</div><div style='height:410px;'><canvas id='verstoss-chart-type'></canvas></div></div>";
   html += "</div>";
+
+  html += verstossBuildMonthMatrixHtml(matrixTypes, colMonthIdx, months, matrixMax, matrixGrand, compareMode, filterLabel);
 
   html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px;'><div style='font-size:13px;font-weight:900;color:#0f172a;margin-bottom:3px;'>Top Fahrer nach Anzahl</div><div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;'>Anzahl und Anteil an allen Verstößen" + (compareMode ? " (beide Jahre)" : "") + "</div><div style='height:360px;'><canvas id='verstoss-chart-driver'></canvas></div></div>";
 
@@ -6630,6 +6762,7 @@ function verstossExportExcel() {
   var ov = [];
   ov.push(["Verstoßauswertung – " + (compareMode ? "Jahresvergleich" : "Graph pro Jahr")]);
   ov.push(["Jahr / Auswahl", d.yearLabel]);
+  if (d.filterLabel) ov.push(["Filter", d.filterLabel]);
   ov.push(["Stand", today]);
   ov.push([]);
   if (compareMode && sy.length >= 2) {
@@ -6706,7 +6839,37 @@ function verstossExportExcel() {
   wsFa["!cols"] = [{ wch: 28 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
   XLSX.utils.book_append_sheet(wb, wsFa, "Fahrer");
 
-  var fname = "Verstossauswertung_" + (compareMode ? sy.join("_vs_") : (d.yearLabel || "alle")).replace(/[^0-9A-Za-z_]/g, "") + ".xlsx";
+  // ── Blatt: Verstoßarten pro Monat (Matrix) ──
+  if (d.matrixTypes && d.matrixTypes.length && d.colMonthIdx) {
+    var mx = [];
+    var head = ["Verstoßart"];
+    d.colMonthIdx.forEach(function(i) { head.push(monthsLong[i]); });
+    head.push("Gesamt");
+    mx.push(head);
+    d.matrixTypes.forEach(function(x) {
+      var row = [x.type];
+      d.colMonthIdx.forEach(function(i) { row.push(x.counts[i] || 0); });
+      row.push(x.total);
+      mx.push(row);
+    });
+    var colTot = ["Gesamt"];
+    d.colMonthIdx.forEach(function(i) {
+      var s = 0;
+      d.matrixTypes.forEach(function(x) { s += x.counts[i] || 0; });
+      colTot.push(s);
+    });
+    colTot.push(d.matrixGrand || 0);
+    mx.push(colTot);
+    var wsMx = XLSX.utils.aoa_to_sheet(mx);
+    var mxCols = [{ wch: 50 }];
+    d.colMonthIdx.forEach(function() { mxCols.push({ wch: 9 }); });
+    mxCols.push({ wch: 10 });
+    wsMx["!cols"] = mxCols;
+    XLSX.utils.book_append_sheet(wb, wsMx, "Arten pro Monat");
+  }
+
+  var fnameFilter = (d.filterLabel ? "_gefiltert" : "");
+  var fname = "Verstossauswertung_" + (compareMode ? sy.join("_vs_") : (d.yearLabel || "alle")).replace(/[^0-9A-Za-z_]/g, "") + fnameFilter + ".xlsx";
   XLSX.writeFile(wb, fname);
 }
 
@@ -6716,6 +6879,64 @@ function verstossGraphKpi(label, value, color, icon) {
     + "<div style='font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;'>" + verstossEsc(label) + "</div>"
     + "<div style='font-size:24px;font-weight:950;color:" + color + ";line-height:1.15;'>" + value + "</div>"
     + "</div>";
+}
+
+// Heatmap-Farbe für eine Matrix-Zelle (0 = weiß, max = kräftiges Rot)
+function verstossMatrixCellBg(v, max) {
+  if (!v) return "#ffffff";
+  var a = 0.10 + 0.60 * (v / Math.max(Number(max) || 1, 1));
+  return "rgba(220,38,38," + a.toFixed(3) + ")";
+}
+
+// Tabelle: Verstoßarten (Zeilen) × Monate (Spalten) als Heatmap
+function verstossBuildMonthMatrixHtml(matrixTypes, colMonthIdx, monthsShort, matrixMax, grandTotal, compareMode, filterLabel) {
+  if (!matrixTypes || !matrixTypes.length) {
+    return "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:40px;text-align:center;color:#94a3b8;font-size:13px;margin-bottom:14px;'>Keine Verstöße im gewählten Filter.</div>";
+  }
+  var colTotals = {};
+  colMonthIdx.forEach(function(i) { colTotals[i] = 0; });
+  matrixTypes.forEach(function(x) { colMonthIdx.forEach(function(i) { colTotals[i] += x.counts[i]; }); });
+
+  var h = "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:14px;'>";
+  h += "<div style='padding:12px 14px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>"
+     + "<span style='font-size:13px;font-weight:900;color:#0f172a;'>Verstoßarten pro Monat</span>"
+     + "<span style='font-size:11px;font-weight:700;color:#64748b;'>Häufigkeit jeder Verstoßart je Monat"
+     + (compareMode ? " (gewählte Jahre summiert)" : "") + "</span>"
+     + (filterLabel ? "<span style='margin-left:auto;font-size:11px;font-weight:800;color:#991b1b;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:3px 9px;'>" + verstossEsc(filterLabel) + "</span>" : "")
+     + "</div>";
+  h += "<div style='overflow-x:auto;'>";
+  h += "<table style='width:100%;border-collapse:collapse;font-size:12px;min-width:" + (260 + colMonthIdx.length * 46 + 70) + "px;'>";
+  h += "<thead><tr style='background:#1e3a5f;color:#fff;'>";
+  h += "<th style='padding:9px 12px;text-align:left;font-size:11px;font-weight:800;position:sticky;left:0;background:#1e3a5f;z-index:1;'>Verstoßart</th>";
+  colMonthIdx.forEach(function(i) {
+    h += "<th style='padding:9px 8px;text-align:center;font-size:11px;font-weight:800;'>" + monthsShort[i] + "</th>";
+  });
+  h += "<th style='padding:9px 12px;text-align:right;font-size:11px;font-weight:900;background:#16243a;'>Gesamt</th>";
+  h += "</tr></thead><tbody>";
+
+  matrixTypes.forEach(function(x, ri) {
+    var stripe = ri % 2 ? "#f9fafb" : "#fff";
+    var nm = x.type.length > 46 ? x.type.substring(0, 44) + "…" : x.type;
+    h += "<tr style='border-bottom:1px solid #f1f5f9;'>";
+    h += "<td title='" + verstossEsc(x.type) + "' style='padding:8px 12px;font-weight:800;color:#0f172a;white-space:nowrap;max-width:340px;overflow:hidden;text-overflow:ellipsis;position:sticky;left:0;background:" + stripe + ";'>" + verstossEsc(nm) + "</td>";
+    colMonthIdx.forEach(function(i) {
+      var v = x.counts[i];
+      h += "<td style='padding:7px 8px;text-align:center;font-variant-numeric:tabular-nums;font-weight:" + (v ? "800" : "400") + ";color:" + (v ? "#0f172a" : "#cbd5e1") + ";background:" + verstossMatrixCellBg(v, matrixMax) + ";'>" + (v || "·") + "</td>";
+    });
+    h += "<td style='padding:8px 12px;text-align:right;font-weight:900;color:#991b1b;font-variant-numeric:tabular-nums;background:#fff7f7;'>" + x.total + "</td>";
+    h += "</tr>";
+  });
+
+  h += "<tr style='background:#eef2f8;border-top:2px solid #c6d2e2;'>";
+  h += "<td style='padding:9px 12px;font-weight:900;color:#0f172a;position:sticky;left:0;background:#eef2f8;'>Gesamt</td>";
+  colMonthIdx.forEach(function(i) {
+    h += "<td style='padding:9px 8px;text-align:center;font-weight:900;color:#1e3a5f;font-variant-numeric:tabular-nums;'>" + (colTotals[i] || "·") + "</td>";
+  });
+  h += "<td style='padding:9px 12px;text-align:right;font-weight:900;color:#991b1b;font-variant-numeric:tabular-nums;'>" + grandTotal + "</td>";
+  h += "</tr>";
+
+  h += "</tbody></table></div></div>";
+  return h;
 }
 
 function verstossFilter(q) {
@@ -10508,6 +10729,17 @@ iframe.active{{display:block}}
           style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:800;font-family:inherit;outline:none;background:#fff;color:#991b1b;cursor:pointer;"></select>
         <select id="verstoss-graph-year-2" onchange="verstossGraphYear2Change(this.value)" title="Jahr 2"
           style="display:none;padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:800;font-family:inherit;outline:none;background:#fff;color:#b45309;cursor:pointer;"></select>
+        <span style="width:1px;height:24px;background:#cbd5e1;"></span>
+        <select id="verstoss-graph-type" onchange="verstossGraphTypeChange(this.value)" title="Verstoßart filtern"
+          style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:800;font-family:inherit;outline:none;background:#fff;color:#0f172a;cursor:pointer;max-width:280px;">
+          <option value="all">Alle Verstoßarten</option>
+        </select>
+        <select id="verstoss-graph-mon-from" onchange="verstossGraphMonFromChange(this.value)" title="Zeitraum: Von-Monat"
+          style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:800;font-family:inherit;outline:none;background:#fff;color:#1f3347;cursor:pointer;"></select>
+        <select id="verstoss-graph-mon-to" onchange="verstossGraphMonToChange(this.value)" title="Zeitraum: Bis-Monat"
+          style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:800;font-family:inherit;outline:none;background:#fff;color:#1f3347;cursor:pointer;"></select>
+        <button onclick="verstossGraphResetFilters()" title="Verstoßart- und Zeitraum-Filter zurücksetzen"
+          style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:800;font-family:inherit;background:#fff;color:#475569;outline:none;cursor:pointer;">&#10005; Filter</button>
         <button onclick="verstossExportExcel()" title="Graph-Daten als Excel exportieren"
           style="padding:8px 14px;border:1.5px solid #16a34a;border-radius:8px;font-size:12px;font-weight:900;font-family:inherit;background:#16a34a;color:#fff;outline:none;cursor:pointer;">&#128190; Excel-Export</button>
         <span id="verstoss-graph-stats" style="font-size:12px;font-weight:700;color:#64748b;margin-left:auto;"></span>
