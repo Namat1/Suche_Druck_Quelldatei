@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-02-v44-hinweis-fahrerkarte"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-02-v45-sam-grafik-extra-button"
 EXTRA_CACHE_VERSION = "extra-parser-2026-07-02-v43-samstags-matrix-vollbreite"
 
 
@@ -10364,6 +10364,7 @@ iframe.active{{display:block}}
     <div class="dd-menu" id="ddmenu-verstoss"></div>
   </div>
   <button class="nav-btn" id="btn-sam" onclick="showArea('sam')">&#128664; Sa + So Einsätze</button>
+  <button class="nav-btn" id="btn-sam-graph" onclick="showArea('sam_graph')">&#128202; Grafische Auswertung</button>
   <div class="nav-dd" id="dd-fa">
     <button class="nav-dd-btn" id="btn-fa" onclick="ddToggle('fa',event)">
       &#128101; Fahrerauswertung <span class="dd-arrow">&#9660;</span>
@@ -10648,15 +10649,8 @@ iframe.active{{display:block}}
 
   <div id="panel-sam" style="display:none;flex:1;overflow-y:auto;padding:14px;background:#e8ecf1;font-family:Segoe UI,Arial,sans-serif">
     <div style="width:100%;max-width:none;margin:0">
-      <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128664; Sa + So Einsätze</h2>
+      <h2 id="sam-panel-title" style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128664; Sa + So Einsätze</h2>
       <div style="display:inline-flex;align-items:flex-start;gap:6px;margin-bottom:9px;background:#fffbeb;border:1px solid #e2e8f0;border-radius:4px;padding:7px 12px;font-size:12px;color:#92400e;line-height:1.45;"><span>&#9888;&#65039;</span><span>Grundlage sind ausschließlich die tatsächlichen Schichten von der Fahrerkarte. Hofdienste sind NICHT berücksichtigt.<br><br>Die Zuordnung erfolgt primär über die MA-Nummer. Gezählt wird der Anfangstag: Samstag immer, Freitag ab 18&nbsp;Uhr als Fr&#8594;Sa und Sonntag bis einschließlich 15&nbsp;Uhr.</span></div>
-
-      <div style="display:flex;gap:6px;margin:0 0 10px 0;flex-wrap:wrap;">
-        <button id="sam-view-list" onclick="samSetView('list')"
-          style="padding:7px 14px;border:2px solid #1b66b3;border-radius:5px;background:#1b66b3;color:#fff;font-size:11.5px;font-weight:800;cursor:pointer;font-family:inherit;">&#9776; Liste</button>
-        <button id="sam-view-charts" onclick="samSetView('charts')"
-          style="padding:7px 14px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11.5px;font-weight:800;cursor:pointer;font-family:inherit;">&#128202; Grafische Auswertung</button>
-      </div>
 
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <input id="sam-search" placeholder="Fahrer suchen..." oninput="samFilter(this.value)"
@@ -11166,9 +11160,11 @@ function showArea(s) {{
   // Telefonliste-Button
   var telBtn = document.getElementById("btn-tel");
   if(telBtn) telBtn.className = "nav-btn" + (s==="tel"?" active":"");
-  // Samstags-Button
+  // Samstags-Buttons
   var samBtn = document.getElementById("btn-sam");
   if(samBtn) samBtn.className = "nav-btn" + (s==="sam"?" active":"");
+  var samGraphBtn = document.getElementById("btn-sam-graph");
+  if(samGraphBtn) samGraphBtn.className = "nav-btn" + (s==="sam_graph"?" active":"");
   // Fahrerauswertung-Button (Dropdown: Schichten + Fahrerbewertung)
   var faBtn = document.getElementById("btn-fa");
   if(faBtn) faBtn.className = "nav-dd-btn" + ((s==="fa" || s==="fa_bewertung")?" active":"");
@@ -11181,7 +11177,7 @@ function showArea(s) {{
   var vzGraphPanel = document.getElementById("panel-vz-graph");
   if(vzGraphPanel) vzGraphPanel.style.display = (s==="vz_graph") ? "flex" : "none";
   telPanel.style.display = (s==="tel") ? "block" : "none";
-  if(samPanel)      samPanel.style.display      = (s==="sam")       ? "block" : "none";
+  if(samPanel)      samPanel.style.display      = (s==="sam" || s==="sam_graph") ? "block" : "none";
   var faPanel = document.getElementById("panel-fa");
   if(faPanel) faPanel.style.display = (s==="fa") ? "flex" : "none";
   var zulagePanel = document.getElementById("panel-zulage");
@@ -11211,7 +11207,20 @@ function showArea(s) {{
   }}
   if(typeof buildVzDdMenu === "function") buildVzDdMenu();
   if(s==="tel" && !telPanel.dataset.loaded) {{ telRender(""); telPanel.dataset.loaded="1"; }}
-  if(s==="sam" && samPanel && !samPanel.dataset.loaded) {{ samRender(""); samPanel.dataset.loaded="1"; }}
+  if((s==="sam" || s==="sam_graph") && samPanel) {{
+    samViewMode = s === "sam_graph" ? "charts" : "list";
+    var samTitle = document.getElementById("sam-panel-title");
+    if(samTitle) samTitle.innerHTML = s === "sam_graph"
+      ? "&#128202; Grafische Auswertung – Sa + So Einsätze"
+      : "&#128664; Sa + So Einsätze";
+    var samSortBtns = document.getElementById("sam-list-sort-buttons");
+    var samChartTabs = document.getElementById("sam-chart-tabs");
+    if(samSortBtns) samSortBtns.style.display = samViewMode === "list" ? "flex" : "none";
+    if(samChartTabs) samChartTabs.style.display = samViewMode === "charts" ? "flex" : "none";
+    var samQuery = (document.getElementById("sam-search") || {{value:""}}).value;
+    samRender(samQuery);
+    samPanel.dataset.loaded = "1";
+  }}
   if(s==="zulage" && zulagePanel && !zulagePanel.dataset.loaded) {{ zulagenInit(); zulagePanel.dataset.loaded="1"; }}
   if(s==="spesen") {{
     if(spesenPanel && !spesenPanel.dataset.loaded) {{ spesenInit(); spesenPanel.dataset.loaded="1"; }}
@@ -12662,8 +12671,7 @@ function samRenderMatrix(drivers, year, satTotal, satElapsed) {{
 
   var html = "<div style='background:#fff;border:1px solid #cbd5e1;border-radius:7px;box-shadow:0 1px 5px rgba(15,23,42,.06);overflow:hidden;'>"+
     "<div style='display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;padding:11px 13px;border-bottom:1px solid #e2e8f0;background:#f8fafc;'>"+
-      "<div><div style='font-size:14px;font-weight:900;color:#0f172a;'>Einsatzmatrix "+samEsc(year)+"</div>"+
-      "<div style='font-size:10.5px;color:#64748b;margin-top:2px;'>Zeile = Fahrer, Spalte = Wochenende. Mit der Maus über ein Feld fahren, um Datum, Uhrzeit und LKW zu sehen.</div></div>"+
+      "<div style='font-size:14px;font-weight:900;color:#0f172a;'>Einsatzmatrix "+samEsc(year)+"</div>"+
       samLegend()+"</div>";
 
   if(!drivers.length) {{
@@ -12671,7 +12679,7 @@ function samRenderMatrix(drivers, year, satTotal, satElapsed) {{
     return;
   }}
 
-  html += "<div style='overflow:auto;max-height:68vh;'>"+
+  html += "<div style='overflow-x:auto;overflow-y:hidden;width:100%;max-height:none;'>"+
     "<table style='border-collapse:separate;border-spacing:0;table-layout:fixed;min-width:"+(210+sats.length*39)+"px;width:max-content;font-size:9px;'>"+
     "<thead><tr><th style='position:sticky;left:0;top:0;z-index:5;width:210px;min-width:210px;background:#e2e8f0;border-right:2px solid #94a3b8;border-bottom:1px solid #94a3b8;padding:7px 9px;text-align:left;font-size:10px;color:#334155;'>Fahrer</th>";
   sats.forEach(function(s, idx) {{
