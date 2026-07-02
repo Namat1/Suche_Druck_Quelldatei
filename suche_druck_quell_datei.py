@@ -20,8 +20,8 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-02-v41-samstags-grafik-ma-id"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-02-v41-samstags-grafik-ma-id"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-02-v43-samstags-matrix-vollbreite"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-02-v43-samstags-matrix-vollbreite"
 
 
 # =============================================================================
@@ -10646,8 +10646,8 @@ iframe.active{{display:block}}
     </div>
   </div>
 
-  <div id="panel-sam" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#e8ecf1;font-family:Segoe UI,Arial,sans-serif">
-    <div style="max-width:1480px;margin:0 auto">
+  <div id="panel-sam" style="display:none;flex:1;overflow-y:auto;padding:14px;background:#e8ecf1;font-family:Segoe UI,Arial,sans-serif">
+    <div style="width:100%;max-width:none;margin:0">
       <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128664; Sa + So Einsätze</h2>
       <div style="display:inline-flex;align-items:center;gap:6px;margin-bottom:9px;background:#fffbeb;border:1px solid #e2e8f0;border-radius:4px;padding:5px 12px;font-size:12px;color:#92400e;line-height:1.35;">&#9888;&#65039; Grundlage sind ausschließlich die tatsächlichen Schichten aus <b>timerecording_v3</b>. Die Zuordnung erfolgt primär über die MA-Nummer. Gezählt wird der Anfangstag: Samstag immer, Freitag ab 18&nbsp;Uhr als Fr&#8594;Sa und Sonntag bis einschließlich 15&nbsp;Uhr.</div>
 
@@ -10680,6 +10680,8 @@ iframe.active{{display:block}}
             Eins&#228;tze &#8595;
           </button>
         </div>
+        <button onclick="samExportExcel()" title="Aktuell angezeigte Einsätze als Excel herunterladen"
+          style="padding:7px 13px;border:2px solid #15803d;border-radius:5px;background:#16a34a;color:#fff;font-size:11.5px;font-weight:850;cursor:pointer;font-family:inherit;white-space:nowrap;">&#11015;&#65039; Excel</button>
       </div>
 
       <div id="sam-chart-tabs" style="display:none;gap:5px;flex-wrap:wrap;margin:0 0 11px 0;">
@@ -12184,6 +12186,7 @@ var samYearFilter   = String(new Date().getFullYear());
 var samStatusFilter = "all";
 var samViewMode     = "list";
 var samChartMode    = "matrix";
+var samLastFiltered = [];
 var SAM_ZIEL        = 12;
 
 function samSort(mode) {{
@@ -12386,6 +12389,7 @@ function samRender(q) {{
 
   var prepared = samPrepareDrivers();
   if(!prepared.length) {{
+    samLastFiltered = [];
     if(statsEl) statsEl.innerHTML = "";
     content.innerHTML =
       "<div style='color:#64748b;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:34px;text-align:center;font-size:14px;line-height:1.55;'>" +
@@ -12474,6 +12478,9 @@ function samRender(q) {{
     filtered.sort(function(a,b) {{ return String(a.name||"").localeCompare(String(b.name||""),"de"); }});
   }}
 
+  // Für den Excel-Export genau die aktuell angezeigte Auswahl merken.
+  samLastFiltered = filtered.slice();
+
   var nDone = baseFiltered.filter(function(d){{return d._status==="done";}}).length;
   var nOk   = baseFiltered.filter(function(d){{return d._status==="ok";}}).length;
   var nWarn = baseFiltered.filter(function(d){{return d._status==="warn";}}).length;
@@ -12558,6 +12565,76 @@ function samRender(q) {{
   }}
   html += "</div>";
   content.innerHTML = html;
+}}
+
+function samExportExcel() {{
+  if(typeof XLSX === "undefined") {{
+    alert("Excel-Bibliothek nicht geladen. Bitte die Seite neu laden.");
+    return;
+  }}
+
+  var year = String(samYearFilter || new Date().getFullYear());
+  var rows = [];
+  (samLastFiltered || []).forEach(function(driver) {{
+    var entries = ((driver._byYear || {{}})[year] || []).slice();
+    entries.forEach(function(e) {{
+      var datumText = String(e.datum || "");
+      var dateMatch = datumText.match(/\d{{2}}\.\d{{2}}\.\d{{4}}/);
+      var kwMatch = datumText.match(/KW\s*(\d{{1,2}})/i);
+      var tag = String(e.tag || "Sa");
+      var art = tag === "So" ? "Sonntag bis 15 Uhr" :
+                (tag.indexOf("Fr") === 0 ? "Freitag ab 18 Uhr" : "Samstag");
+      var lkw = String(e.tour || "").replace(/^LKW\s*/i, "").trim();
+      rows.push({{
+        _iso: String(e.iso || ""),
+        Datum: dateMatch ? dateMatch[0] : datumText,
+        KW: kwMatch ? parseInt(kwMatch[1], 10) : "",
+        Einsatzart: art,
+        Fahrer: String(driver.name || ""),
+        Beginn: String(e.beginn || ""),
+        LKW: lkw
+      }});
+    }});
+  }});
+
+  rows.sort(function(a,b) {{
+    var d = String(a._iso).localeCompare(String(b._iso));
+    return d !== 0 ? d : String(a.Fahrer).localeCompare(String(b.Fahrer), "de");
+  }});
+
+  if(!rows.length) {{
+    alert("Für die aktuelle Auswahl sind keine Einsätze vorhanden.");
+    return;
+  }}
+
+  var headers = ["Datum", "KW", "Einsatzart", "Fahrer", "Beginn", "LKW"];
+  var data = [headers].concat(rows.map(function(r) {{
+    return [r.Datum, r.KW, r.Einsatzart, r.Fahrer, r.Beginn, r.LKW];
+  }}));
+  var ws = XLSX.utils.aoa_to_sheet(data);
+  ws["!cols"] = [
+    {{wch:12}}, {{wch:6}}, {{wch:21}}, {{wch:28}}, {{wch:14}}, {{wch:18}}
+  ];
+  ws["!autofilter"] = {{ref:"A1:F" + data.length}};
+
+  headers.forEach(function(_, idx) {{
+    var ref = XLSX.utils.encode_cell({{r:0,c:idx}});
+    if(ws[ref]) ws[ref].s = {{
+      font: {{bold:true,color:{{rgb:"FFFFFF"}}}},
+      fill: {{fgColor:{{rgb:"1B66B3"}}}},
+      alignment: {{horizontal:"center",vertical:"center"}}
+    }};
+  }});
+
+  for(var r=1; r<data.length; r++) {{
+    var kwRef = XLSX.utils.encode_cell({{r:r,c:1}});
+    if(ws[kwRef]) ws[kwRef].s = {{alignment:{{horizontal:"center"}}}};
+  }}
+
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Samstagseinsätze");
+  var suffix = samStatusFilter !== "all" ? "_" + samStatusFilter : "";
+  XLSX.writeFile(wb, "Samstagseinsaetze_" + year + suffix + ".xlsx");
 }}
 
 function samRenderCharts(drivers, selectedYear, soll, satTotal, satElapsed) {{
