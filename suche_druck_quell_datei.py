@@ -12625,9 +12625,9 @@ function samRenderMatrix(drivers, year, satTotal, satElapsed) {{
       var tags = list.map(function(e){{return String(e.tag||"Sa");}});
       var color = list.length > 1 ? "#0f766e" : (tags[0] === "So" ? "#d97706" : (tags[0].indexOf("Fr") === 0 ? "#7c3aed" : "#1b66b3"));
       var label = list.length > 1 ? String(list.length)+"×" : (tags[0] === "So" ? "So" : (tags[0].indexOf("Fr") === 0 ? "Fr" : "Sa"));
-      var title = driver.name + "\n" + list.map(function(e){{
+      var title = driver.name + "\\n" + list.map(function(e){{
         return String(e.tag||"Sa")+" · "+String(e.datum||"")+(e.beginn?" · "+e.beginn+" Uhr":"")+(e.tour?" · "+e.tour:"");
-      }}).join("\n");
+      }}).join("\\n");
       html += "<td title='"+samAttr(title)+"' style='width:39px;height:30px;background:"+rowBg+";border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;text-align:center;padding:2px;'>"+
         "<span style='display:inline-flex;align-items:center;justify-content:center;width:28px;height:22px;border-radius:4px;background:"+color+";color:#fff;font-size:8px;font-weight:950;box-shadow:0 1px 2px rgba(15,23,42,.15);'>"+label+"</span></td>";
     }});
