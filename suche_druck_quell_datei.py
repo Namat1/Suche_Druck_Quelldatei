@@ -20,8 +20,8 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-06-19-v37-schluesseldatei"
-EXTRA_CACHE_VERSION = "extra-parser-2026-06-12-v36-fullwidth"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-02-v38-samstagsauswertung"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-02-v38-samstagsauswertung"
 
 
 # =============================================================================
@@ -2933,138 +2933,7 @@ def generate_druck_html(up, logo_up, fcsb_file=None, lieferhinweis_csv=None) -> 
 # HTML KOMBINIEREN  →  app.html
 # =============================================================================
 
-def parse_samstag_excel(dateien: list) -> str:
-    """Verarbeitet mehrere Samstags-Excel-Dateien → JSON für SAM_DATA."""
-    import json as _json
-    from io import BytesIO
-    from datetime import datetime
-    from openpyxl import load_workbook
-
-    def ist_ausgeschlossen(nachname):
-        return is_excluded_driver(nachname)
-
-    gearbeitete_daten = {}  # (nachname, vorname) → [einsätze]
-    alle_fahrer = set()     # alle bekannten Fahrer aus Touren-Sheet
-
-    for datei in dateien:
-        try:
-            datei.seek(0)
-            wb = load_workbook(filename=BytesIO(datei.read()), data_only=True)
-            if "Aushang" not in wb.sheetnames:
-                continue
-            arbeitsdatum = wb["Aushang"].cell(row=2, column=15).value
-            if not arbeitsdatum:
-                continue
-            arbeitsdatum = arbeitsdatum.strftime("%d.%m.%Y") if hasattr(arbeitsdatum,"strftime") else str(arbeitsdatum)
-            parsed_date = datetime.strptime(arbeitsdatum, "%d.%m.%Y")
-            if parsed_date.year != datetime.now().year:
-                continue
-            kw = parsed_date.isocalendar()[1]
-            datum_kw = f"{arbeitsdatum} (KW{kw})"
-            is_saturday = parsed_date.weekday() == 5  # 5 = Samstag
-
-            datei.seek(0)
-            df = pd.read_excel(BytesIO(datei.read()), sheet_name="Touren", header=None, engine=EXCEL_READ_ENGINE)
-            df.columns = [f"Spalte_{i}" for i in range(len(df.columns))]
-
-            # Collect all drivers from the full Touren sheet (rows 5+)
-            df_all = df.iloc[5:].reset_index(drop=True)
-            for row in df_all.itertuples(index=False, name=None):
-                for name_idx, first_idx in ((3, 4), (6, 7)):
-                    n_raw = row[name_idx] if len(row) > name_idx else ""
-                    v_raw = row[first_idx] if len(row) > first_idx else ""
-                    n = str(n_raw).strip() if pd.notna(n_raw) else ""
-                    v = str(v_raw).strip() if pd.notna(v_raw) else ""
-                    if n and v and n not in ("0", "nan") and v not in ("0", "nan") and not ist_ausgeschlossen(n):
-                        alle_fahrer.add((n, v))
-
-            # Samstag, Sonntag (nur bis 15:00), oder Freitag (ab 18:00 → zählt als Sa)
-            is_sunday = parsed_date.weekday() == 6  # 6 = Sonntag
-            is_friday = parsed_date.weekday() == 4  # 4 = Freitag
-            if not is_saturday and not is_sunday and not is_friday:
-                continue
-
-            # Freitag-Dateien haben keinen 6001-Block → alle Tourenzeilen durchsuchen
-            if is_friday:
-                df_sat = df.iloc[5:].reset_index(drop=True)
-            else:
-                start = df[df["Spalte_0"] == 6001].index.min()
-                if pd.isna(start):
-                    continue
-                df_sat = df.loc[start:start+40]
-
-            def parse_time_minutes(val):
-                """Gibt Minuten seit Mitternacht zurück, oder None wenn nicht parsebar."""
-                try:
-                    if pd.isna(val): return None
-                except: pass
-                import datetime as _dt2
-                if isinstance(val, float) and val > 0:
-                    total_min = int(val * 1440)
-                    return total_min
-                if isinstance(val, (_dt2.datetime, pd.Timestamp)):
-                    return val.hour * 60 + val.minute
-                if isinstance(val, _dt2.time):
-                    return val.hour * 60 + val.minute
-                if isinstance(val, str):
-                    val = val.strip()
-                    if ":" in val:
-                        parts = val.split(":")
-                        try: return int(parts[0]) * 60 + int(parts[1])
-                        except: pass
-                return None
-
-            for row in df_sat.itertuples(index=False, name=None):
-                # Sonntagsfilter: nur Touren mit Startzeit < 15:00
-                if is_sunday:
-                    zeit_raw = row[8] if len(row) > 8 else None
-                    mins = parse_time_minutes(zeit_raw)
-                    if mins is None or mins >= 15 * 60:
-                        continue
-                # Freitagfilter: nur Touren mit Startzeit >= 18:00
-                if is_friday:
-                    zeit_raw = row[8] if len(row) > 8 else None
-                    mins = parse_time_minutes(zeit_raw)
-                    if mins is None or mins < 18 * 60:
-                        continue
-
-                paare = []
-                if len(row) > 4 and pd.notna(row[3]) and pd.notna(row[4]):
-                    paare.append((str(row[3]).strip(), str(row[4]).strip()))
-                if len(row) > 7 and pd.notna(row[6]) and pd.notna(row[7]):
-                    paare.append((str(row[6]).strip(), str(row[7]).strip()))
-                for nachname, vorname in paare:
-                    if ist_ausgeschlossen(nachname) or nachname == "0" or vorname == "0":
-                        continue
-                    tour = row[0] if len(row) > 0 else "zbv"
-                    if pd.isna(tour):
-                        tour = "zbv"
-                    tag_label = "So" if is_sunday else ("Fr→Sa" if is_friday else "Sa")
-                    key = (nachname, vorname)
-                    if key not in gearbeitete_daten:
-                        gearbeitete_daten[key] = []
-                    gearbeitete_daten[key].append({"datum": datum_kw, "tour": str(tour), "tag": tag_label})
-        except Exception as e:
-            st.warning(f"Fehler bei {datei.name}: {e}")
-            continue
-
-    # Merge: add all known drivers with 0 deployments if not already present
-    for key in alle_fahrer:
-        if key not in gearbeitete_daten:
-            gearbeitete_daten[key] = []
-
-    result = []
-    for (nachname, vorname), daten in sorted(gearbeitete_daten.items()):
-        result.append({
-            "name": f"{nachname}, {vorname}",
-            "nachname": nachname,
-            "vorname": vorname,
-            "einsaetze": len(daten),
-            "daten": daten,
-        })
-    return _json.dumps(result, ensure_ascii=False)
-
-
+# Die Sa-/So-Auswertung wird direkt aus TIMEREC_DATA aufgebaut.
 
 def parse_fahrer_excel(dateien: list) -> str:
     """Verarbeitet mehrere Touren-Excel-Dateien → JSON [{name, years:{year:{krank,urlaub,ausgleich,arbeit,arbeit_samstag,touren,eintraege:[]}}}]"""
@@ -7570,97 +7439,147 @@ function verstossPdfOne(name) {
         )
     instances_js = ",\n".join(inst_js_parts)
 
-    # Merge: build sam_json from TIMEREC (Tachograph) data as primary source
+    # Sa-/So-Auswertung ausschließlich aus tatsächlichen TIMEREC-Schichten aufbauen.
+    # Entscheidend ist immer der Anfangstag der Schicht. Touren-Excel ist hierfür
+    # bewusst keine Datenquelle, damit geplante und tatsächlich gefahrene Einsätze
+    # nicht vermischt werden.
     try:
         import json as _j
         import datetime as _dt2
 
         timerec = _j.loads(timerec_json) if timerec_json and timerec_json != "{}" else {}
-        fa_list = _j.loads(fa_json)
+        fa_list = _j.loads(fa_json) if fa_json else []
+        if not isinstance(timerec, dict):
+            timerec = {}
+        if not isinstance(fa_list, list):
+            fa_list = []
 
-        def _is_planung_driver(name):
-            return str(name or "").strip().lower() in ("unzugeordnet, planung", "planung, unzugeordnet")
+        def _sam_excluded_driver(name):
+            norm = str(name or "").strip().casefold()
+            if not norm:
+                return True
+            if norm in ("unzugeordnet, planung", "planung, unzugeordnet"):
+                return True
+            return any(str(ex or "").casefold() in norm for ex in EXCLUDED_DRIVER_NAMES)
 
-        def parse_mins(zeit_str):
-            if not zeit_str or zeit_str == "n.A.": return None
+        def _sam_parse_mins(zeit_str):
+            if not zeit_str or zeit_str == "n.A.":
+                return None
             try:
-                parts = zeit_str.strip().split(":")
+                parts = str(zeit_str).strip().split(":")
                 return int(parts[0]) * 60 + int(parts[1])
-            except: return None
+            except Exception:
+                return None
 
-        sam_by_name = {}
-        cur_year = _dt2.datetime.now().year
+        # Ohne Tachograph-Datei keine vermeintlichen Nullstände aus Planungsdaten
+        # erzeugen. Die Oberfläche zeigt dann einen klaren Upload-Hinweis.
+        if not timerec:
+            sam_json = "[]"
+        else:
+            sam_by_name = {}
+            sam_by_day = {}
+            sam_active_years = {}
+            current_year = _dt2.datetime.now().year
 
-        # Scan TIMEREC_DATA for Sa, Fr>=18:00, So<15:00
-        for driver_name, shifts in timerec.items():
-            if _is_planung_driver(driver_name):
-                continue
-            for s in shifts:
-                tag_str  = s.get("tag", "")       # "DD.MM.YYYY"
-                wd       = s.get("wochentag", "")  # "Mo"..."So"
-                beginn   = s.get("beginn", "")     # "HH:MM"
-                lkw      = s.get("lkw", "")
-
-                # Parse date
-                try:
-                    d_obj = _dt2.datetime.strptime(tag_str, "%d.%m.%Y")
-                except Exception:
-                    continue
-                if d_obj.year != cur_year:
-                    continue
-
-                # Filter: Sa, Fr ab 18:00, So vor 15:00
-                is_sa = (wd == "Sa")
-                mins  = parse_mins(beginn)
-                is_fr_abend = (wd == "Fr" and mins is not None and mins >= 18 * 60)
-                is_so_frueh = (wd == "So" and mins is not None and mins < 15 * 60)
-
-                if not is_sa and not is_fr_abend and not is_so_frueh:
-                    continue
-
-                kw = d_obj.isocalendar()[1]
-                datum_kw = f"{tag_str} (KW{kw})"
-                tag_label = "So" if is_so_frueh else ("Fr→Sa" if is_fr_abend else "Sa")
-                tour_display = lkw if lkw else ""
-
-                if driver_name not in sam_by_name:
-                    parts = driver_name.split(", ", 1)
-                    sam_by_name[driver_name] = {
-                        "name": driver_name,
-                        "nachname": parts[0] if len(parts) >= 1 else driver_name,
-                        "vorname":  parts[1] if len(parts) >= 2 else "",
-                        "einsaetze": 0,
-                        "daten": [],
-                    }
-                sam_by_name[driver_name]["daten"].append({
-                    "datum": datum_kw,
-                    "tour": tour_display,
-                    "tag": tag_label,
-                })
-
-        # Add all FA drivers with 0 deployments if missing
-        for fd in fa_list:
-            if _is_planung_driver(fd.get("name")):
-                continue
-            if fd["name"] not in sam_by_name:
-                parts = fd["name"].split(", ", 1)
-                sam_by_name[fd["name"]] = {
-                    "name": fd["name"],
-                    "nachname": parts[0] if len(parts) >= 1 else fd["name"],
-                    "vorname":  parts[1] if len(parts) >= 2 else "",
+            def _ensure_sam_driver(name):
+                if name in sam_by_name:
+                    return
+                parts = name.split(", ", 1)
+                sam_by_name[name] = {
+                    "name": name,
+                    "nachname": parts[0] if parts else name,
+                    "vorname": parts[1] if len(parts) > 1 else "",
                     "einsaetze": 0,
                     "daten": [],
+                    "aktive_jahre": [],
                 }
+                sam_by_day[name] = {}
+                sam_active_years[name] = set()
 
-        # Update einsaetze count
-        sam_list = list(sam_by_name.values())
-        for d in sam_list:
-            d["einsaetze"] = len(d["daten"])
+            # Sa immer, Freitag ab 18:00 als Fr→Sa, Sonntag bis einschließlich 15:00.
+            # Pro Fahrer und Anfangsdatum wird höchstens ein Einsatz gezählt.
+            # Alle Schichten markieren zugleich, in welchen Jahren ein Fahrer aktiv war.
+            for driver_name, shifts in timerec.items():
+                if _sam_excluded_driver(driver_name):
+                    continue
+                if not isinstance(shifts, list):
+                    continue
 
-        sam_list.sort(key=lambda x: x["name"])
-        sam_json = _j.dumps(sam_list, ensure_ascii=False)
+                name = str(driver_name).strip()
+                _ensure_sam_driver(name)
+
+                for s in shifts:
+                    if not isinstance(s, dict):
+                        continue
+                    tag_str = str(s.get("tag", "") or "").strip()       # Anfangstag DD.MM.YYYY
+                    wd      = str(s.get("wochentag", "") or "").strip() # Mo ... So
+                    beginn  = str(s.get("beginn", "") or "").strip()
+                    lkw     = str(s.get("lkw", "") or "").strip()
+
+                    try:
+                        d_obj = _dt2.datetime.strptime(tag_str, "%d.%m.%Y")
+                    except Exception:
+                        continue
+                    sam_active_years[name].add(d_obj.year)
+
+                    mins = _sam_parse_mins(beginn)
+                    is_sa = wd == "Sa"
+                    is_fr_abend = wd == "Fr" and mins is not None and mins >= 18 * 60
+                    is_so_frueh = wd == "So" and mins is not None and mins <= 15 * 60
+                    if not (is_sa or is_fr_abend or is_so_frueh):
+                        continue
+
+                    day_key = d_obj.strftime("%Y-%m-%d")
+                    kw = d_obj.isocalendar()[1]
+                    tag_label = "So" if is_so_frueh else ("Fr→Sa" if is_fr_abend else "Sa")
+                    day_map = sam_by_day[name]
+                    if day_key not in day_map:
+                        day_map[day_key] = {
+                            "datum": f"{tag_str} (KW{kw})",
+                            "tour": "",
+                            "tag": tag_label,
+                            "_lkw": set(),
+                        }
+                    if lkw and lkw.lower() not in ("nan", "none", "0"):
+                        day_map[day_key]["_lkw"].add(lkw)
+
+            # Fahrer aus der Fahrerliste ergänzen. Deren enthaltene Jahresdaten
+            # bestimmen, in welchen Jahren ein Nullstand sinnvoll angezeigt wird.
+            for fd in fa_list:
+                if not isinstance(fd, dict):
+                    continue
+                name = str(fd.get("name", "") or "").strip()
+                if _sam_excluded_driver(name):
+                    continue
+                _ensure_sam_driver(name)
+                years_obj = fd.get("years") if isinstance(fd.get("years"), dict) else {}
+                years_added = False
+                for yr in years_obj.keys():
+                    try:
+                        sam_active_years[name].add(int(yr))
+                        years_added = True
+                    except Exception:
+                        pass
+                if not years_added:
+                    sam_active_years[name].add(current_year)
+
+            sam_list = []
+            for name, driver in sam_by_name.items():
+                entries = []
+                for day_key in sorted(sam_by_day.get(name, {})):
+                    entry = sam_by_day[name][day_key]
+                    lkw_values = sorted(entry.pop("_lkw", set()))
+                    entry["tour"] = ("LKW " + ", ".join(lkw_values)) if lkw_values else ""
+                    entries.append(entry)
+                driver["daten"] = entries
+                driver["einsaetze"] = len(entries)
+                driver["aktive_jahre"] = sorted(sam_active_years.get(name, set()), reverse=True)
+                sam_list.append(driver)
+
+            sam_list.sort(key=lambda x: str(x.get("name", "")).casefold())
+            sam_json = _j.dumps(sam_list, ensure_ascii=False)
     except Exception:
-        pass
+        sam_json = "[]"
 
     sped_js_code = r"""
 // ── Spediteure (Tourenplan-Auswertung externer Speditionen) ──────────────────
@@ -10637,7 +10556,7 @@ iframe.active{{display:block}}
   <div id="panel-sam" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#e8ecf1;font-family:Segoe UI,Arial,sans-serif">
     <div style="max-width:1000px;margin:0 auto">
       <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128664; Sa + So Einsätze</h2>
-      <div style="display:inline-flex;align-items:center;gap:6px;margin-bottom:8px;background:#fffbeb;border:1px solid #e2e8f0;border-radius:4px;padding:5px 12px;font-size:12px;color:#92400e;">&#9888;&#65039; Ein Sonntagseinsatz wird nur als dieser gewertet bei einer Anfangszeit bis 15&nbsp;Uhr.</div>
+      <div style="display:inline-flex;align-items:center;gap:6px;margin-bottom:8px;background:#fffbeb;border:1px solid #e2e8f0;border-radius:4px;padding:5px 12px;font-size:12px;color:#92400e;line-height:1.35;">&#9888;&#65039; Grundlage sind die tatsächlichen Schichten aus der Tachograph-Datei. Gezählt wird der Anfangstag: Samstag immer, Freitag ab 18&nbsp;Uhr als Fr&#8594;Sa und Sonntag bis einschließlich 15&nbsp;Uhr.</div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <input id="sam-search" placeholder="Fahrer suchen..." oninput="samFilter(this.value)"
           style="flex:1;min-width:180px;max-width:280px;padding:7px 14px;border:2px solid #1b66b3;
@@ -12152,9 +12071,10 @@ function telRender(q) {{
   if(cnt) cnt.textContent = totalShown ? (totalShown + (totalShown === 1 ? " Kontakt" : " Kontakte")) : "";
 }}
 // ── Samstags Fahrer ───────────────────────────────────────────────────────────
-var samCurrentSort = "count"; // default: beim ersten Öffnen: viele Einsätze oben, wenige unten
-var samYearFilter  = String(new Date().getFullYear());
-var samStatusFilter = "all"; // Klick auf die farbigen Zähler filtert die Liste
+var samCurrentSort  = "count";
+var samYearFilter   = String(new Date().getFullYear());
+var samStatusFilter = "all";
+var SAM_ZIEL        = 12;
 
 function samSort(mode) {{
   samCurrentSort = mode;
@@ -12164,19 +12084,20 @@ function samSort(mode) {{
     btn.style.background = mode===m ? "#1b66b3" : "#fff";
     btn.style.color      = mode===m ? "#fff"    : "#1b66b3";
   }});
-  samRender(document.getElementById("sam-search").value);
+  samRender((document.getElementById("sam-search")||{{value:""}}).value);
 }}
 
 function samFilter(q) {{ samRender(q); }}
 
 function samYearChange(yr) {{
-  samYearFilter = yr;
-  samRender(document.getElementById("sam-search").value);
+  samYearFilter = String(yr || new Date().getFullYear());
+  samStatusFilter = "all";
+  samRender((document.getElementById("sam-search")||{{value:""}}).value);
 }}
 
 function samSetStatusFilter(status) {{
   samStatusFilter = status || "all";
-  samRender(document.getElementById("sam-search").value);
+  samRender((document.getElementById("sam-search")||{{value:""}}).value);
 }}
 
 function samStatBtn(status, html, bg, color, title) {{
@@ -12188,23 +12109,18 @@ function samStatBtn(status, html, bg, color, title) {{
     "box-shadow:"+(active?"0 0 0 2px rgba(15,23,42,.10) inset":"none")+";'>" + html + "</button>";
 }}
 
-// Count Saturdays from Jan 1 of a year up to (but not including) a given date
 function samSaturdaysElapsed(year) {{
   var today = new Date();
-  var start = new Date(year, 0, 1);
-  // find first saturday of year
-  var sat = new Date(start);
-  while(sat.getDay() !== 6) sat.setDate(sat.getDate()+1);
+  var d = new Date(year, 0, 1);
+  while(d.getDay() !== 6) d.setDate(d.getDate()+1);
   var count = 0;
-  var d = new Date(sat);
-  while(d <= today && d.getFullYear() === year) {{
+  while(d.getFullYear() === year && d <= today) {{
     count++;
     d.setDate(d.getDate()+7);
   }}
   return count;
 }}
 
-// Total Saturdays in a year
 function samTotalSaturdays(year) {{
   var count = 0;
   var d = new Date(year, 0, 1);
@@ -12214,9 +12130,8 @@ function samTotalSaturdays(year) {{
 }}
 
 function samParseYear(datum) {{
-  // "01.02.2026 (KW5)"  or  "Sa 01.02.2026 (KW5)"
-  var m = datum.match(/(\d{{2}}\.\d{{2}}\.(\d{{4}}))/);
-  return m ? parseInt(m[2]) : null;
+  var m = String(datum||"").match(/(\d{{2}}\.\d{{2}}\.(\d{{4}}))/);
+  return m ? parseInt(m[2],10) : null;
 }}
 
 function samEsc(v) {{
@@ -12229,166 +12144,154 @@ function samEsc(v) {{
 
 function samRender(q) {{
   q = (q||"").toLowerCase().trim();
+  var content = document.getElementById("sam-content");
+  var statsEl = document.getElementById("sam-stats");
+  if(!content) return;
+
   if(!SAM_DATA || !SAM_DATA.length) {{
-    document.getElementById("sam-content").innerHTML =
-      "<div style='color:#94a3b8;padding:40px;text-align:center;font-size:14px;'>" +
-      "Keine Daten vorhanden.<br>Bitte Samstags-Dateien in Streamlit hochladen.</div>";
+    if(statsEl) statsEl.innerHTML = "";
+    content.innerHTML =
+      "<div style='color:#64748b;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:34px;text-align:center;font-size:14px;line-height:1.55;'>" +
+      "Keine Tachograph-Schichten vorhanden.<br><b>Bitte unter Zusatzdateien die Datei timerecording_v3*.csv hochladen.</b></div>";
     return;
   }}
 
-  var today    = new Date();
-  var curYear  = today.getFullYear();
-  var satElapsed = samSaturdaysElapsed(curYear);
-  var satTotal   = samTotalSaturdays(curYear);
-  var soll       = Math.round(12 * satElapsed / satTotal); // expected by today
-  var ZIEL       = 12; // annual target
+  var today   = new Date();
+  var curYear = today.getFullYear();
 
-  // Build per-driver data, filtered by year
   var driverData = SAM_DATA.map(function(d) {{
-    // Group deployments by year
     var byYear = {{}};
     (d.daten||[]).forEach(function(e) {{
       var yr = samParseYear(e.datum||"");
       if(!yr) return;
-      if(!byYear[yr]) byYear[yr] = [];
-      byYear[yr].push(e);
+      var key = String(yr);
+      if(!byYear[key]) byYear[key] = [];
+      byYear[key].push(e);
     }});
-
-    // Deployments in current year
-    var curEinsaetze = (byYear[curYear]||[]).length;
-
-    // Status relative to today
-    var diff = curEinsaetze - soll;
-    var status; // "ok" | "warn" | "crit" | "done"
-    if(curEinsaetze >= ZIEL)        status = "done";
-    else if(diff >= 0)              status = "ok";
-    else if(diff >= -1)             status = "warn";
-    else                            status = "crit";
-
-    return Object.assign({{}}, d, {{
-      _byYear: byYear,
-      _curEinsaetze: curEinsaetze,
-      _status: status,
-      _diff: diff
-    }});
+    var activeYears = (d.aktive_jahre||[]).map(function(y){{ return String(y); }});
+    return Object.assign({{}}, d, {{_byYear:byYear, _activeYears:activeYears}});
   }});
 
-  // Year filter
-  var allYears = [];
+  // Verfügbare Jahre bestimmen; das aktuelle Jahr bleibt immer auswählbar.
+  var allYears = [String(curYear)];
   driverData.forEach(function(d) {{
     Object.keys(d._byYear).forEach(function(yr) {{
-      if(allYears.indexOf(yr)===-1) allYears.push(yr);
+      if(allYears.indexOf(yr) === -1) allYears.push(yr);
     }});
   }});
-  allYears.sort().reverse();
+  allYears.sort(function(a,b){{ return parseInt(b,10)-parseInt(a,10); }});
 
-  // Rebuild year-filter dropdown
+  if(allYears.indexOf(String(samYearFilter)) === -1) {{
+    samYearFilter = allYears.indexOf(String(curYear)) !== -1 ? String(curYear) : allYears[0];
+  }}
   var yrSel = document.getElementById("sam-year-sel");
   if(yrSel) {{
-    var curVal = yrSel.value;
-    var curYr = String(new Date().getFullYear());
     yrSel.innerHTML = allYears.map(function(y){{
-      return "<option value='"+y+"'"+(y==curVal?" selected":"")+">"+y+"</option>";
+      return "<option value='"+samEsc(y)+"'>"+samEsc(y)+"</option>";
     }}).join("");
-    // Default to current year if not already set
-    if(!curVal || curVal === "all") {{
-      if(allYears.indexOf(curYr) !== -1) {{ yrSel.value = curYr; samYearFilter = curYr; }}
-      else if(allYears.length) {{ yrSel.value = allYears[0]; samYearFilter = allYears[0]; }}
-    }}
+    yrSel.value = String(samYearFilter);
   }}
 
-  // Filter by search + year
-  var baseFiltered = driverData.filter(function(d) {{
-    if(q && !d.name.toLowerCase().includes(q)) return false;
-    if(samYearFilter !== "all") {{
-      // Always include drivers with 0 deployments (they have no year entries)
-      var hasYear = d._byYear[samYearFilter] && d._byYear[samYearFilter].length;
-      var hasNoDeployments = Object.keys(d._byYear).length === 0;
-      if(!hasYear && !hasNoDeployments) return false;
-    }}
-    return true;
+  var selectedYear = parseInt(samYearFilter,10) || curYear;
+  var satTotal = samTotalSaturdays(selectedYear);
+  var satElapsed;
+  if(selectedYear < curYear) satElapsed = satTotal;
+  else if(selectedYear > curYear) satElapsed = 0;
+  else satElapsed = samSaturdaysElapsed(selectedYear);
+
+  var soll = selectedYear < curYear
+    ? SAM_ZIEL
+    : (selectedYear > curYear ? 0 : Math.round(SAM_ZIEL * satElapsed / Math.max(1,satTotal)));
+  var sollText = selectedYear === curYear ? "Soll heute" : "Jahressoll";
+
+  driverData.forEach(function(d) {{
+    d._selectedCount = (d._byYear[String(selectedYear)]||[]).length;
+    var diff = d._selectedCount - soll;
+    if(d._selectedCount >= SAM_ZIEL) d._status = "done";
+    else if(diff >= 0)               d._status = "ok";
+    else if(diff >= -1)              d._status = "warn";
+    else                             d._status = "crit";
+    d._diff = diff;
   }});
 
-  // Klickbarer Statusfilter oben: Alle / Ziel erreicht / Im Soll / Leicht hinter / Rückstand
+  // Im gewählten Jahr nur Fahrer zeigen, die laut Tachograph/Fahrerliste aktiv waren.
+  // Innerhalb dieses Fahrerbestands bleiben auch echte Nullstände sichtbar.
+  var baseFiltered = driverData.filter(function(d) {{
+    if(d._activeYears.length && d._activeYears.indexOf(String(selectedYear)) === -1) return false;
+    return !q || String(d.name||"").toLowerCase().includes(q);
+  }});
   var filtered = baseFiltered.filter(function(d) {{
     return samStatusFilter === "all" || d._status === samStatusFilter;
   }});
 
-  // Sort
   var statusOrder = {{crit:0, warn:1, ok:2, done:3}};
   if(samCurrentSort === "status") {{
     filtered.sort(function(a,b) {{
       var sd = statusOrder[a._status] - statusOrder[b._status];
-      return sd !== 0 ? sd : a.name.localeCompare(b.name,"de");
+      return sd !== 0 ? sd : String(a.name||"").localeCompare(String(b.name||""),"de");
     }});
   }} else if(samCurrentSort === "count") {{
-    var sortYear = samYearFilter !== "all" ? samYearFilter : ""+curYear;
     filtered.sort(function(a,b) {{
-      var ac = (a._byYear[sortYear]||[]).length;
-      var bc = (b._byYear[sortYear]||[]).length;
-      return bc !== ac ? bc - ac : a.name.localeCompare(b.name,"de");
+      return b._selectedCount !== a._selectedCount
+        ? b._selectedCount - a._selectedCount
+        : String(a.name||"").localeCompare(String(b.name||""),"de");
     }});
   }} else {{
-    filtered.sort(function(a,b) {{ return a.name.localeCompare(b.name,"de"); }});
+    filtered.sort(function(a,b) {{ return String(a.name||"").localeCompare(String(b.name||""),"de"); }});
   }}
 
-  // Stats bar – klickbar: jeder farbige Zähler filtert die Liste darunter
   var nDone = baseFiltered.filter(function(d){{return d._status==="done";}}).length;
   var nOk   = baseFiltered.filter(function(d){{return d._status==="ok";}}).length;
   var nWarn = baseFiltered.filter(function(d){{return d._status==="warn";}}).length;
   var nCrit = baseFiltered.filter(function(d){{return d._status==="crit";}}).length;
 
-  var statsHtml =
+  if(statsEl) statsEl.innerHTML =
     "<div style='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;font-size:11px;'>" +
     samStatBtn("all", baseFiltered.length+" Fahrer", "#eef2f7", "#64748b", "Alle Fahrer anzeigen") +
     samStatBtn("done", "&#10003; Ziel erreicht: "+nDone, "#dcfce7", "#16a34a", "Nur Fahrer mit erreichtem Jahresziel anzeigen") +
     samStatBtn("ok", "&#8679; Im Soll: "+nOk, "#dbeafe", "#1b66b3", "Nur Fahrer im Soll anzeigen") +
-    samStatBtn("warn", "&#9888; Leicht hinter: "+nWarn, "#f1f5f9", "#d97706", "Nur Fahrer leicht hinter Soll anzeigen") +
-    samStatBtn("crit", "&#8679;&#8595; Rückstand: "+nCrit, "#fee2e2", "#dc2626", "Nur Fahrer mit Rückstand anzeigen") +
-    "<span style='margin-left:auto;color:#94a3b8;font-size:10px;'>Soll heute: <b style='color:#1b66b3;'>"+soll+"</b> / "+ZIEL+" &nbsp;("+satElapsed+" von "+satTotal+" Samstagen)</span>" +
-    "</div>";
-  document.getElementById("sam-stats").innerHTML = statsHtml;
-
-  // Ausklappbare Liste: farblich wie Status, zuerst nach Anzahl absteigend.
-  var html = "<div style='display:flex;flex-direction:column;gap:8px;'>";
+    samStatBtn("warn", "&#9888; Leicht hinter: "+nWarn, "#fef3c7", "#d97706", "Nur Fahrer leicht hinter Soll anzeigen") +
+    samStatBtn("crit", "&#8595; Rückstand: "+nCrit, "#fee2e2", "#dc2626", "Nur Fahrer mit Rückstand anzeigen") +
+    "<span style='margin-left:auto;color:#64748b;font-size:10px;'>"+sollText+": <b style='color:#1b66b3;'>"+soll+"</b> / "+SAM_ZIEL+
+      " &nbsp;("+satElapsed+" von "+satTotal+" Samstagen)</span></div>";
 
   var statusCfg = {{
-    done: {{ border:"#16a34a", bg:"#f0fdf4", badge:"#16a34a", soft:"#dcfce7", icon:"✓", label:"Jahresziel erreicht" }},
-    ok:   {{ border:"#1b66b3", bg:"#eff6ff", badge:"#1b66b3", soft:"#dbeafe", icon:"↑", label:"Im Soll" }},
-    warn: {{ border:"#d97706", bg:"#fffbeb", badge:"#d97706", soft:"#fef3c7", icon:"⚠", label:"Leicht hinter Soll" }},
-    crit: {{ border:"#dc2626", bg:"#fff1f2", badge:"#dc2626", soft:"#fee2e2", icon:"↓", label:"Rückstand" }}
+    done: {{border:"#16a34a",bg:"#f0fdf4",badge:"#16a34a",icon:"✓",label:"Jahresziel erreicht"}},
+    ok:   {{border:"#1b66b3",bg:"#eff6ff",badge:"#1b66b3",icon:"↑",label:"Im Soll"}},
+    warn: {{border:"#d97706",bg:"#fffbeb",badge:"#d97706",icon:"⚠",label:"Leicht hinter Soll"}},
+    crit: {{border:"#dc2626",bg:"#fff1f2",badge:"#dc2626",icon:"↓",label:"Rückstand"}}
   }};
 
+  var html = "<div style='display:flex;flex-direction:column;gap:8px;'>";
   filtered.forEach(function(d, idx) {{
     var cfg = statusCfg[d._status] || statusCfg.crit;
-    var yr  = samYearFilter !== "all" ? samYearFilter : ""+curYear;
-    var einsaetzeThisYear = (d._byYear[yr]||[]).length;
-    var pct = Math.min(100, Math.round(einsaetzeThisYear / ZIEL * 100));
-    var sollPct = Math.min(100, Math.round(soll / ZIEL * 100));
+    var einsaetzeThisYear = d._selectedCount;
+    var pct = Math.min(100, Math.round(einsaetzeThisYear / SAM_ZIEL * 100));
+    var sollPct = Math.min(100, Math.round(soll / SAM_ZIEL * 100));
 
-    var sortedDaten = (d._byYear[yr]||[]).slice().sort(function(a,b){{
-      var pa=(a.datum||"").match(/(\d{{2}})\.(\d{{2}})\.(\d{{4}})/);
-      var pb=(b.datum||"").match(/(\d{{2}})\.(\d{{2}})\.(\d{{4}})/);
+    var sortedDaten = (d._byYear[String(selectedYear)]||[]).slice().sort(function(a,b){{
+      var pa=String(a.datum||"").match(/(\d{{2}})\.(\d{{2}})\.(\d{{4}})/);
+      var pb=String(b.datum||"").match(/(\d{{2}})\.(\d{{2}})\.(\d{{4}})/);
       if(!pa||!pb) return 0;
       return new Date(pa[3],pa[2]-1,pa[1]) - new Date(pb[3],pb[2]-1,pb[1]);
     }});
 
     var datesHtml = sortedDaten.length ? sortedDaten.map(function(e) {{
-      var tourTxt = e.tour && e.tour !== "zbv" ? e.tour : "z.b.v.";
+      var infoTxt = String(e.tour||"").trim();
+      var infoHtml = infoTxt ? " <b style='color:#1b66b3;'>"+samEsc(infoTxt)+"</b>" : "";
       return "<span style='display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid #d8dee8;border-radius:5px;padding:4px 8px;margin:3px;font-size:10.5px;color:#334155;'>" +
-        "<b style='color:"+cfg.badge+";'>" + samEsc(e.tag||"Sa") + "</b> " + samEsc(e.datum||"") +
-        " <b style='color:#1b66b3;'>" + samEsc(tourTxt) + "</b></span>";
-    }}).join("") : "<span style='display:inline-block;color:#94a3b8;font-size:11px;padding:4px 0;'>Keine Einsätze im gewählten Jahr.</span>";
+        "<b style='color:"+cfg.badge+";'>"+samEsc(e.tag||"Sa")+"</b> "+samEsc(e.datum||"")+infoHtml+"</span>";
+    }}).join("") : "<span style='display:inline-block;color:#64748b;font-size:11px;padding:4px 0;'>Keine Einsätze im gewählten Jahr.</span>";
 
-    var otherYears = Object.keys(d._byYear).filter(function(y){{ return y !== yr; }}).sort().reverse();
+    var otherYears = Object.keys(d._byYear).filter(function(y){{ return y !== String(selectedYear); }}).sort().reverse();
     var prevHtml = "";
     if(otherYears.length) {{
       prevHtml = "<div style='margin-top:7px;display:flex;gap:4px;flex-wrap:wrap;'>";
       otherYears.forEach(function(y) {{
         var n = d._byYear[y].length;
-        var metTarget = n >= ZIEL;
-        prevHtml += "<span style='font-size:9px;padding:2px 7px;border-radius:5px;font-weight:800;" +
-          "background:"+(metTarget?"#dcfce7":"#fee2e2")+";color:"+(metTarget?"#16a34a":"#dc2626")+";'>" +
+        var metTarget = n >= SAM_ZIEL;
+        prevHtml += "<span style='font-size:9px;padding:2px 7px;border-radius:5px;font-weight:800;background:"+
+          (metTarget?"#dcfce7":"#fee2e2")+";color:"+(metTarget?"#16a34a":"#dc2626")+";'>"+
           samEsc(y)+": "+n+(metTarget?" ✓":" ✗")+"</span>";
       }});
       prevHtml += "</div>";
@@ -12398,32 +12301,25 @@ function samRender(q) {{
       "<div onclick='samToggle(this)' style='background:"+cfg.bg+";border:2px solid "+cfg.border+";border-left-width:8px;border-radius:6px;cursor:pointer;overflow:hidden;box-shadow:0 1px 4px rgba(15,23,42,.06);'>" +
         "<div style='display:grid;grid-template-columns:42px minmax(180px,1fr) 150px 130px 34px;gap:10px;align-items:center;padding:10px 12px;'>" +
           "<div style='font-size:12px;font-weight:900;color:"+cfg.badge+";'>#"+(idx+1)+"</div>" +
-          "<div style='min-width:0;'>" +
-            "<div style='font-weight:900;font-size:14px;color:#0b1220;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>"+samEsc(d.name)+"</div>" +
-            "<div style='display:inline-flex;align-items:center;gap:5px;margin-top:4px;background:"+cfg.badge+";color:#fff;border-radius:5px;padding:2px 8px;font-size:10px;font-weight:900;'>"+cfg.icon+" "+cfg.label+"</div>" +
-          "</div>" +
-          "<div style='min-width:120px;'>" +
-            "<div style='height:12px;background:#e4e9f0;border-radius:999px;position:relative;overflow:hidden;'>" +
-              "<div style='position:absolute;left:0;top:0;height:100%;width:"+pct+"%;background:"+cfg.badge+";border-radius:999px;'></div>" +
-              "<div style='position:absolute;left:"+sollPct+"%;top:0;width:2px;height:100%;background:#334155;opacity:.45;'></div>" +
-            "</div>" +
-            "<div style='margin-top:3px;font-size:9px;color:#64748b;font-weight:700;'>Soll heute: "+soll+" / Ziel: "+ZIEL+"</div>" +
-          "</div>" +
-          "<div style='text-align:right;'>" +
-            "<div style='font-size:26px;font-weight:950;color:"+cfg.badge+";line-height:1;'>"+einsaetzeThisYear+"</div>" +
-            "<div style='font-size:9px;color:#64748b;font-weight:800;'>Einsätze</div>" +
-          "</div>" +
-          "<div class='sam-arrow' style='font-size:18px;font-weight:900;color:"+cfg.badge+";text-align:right;'>⌄</div>" +
-        "</div>" +
+          "<div style='min-width:0;'><div style='font-weight:900;font-size:14px;color:#0b1220;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>"+samEsc(d.name)+"</div>" +
+            "<div style='display:inline-flex;align-items:center;gap:5px;margin-top:4px;background:"+cfg.badge+";color:#fff;border-radius:5px;padding:2px 8px;font-size:10px;font-weight:900;'>"+cfg.icon+" "+cfg.label+"</div></div>" +
+          "<div style='min-width:120px;'><div style='height:12px;background:#e4e9f0;border-radius:999px;position:relative;overflow:hidden;'>" +
+            "<div style='position:absolute;left:0;top:0;height:100%;width:"+pct+"%;background:"+cfg.badge+";border-radius:999px;'></div>" +
+            "<div style='position:absolute;left:"+sollPct+"%;top:0;width:2px;height:100%;background:#334155;opacity:.45;'></div></div>" +
+            "<div style='margin-top:3px;font-size:9px;color:#64748b;font-weight:700;'>"+sollText+": "+soll+" / Ziel: "+SAM_ZIEL+"</div></div>" +
+          "<div style='text-align:right;'><div style='font-size:26px;font-weight:950;color:"+cfg.badge+";line-height:1;'>"+einsaetzeThisYear+"</div>" +
+            "<div style='font-size:9px;color:#64748b;font-weight:800;'>Einsätze</div></div>" +
+          "<div class='sam-arrow' style='font-size:18px;font-weight:900;color:"+cfg.badge+";text-align:right;'>⌄</div></div>" +
         "<div class='sam-dates' style='display:none;background:rgba(255,255,255,.72);border-top:1px solid rgba(148,163,184,.35);padding:9px 12px 10px 64px;'>" +
-          "<div style='font-size:10px;text-transform:uppercase;letter-spacing:.35px;font-weight:900;color:#64748b;margin-bottom:5px;'>Einsätze im Jahr "+samEsc(yr)+"</div>" +
-          datesHtml + prevHtml +
-        "</div>" +
-      "</div>";
+          "<div style='font-size:10px;text-transform:uppercase;letter-spacing:.35px;font-weight:900;color:#64748b;margin-bottom:5px;'>Einsätze im Jahr "+samEsc(selectedYear)+"</div>" +
+          datesHtml + prevHtml + "</div></div>";
   }});
 
+  if(!filtered.length) {{
+    html += "<div style='background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:28px;text-align:center;color:#64748b;font-size:13px;'>Keine Fahrer für diesen Filter.</div>";
+  }}
   html += "</div>";
-  document.getElementById("sam-content").innerHTML = html;
+  content.innerHTML = html;
 }}
 
 function samToggle(el) {{
@@ -15973,21 +15869,19 @@ with tab_extra:
         )
 
         def _touren_summary(ups):
-            _sn  = len(json.loads(st.session_state.sam_json))
             _zd  = json.loads(st.session_state.zulage_json)
             _zns = sum(len(m["fahrer"]) for m in _zd.get("sonder",   []))
             _znf = sum(len(m["fahrer"]) for m in _zd.get("fuengers", []))
             _dkd = json.loads(st.session_state.drittkunden_json)
             _fan = len(json.loads(st.session_state.fa_json))
             _spd = json.loads(st.session_state.get("spediteure_json", '{"katalog":[],"fahrten":[]}'))
-            return (f"{len(ups)} Dateien: Samstag {_sn}, Sonder {_zns}, "
-                    f"Fuengers {_znf}, Drittkunden {len(_dkd)}, Fahrer {_fan}, "
+            return (f"{len(ups)} Dateien: Sonder {_zns}, Fuengers {_znf}, "
+                    f"Drittkunden {len(_dkd)}, Fahrer {_fan}, "
                     f"Spediteure {len(_spd.get('katalog', []))} ({len(_spd.get('fahrten', []))} Fahrten)")
         _extra_multi_upload(
-            "Touren-Dateien (Samstag, Zulagen, Drittkunden, Fahrerauswertung)",
+            "Touren-Dateien (Zulagen, Drittkunden, Fahrerauswertung)",
             ["xlsx"], "touren",
             {
-                "sam_json":         parse_samstag_excel,
                 "zulage_json":      parse_zulage_excel,
                 "drittkunden_json": parse_drittkunden_excel,
                 "fa_json":          parse_fahrer_excel,
