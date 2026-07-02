@@ -20,8 +20,8 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-02-v38-samstagsauswertung"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-02-v38-samstagsauswertung"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-02-v40-samstags-nur-timerecordings"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-02-v40-samstags-nur-timerecordings"
 
 
 # =============================================================================
@@ -7448,11 +7448,8 @@ function verstossPdfOne(name) {
         import datetime as _dt2
 
         timerec = _j.loads(timerec_json) if timerec_json and timerec_json != "{}" else {}
-        fa_list = _j.loads(fa_json) if fa_json else []
         if not isinstance(timerec, dict):
             timerec = {}
-        if not isinstance(fa_list, list):
-            fa_list = []
 
         def _sam_excluded_driver(name):
             norm = str(name or "").strip().casefold()
@@ -7476,25 +7473,78 @@ function verstossPdfOne(name) {
         if not timerec:
             sam_json = "[]"
         else:
-            sam_by_name = {}
-            sam_by_day = {}
-            sam_active_years = {}
-            current_year = _dt2.datetime.now().year
+            # Fahrer werden nicht mehr über den unbearbeiteten Anzeigetext,
+            # sondern über einen stabilen Namensschlüssel zusammengeführt.
+            # Damit werden z. B. "Drews, Siegfried", "DREWS,Siegfried",
+            # "Siegfried Drews" und Varianten mit doppelten Leerzeichen
+            # als dieselbe Person erkannt.
+            sam_by_name = {}       # canonical_key -> Fahrerobjekt
+            sam_by_day = {}        # canonical_key -> {YYYY-MM-DD -> Einsatz}
+            sam_active_years = {}  # canonical_key -> set(Jahr)
 
-            def _ensure_sam_driver(name):
-                if name in sam_by_name:
+            def _sam_clean_name(value):
+                s = str(value or "").replace("\xa0", " ").strip()
+                s = re.sub(r"\s+", " ", s)
+                s = re.sub(r"\s*,\s*", ", ", s)
+                return s.strip(" ,;-")
+
+            def _sam_name_key(value):
+                """Reihenfolge-, Groß-/Kleinschreibungs- und Umlaut-unabhängiger Schlüssel."""
+                s = _sam_clean_name(value).casefold()
+                if not s:
+                    return ""
+                # Deutsche Schreibvarianten vereinheitlichen, bevor Akzente entfernt werden.
+                s = (s.replace("ä", "ae").replace("ö", "oe")
+                       .replace("ü", "ue").replace("ß", "ss"))
+                s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+                # Reine Personalnummern/Zusatznummern beeinflussen die Personenzuordnung nicht.
+                tokens = [t for t in re.findall(r"[a-z0-9]+", s) if not t.isdigit()]
+                return "|".join(sorted(tokens))
+
+            def _sam_display_score(value):
+                """Bevorzugt die gut lesbare Schreibweise 'Nachname, Vorname'."""
+                s = _sam_clean_name(value)
+                score = 0
+                if "," in s:
+                    score += 100
+                if s and not s.isupper() and not s.islower():
+                    score += 20
+                score += min(len(s), 60) / 100.0
+                return score
+
+            def _sam_update_display(driver, candidate):
+                candidate = _sam_clean_name(candidate)
+                if not candidate:
                     return
-                parts = name.split(", ", 1)
-                sam_by_name[name] = {
-                    "name": name,
-                    "nachname": parts[0] if parts else name,
-                    "vorname": parts[1] if len(parts) > 1 else "",
-                    "einsaetze": 0,
-                    "daten": [],
-                    "aktive_jahre": [],
-                }
-                sam_by_day[name] = {}
-                sam_active_years[name] = set()
+                current = driver.get("name", "")
+                if not current or _sam_display_score(candidate) > _sam_display_score(current):
+                    driver["name"] = candidate
+                    parts = candidate.split(",", 1)
+                    if len(parts) > 1:
+                        driver["nachname"] = parts[0].strip()
+                        driver["vorname"] = parts[1].strip()
+                    else:
+                        driver["nachname"] = candidate
+                        driver["vorname"] = ""
+
+            def _ensure_sam_driver(raw_name):
+                display_name = _sam_clean_name(raw_name)
+                key = _sam_name_key(display_name)
+                if not key:
+                    return ""
+                if key not in sam_by_name:
+                    sam_by_name[key] = {
+                        "name": display_name,
+                        "nachname": "",
+                        "vorname": "",
+                        "einsaetze": 0,
+                        "daten": [],
+                        "aktive_jahre": [],
+                    }
+                    sam_by_day[key] = {}
+                    sam_active_years[key] = set()
+                _sam_update_display(sam_by_name[key], display_name)
+                return key
 
             # Sa immer, Freitag ab 18:00 als Fr→Sa, Sonntag bis einschließlich 15:00.
             # Pro Fahrer und Anfangsdatum wird höchstens ein Einsatz gezählt.
@@ -7505,8 +7555,10 @@ function verstossPdfOne(name) {
                 if not isinstance(shifts, list):
                     continue
 
-                name = str(driver_name).strip()
-                _ensure_sam_driver(name)
+                name = _sam_clean_name(driver_name)
+                driver_key = _ensure_sam_driver(name)
+                if not driver_key:
+                    continue
 
                 for s in shifts:
                     if not isinstance(s, dict):
@@ -7520,7 +7572,7 @@ function verstossPdfOne(name) {
                         d_obj = _dt2.datetime.strptime(tag_str, "%d.%m.%Y")
                     except Exception:
                         continue
-                    sam_active_years[name].add(d_obj.year)
+                    sam_active_years[driver_key].add(d_obj.year)
 
                     mins = _sam_parse_mins(beginn)
                     is_sa = wd == "Sa"
@@ -7532,7 +7584,7 @@ function verstossPdfOne(name) {
                     day_key = d_obj.strftime("%Y-%m-%d")
                     kw = d_obj.isocalendar()[1]
                     tag_label = "So" if is_so_frueh else ("Fr→Sa" if is_fr_abend else "Sa")
-                    day_map = sam_by_day[name]
+                    day_map = sam_by_day[driver_key]
                     if day_key not in day_map:
                         day_map[day_key] = {
                             "datum": f"{tag_str} (KW{kw})",
@@ -7543,37 +7595,21 @@ function verstossPdfOne(name) {
                     if lkw and lkw.lower() not in ("nan", "none", "0"):
                         day_map[day_key]["_lkw"].add(lkw)
 
-            # Fahrer aus der Fahrerliste ergänzen. Deren enthaltene Jahresdaten
-            # bestimmen, in welchen Jahren ein Nullstand sinnvoll angezeigt wird.
-            for fd in fa_list:
-                if not isinstance(fd, dict):
-                    continue
-                name = str(fd.get("name", "") or "").strip()
-                if _sam_excluded_driver(name):
-                    continue
-                _ensure_sam_driver(name)
-                years_obj = fd.get("years") if isinstance(fd.get("years"), dict) else {}
-                years_added = False
-                for yr in years_obj.keys():
-                    try:
-                        sam_active_years[name].add(int(yr))
-                        years_added = True
-                    except Exception:
-                        pass
-                if not years_added:
-                    sam_active_years[name].add(current_year)
+            # Keine Ergänzung aus Fahrerliste, Tourenplanung oder anderen Quellen.
+            # Fahrerbasis, aktive Jahre und Einsätze stammen ausschließlich aus
+            # den tatsächlich geladenen Timerecording-Schichten.
 
             sam_list = []
-            for name, driver in sam_by_name.items():
+            for driver_key, driver in sam_by_name.items():
                 entries = []
-                for day_key in sorted(sam_by_day.get(name, {})):
-                    entry = sam_by_day[name][day_key]
+                for day_key in sorted(sam_by_day.get(driver_key, {})):
+                    entry = sam_by_day[driver_key][day_key]
                     lkw_values = sorted(entry.pop("_lkw", set()))
                     entry["tour"] = ("LKW " + ", ".join(lkw_values)) if lkw_values else ""
                     entries.append(entry)
                 driver["daten"] = entries
                 driver["einsaetze"] = len(entries)
-                driver["aktive_jahre"] = sorted(sam_active_years.get(name, set()), reverse=True)
+                driver["aktive_jahre"] = sorted(sam_active_years.get(driver_key, set()), reverse=True)
                 sam_list.append(driver)
 
             sam_list.sort(key=lambda x: str(x.get("name", "")).casefold())
