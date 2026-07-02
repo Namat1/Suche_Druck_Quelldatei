@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-02-v43-samstags-matrix-vollbreite"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-02-v44-hinweis-fahrerkarte"
 EXTRA_CACHE_VERSION = "extra-parser-2026-07-02-v43-samstags-matrix-vollbreite"
 
 
@@ -10649,7 +10649,7 @@ iframe.active{{display:block}}
   <div id="panel-sam" style="display:none;flex:1;overflow-y:auto;padding:14px;background:#e8ecf1;font-family:Segoe UI,Arial,sans-serif">
     <div style="width:100%;max-width:none;margin:0">
       <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128664; Sa + So Einsätze</h2>
-      <div style="display:inline-flex;align-items:center;gap:6px;margin-bottom:9px;background:#fffbeb;border:1px solid #e2e8f0;border-radius:4px;padding:5px 12px;font-size:12px;color:#92400e;line-height:1.35;">&#9888;&#65039; Grundlage sind ausschließlich die tatsächlichen Schichten aus <b>timerecording_v3</b>. Die Zuordnung erfolgt primär über die MA-Nummer. Gezählt wird der Anfangstag: Samstag immer, Freitag ab 18&nbsp;Uhr als Fr&#8594;Sa und Sonntag bis einschließlich 15&nbsp;Uhr.</div>
+      <div style="display:inline-flex;align-items:flex-start;gap:6px;margin-bottom:9px;background:#fffbeb;border:1px solid #e2e8f0;border-radius:4px;padding:7px 12px;font-size:12px;color:#92400e;line-height:1.45;"><span>&#9888;&#65039;</span><span>Grundlage sind ausschließlich die tatsächlichen Schichten von der Fahrerkarte. Hofdienste sind NICHT berücksichtigt.<br><br>Die Zuordnung erfolgt primär über die MA-Nummer. Gezählt wird der Anfangstag: Samstag immer, Freitag ab 18&nbsp;Uhr als Fr&#8594;Sa und Sonntag bis einschließlich 15&nbsp;Uhr.</span></div>
 
       <div style="display:flex;gap:6px;margin:0 0 10px 0;flex-wrap:wrap;">
         <button id="sam-view-list" onclick="samSetView('list')"
