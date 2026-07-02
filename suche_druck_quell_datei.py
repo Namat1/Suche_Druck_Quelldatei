@@ -20,7 +20,7 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-02-v45-sam-grafik-extra-button"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-02-v46-sam-graph-dropdown"
 EXTRA_CACHE_VERSION = "extra-parser-2026-07-02-v43-samstags-matrix-vollbreite"
 
 
@@ -10363,8 +10363,12 @@ iframe.active{{display:block}}
     </button>
     <div class="dd-menu" id="ddmenu-verstoss"></div>
   </div>
-  <button class="nav-btn" id="btn-sam" onclick="showArea('sam')">&#128664; Sa + So Einsätze</button>
-  <button class="nav-btn" id="btn-sam-graph" onclick="showArea('sam_graph')">&#128202; Grafische Auswertung</button>
+  <div class="nav-dd" id="dd-sam">
+    <button class="nav-dd-btn" id="btn-sam" onclick="ddToggle('sam',event)">
+      &#128664; Sa + So Einsätze <span class="dd-arrow">&#9660;</span>
+    </button>
+    <div class="dd-menu" id="ddmenu-sam"></div>
+  </div>
   <div class="nav-dd" id="dd-fa">
     <button class="nav-dd-btn" id="btn-fa" onclick="ddToggle('fa',event)">
       &#128101; Fahrerauswertung <span class="dd-arrow">&#9660;</span>
@@ -11085,6 +11089,24 @@ async function loadInst(i) {{
   if(currentArea === "wa_rhythm" && typeof waInitRhythm === "function") {{ waInitRhythm(); if(_wr) _wr.dataset.loaded="1"; }}
 }}
 
+function buildSamDdMenu() {{
+  var menu = document.getElementById("ddmenu-sam");
+  if(!menu) return;
+  var items = [
+    {{ id: "sam", label: "Liste" }},
+    {{ id: "sam_graph", label: "Graph" }}
+  ];
+  menu.innerHTML = items.map(function(it){{
+    var active = (currentArea === it.id) ? " active" : "";
+    return "<div class='dd-item" + active + "' data-area='" + it.id + "' onclick='ddSelectSam(this.dataset.area)'>" + it.label + "</div>";
+  }}).join("");
+}}
+
+function ddSelectSam(area) {{
+  showArea(area);
+  document.querySelectorAll(".nav-dd").forEach(function(d){{ d.classList.remove("open"); }});
+}}
+
 function buildDdMenu(area) {{
   var menu = document.getElementById("ddmenu-"+area);
   if(!menu) return;
@@ -11108,6 +11130,7 @@ function ddToggle(area, e) {{
   document.querySelectorAll(".nav-dd").forEach(function(d){{d.classList.remove("open");}});
   if(!wasOpen) {{
     if(area === "verstoss") buildVerstossDdMenu();
+    else if(area === "sam") buildSamDdMenu();
     else if(area === "sped") buildSpedDdMenu();
     else if(area === "infos") buildInfosDdMenu();
     else if(area === "vz") buildVzDdMenu();
@@ -11160,11 +11183,10 @@ function showArea(s) {{
   // Telefonliste-Button
   var telBtn = document.getElementById("btn-tel");
   if(telBtn) telBtn.className = "nav-btn" + (s==="tel"?" active":"");
-  // Samstags-Buttons
+  // Sa + So Einsätze (Dropdown: Liste + Graph)
   var samBtn = document.getElementById("btn-sam");
-  if(samBtn) samBtn.className = "nav-btn" + (s==="sam"?" active":"");
-  var samGraphBtn = document.getElementById("btn-sam-graph");
-  if(samGraphBtn) samGraphBtn.className = "nav-btn" + (s==="sam_graph"?" active":"");
+  if(samBtn) samBtn.className = "nav-dd-btn" + ((s==="sam" || s==="sam_graph")?" active":"");
+  if(typeof buildSamDdMenu === "function") buildSamDdMenu();
   // Fahrerauswertung-Button (Dropdown: Schichten + Fahrerbewertung)
   var faBtn = document.getElementById("btn-fa");
   if(faBtn) faBtn.className = "nav-dd-btn" + ((s==="fa" || s==="fa_bewertung")?" active":"");
@@ -11211,7 +11233,7 @@ function showArea(s) {{
     samViewMode = s === "sam_graph" ? "charts" : "list";
     var samTitle = document.getElementById("sam-panel-title");
     if(samTitle) samTitle.innerHTML = s === "sam_graph"
-      ? "&#128202; Grafische Auswertung – Sa + So Einsätze"
+      ? "&#128202; Graph – Sa + So Einsätze"
       : "&#128664; Sa + So Einsätze";
     var samSortBtns = document.getElementById("sam-list-sort-buttons");
     var samChartTabs = document.getElementById("sam-chart-tabs");
