@@ -20,8 +20,8 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-02-v40-samstags-nur-timerecordings"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-02-v40-samstags-nur-timerecordings"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-02-v41-samstags-grafik-ma-id"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-02-v41-samstags-grafik-ma-id"
 
 
 # =============================================================================
@@ -4029,6 +4029,8 @@ def parse_timerecording_csv(uploaded_file) -> str:
     idx_dauer  = col(["schichtdauer"])
     idx_profil = col(["arbeitszeit nach arbeitszeitprofil"])
     idx_lkw    = col(["fahrzeuge", "terminal"])
+    idx_card   = col(["fahrerschlüssel", "fahrerschluessel", "driver card", "kartennummer"])
+    idx_ma     = col(["ma-nummer", "ma nummer", "personalnummer", "mitarbeiternummer"])
 
     if idx_person < 0 or idx_beg < 0:
         return "{}"
@@ -4075,8 +4077,14 @@ def parse_timerecording_csv(uploaded_file) -> str:
         dauer  = fmt_duration(r[idx_dauer])  if 0 <= idx_dauer  < len(r) else ""
         profil = fmt_duration(r[idx_profil]) if 0 <= idx_profil < len(r) else ""
         lkw    = (r[idx_lkw]    or "").strip() if 0 <= idx_lkw    < len(r) else ""
+        card   = (r[idx_card]   or "").strip() if 0 <= idx_card   < len(r) else ""
+        ma_nr  = (r[idx_ma]     or "").strip() if 0 <= idx_ma     < len(r) else ""
         if lkw.lower() in ("nan", "none"):
             lkw = ""
+        if card.lower() in ("nan", "none", "0"):
+            card = ""
+        if ma_nr.lower() in ("nan", "none", "0"):
+            ma_nr = ""
 
         if not beg_d:
             continue
@@ -4102,6 +4110,8 @@ def parse_timerecording_csv(uploaded_file) -> str:
             "schichtdauer": dauer,
             "profil": profil,
             "lkw": lkw,
+            "fahrerschluessel": card,
+            "ma_nummer": ma_nr,
             "_sort": sort_key,
         }
         by_driver.setdefault(name, []).append(entry)
@@ -7473,31 +7483,38 @@ function verstossPdfOne(name) {
         if not timerec:
             sam_json = "[]"
         else:
-            # Fahrer werden nicht mehr über den unbearbeiteten Anzeigetext,
-            # sondern über einen stabilen Namensschlüssel zusammengeführt.
-            # Damit werden z. B. "Drews, Siegfried", "DREWS,Siegfried",
-            # "Siegfried Drews" und Varianten mit doppelten Leerzeichen
-            # als dieselbe Person erkannt.
-            sam_by_name = {}       # canonical_key -> Fahrerobjekt
-            sam_by_day = {}        # canonical_key -> {YYYY-MM-DD -> Einsatz}
-            sam_active_years = {}  # canonical_key -> set(Jahr)
+            # Fahrer werden über die eindeutigen Kennungen der Timerecording-Datei
+            # zusammengeführt. Primär gilt die MA-Nummer. Falls sie fehlt, wird die
+            # Fahrerkartennummer verwendet; erst danach dient der bereinigte Name als
+            # Fallback. Damit werden auch Schreibvarianten wie „Vassili“/„Vasilli“
+            # korrekt derselben Person zugeordnet, sofern die MA-Nummer identisch ist.
+            sam_by_name = {}       # person_key -> Fahrerobjekt
+            sam_by_day = {}        # person_key -> {YYYY-MM-DD -> Einsatz}
+            sam_active_years = {}  # person_key -> set(Jahr)
 
             def _sam_clean_name(value):
-                s = str(value or "").replace("\xa0", " ").strip()
-                s = re.sub(r"\s+", " ", s)
+                s = str(value or "").replace("\xa0", " ")
+                # Unsichtbare Unicode-Zeichen entfernen, die optisch gleiche Namen
+                # sonst technisch unterschiedlich machen würden.
+                s = re.sub(r"[\u200b-\u200f\u202a-\u202e\u2060\ufeff]", "", s)
+                s = re.sub(r"\s+", " ", s).strip()
                 s = re.sub(r"\s*,\s*", ", ", s)
                 return s.strip(" ,;-")
+
+            def _sam_id(value):
+                s = str(value or "").strip()
+                if s.casefold() in ("", "nan", "none", "0"):
+                    return ""
+                return re.sub(r"\s+", "", s)
 
             def _sam_name_key(value):
                 """Reihenfolge-, Groß-/Kleinschreibungs- und Umlaut-unabhängiger Schlüssel."""
                 s = _sam_clean_name(value).casefold()
                 if not s:
                     return ""
-                # Deutsche Schreibvarianten vereinheitlichen, bevor Akzente entfernt werden.
                 s = (s.replace("ä", "ae").replace("ö", "oe")
                        .replace("ü", "ue").replace("ß", "ss"))
                 s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
-                # Reine Personalnummern/Zusatznummern beeinflussen die Personenzuordnung nicht.
                 tokens = [t for t in re.findall(r"[a-z0-9]+", s) if not t.isdigit()]
                 return "|".join(sorted(tokens))
 
@@ -7527,13 +7544,48 @@ function verstossPdfOne(name) {
                         driver["nachname"] = candidate
                         driver["vorname"] = ""
 
-            def _ensure_sam_driver(raw_name):
+            # Zuordnungshilfen aus der kompletten Timerecording-Datei bilden.
+            # Eine neue Fahrerkarte derselben Person bleibt über die MA-Nummer verbunden.
+            name_to_ma = {}
+            card_to_ma = {}
+            for raw_name, shifts in timerec.items():
+                if not isinstance(shifts, list):
+                    continue
+                clean_name = _sam_clean_name(raw_name)
+                ma_values = set()
+                for shift in shifts:
+                    if not isinstance(shift, dict):
+                        continue
+                    ma_val = _sam_id(shift.get("ma_nummer", ""))
+                    card_val = _sam_id(shift.get("fahrerschluessel", ""))
+                    if ma_val:
+                        ma_values.add(ma_val)
+                        if card_val:
+                            card_to_ma[card_val] = ma_val
+                if len(ma_values) == 1:
+                    name_to_ma[_sam_name_key(clean_name)] = next(iter(ma_values))
+
+            def _sam_person_key(raw_name, shift):
+                ma_val = _sam_id((shift or {}).get("ma_nummer", ""))
+                card_val = _sam_id((shift or {}).get("fahrerschluessel", ""))
+                name_key = _sam_name_key(raw_name)
+                if ma_val:
+                    return "ma:" + ma_val
+                if card_val and card_val in card_to_ma:
+                    return "ma:" + card_to_ma[card_val]
+                if name_key and name_key in name_to_ma:
+                    return "ma:" + name_to_ma[name_key]
+                if card_val:
+                    return "card:" + card_val
+                return "name:" + name_key if name_key else ""
+
+            def _ensure_sam_driver(raw_name, person_key):
                 display_name = _sam_clean_name(raw_name)
-                key = _sam_name_key(display_name)
-                if not key:
+                if not person_key:
                     return ""
-                if key not in sam_by_name:
-                    sam_by_name[key] = {
+                if person_key not in sam_by_name:
+                    sam_by_name[person_key] = {
+                        "person_key": person_key,
                         "name": display_name,
                         "nachname": "",
                         "vorname": "",
@@ -7541,14 +7593,15 @@ function verstossPdfOne(name) {
                         "daten": [],
                         "aktive_jahre": [],
                     }
-                    sam_by_day[key] = {}
-                    sam_active_years[key] = set()
-                _sam_update_display(sam_by_name[key], display_name)
-                return key
+                    sam_by_day[person_key] = {}
+                    sam_active_years[person_key] = set()
+                _sam_update_display(sam_by_name[person_key], display_name)
+                return person_key
 
             # Sa immer, Freitag ab 18:00 als Fr→Sa, Sonntag bis einschließlich 15:00.
             # Pro Fahrer und Anfangsdatum wird höchstens ein Einsatz gezählt.
-            # Alle Schichten markieren zugleich, in welchen Jahren ein Fahrer aktiv war.
+            # Fahrerbasis, aktive Jahre und Einsätze stammen ausschließlich aus
+            # den tatsächlich geladenen Timerecording-Schichten.
             for driver_name, shifts in timerec.items():
                 if _sam_excluded_driver(driver_name):
                     continue
@@ -7556,17 +7609,18 @@ function verstossPdfOne(name) {
                     continue
 
                 name = _sam_clean_name(driver_name)
-                driver_key = _ensure_sam_driver(name)
-                if not driver_key:
-                    continue
-
-                for s in shifts:
-                    if not isinstance(s, dict):
+                for shift in shifts:
+                    if not isinstance(shift, dict):
                         continue
-                    tag_str = str(s.get("tag", "") or "").strip()       # Anfangstag DD.MM.YYYY
-                    wd      = str(s.get("wochentag", "") or "").strip() # Mo ... So
-                    beginn  = str(s.get("beginn", "") or "").strip()
-                    lkw     = str(s.get("lkw", "") or "").strip()
+                    person_key = _sam_person_key(name, shift)
+                    driver_key = _ensure_sam_driver(name, person_key)
+                    if not driver_key:
+                        continue
+
+                    tag_str = str(shift.get("tag", "") or "").strip()       # Anfangstag DD.MM.YYYY
+                    wd      = str(shift.get("wochentag", "") or "").strip() # Mo ... So
+                    beginn  = str(shift.get("beginn", "") or "").strip()
+                    lkw     = str(shift.get("lkw", "") or "").strip()
 
                     try:
                         d_obj = _dt2.datetime.strptime(tag_str, "%d.%m.%Y")
@@ -7587,17 +7641,18 @@ function verstossPdfOne(name) {
                     day_map = sam_by_day[driver_key]
                     if day_key not in day_map:
                         day_map[day_key] = {
+                            "iso": day_key,
                             "datum": f"{tag_str} (KW{kw})",
                             "tour": "",
                             "tag": tag_label,
+                            "beginn": beginn,
                             "_lkw": set(),
+                            "_starts": set(),
                         }
+                    if beginn:
+                        day_map[day_key]["_starts"].add(beginn)
                     if lkw and lkw.lower() not in ("nan", "none", "0"):
                         day_map[day_key]["_lkw"].add(lkw)
-
-            # Keine Ergänzung aus Fahrerliste, Tourenplanung oder anderen Quellen.
-            # Fahrerbasis, aktive Jahre und Einsätze stammen ausschließlich aus
-            # den tatsächlich geladenen Timerecording-Schichten.
 
             sam_list = []
             for driver_key, driver in sam_by_name.items():
@@ -7605,6 +7660,8 @@ function verstossPdfOne(name) {
                 for day_key in sorted(sam_by_day.get(driver_key, {})):
                     entry = sam_by_day[driver_key][day_key]
                     lkw_values = sorted(entry.pop("_lkw", set()))
+                    start_values = sorted(entry.pop("_starts", set()))
+                    entry["beginn"] = ", ".join(start_values) if start_values else entry.get("beginn", "")
                     entry["tour"] = ("LKW " + ", ".join(lkw_values)) if lkw_values else ""
                     entries.append(entry)
                 driver["daten"] = entries
@@ -10590,18 +10647,26 @@ iframe.active{{display:block}}
   </div>
 
   <div id="panel-sam" style="display:none;flex:1;overflow-y:auto;padding:30px;background:#e8ecf1;font-family:Segoe UI,Arial,sans-serif">
-    <div style="max-width:1000px;margin:0 auto">
+    <div style="max-width:1480px;margin:0 auto">
       <h2 style="color:#1b66b3;font-size:18px;font-weight:900;margin:0 0 4px 0">&#128664; Sa + So Einsätze</h2>
-      <div style="display:inline-flex;align-items:center;gap:6px;margin-bottom:8px;background:#fffbeb;border:1px solid #e2e8f0;border-radius:4px;padding:5px 12px;font-size:12px;color:#92400e;line-height:1.35;">&#9888;&#65039; Grundlage sind die tatsächlichen Schichten aus der Tachograph-Datei. Gezählt wird der Anfangstag: Samstag immer, Freitag ab 18&nbsp;Uhr als Fr&#8594;Sa und Sonntag bis einschließlich 15&nbsp;Uhr.</div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <div style="display:inline-flex;align-items:center;gap:6px;margin-bottom:9px;background:#fffbeb;border:1px solid #e2e8f0;border-radius:4px;padding:5px 12px;font-size:12px;color:#92400e;line-height:1.35;">&#9888;&#65039; Grundlage sind ausschließlich die tatsächlichen Schichten aus <b>timerecording_v3</b>. Die Zuordnung erfolgt primär über die MA-Nummer. Gezählt wird der Anfangstag: Samstag immer, Freitag ab 18&nbsp;Uhr als Fr&#8594;Sa und Sonntag bis einschließlich 15&nbsp;Uhr.</div>
+
+      <div style="display:flex;gap:6px;margin:0 0 10px 0;flex-wrap:wrap;">
+        <button id="sam-view-list" onclick="samSetView('list')"
+          style="padding:7px 14px;border:2px solid #1b66b3;border-radius:5px;background:#1b66b3;color:#fff;font-size:11.5px;font-weight:800;cursor:pointer;font-family:inherit;">&#9776; Liste</button>
+        <button id="sam-view-charts" onclick="samSetView('charts')"
+          style="padding:7px 14px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11.5px;font-weight:800;cursor:pointer;font-family:inherit;">&#128202; Grafische Auswertung</button>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <input id="sam-search" placeholder="Fahrer suchen..." oninput="samFilter(this.value)"
           style="flex:1;min-width:180px;max-width:280px;padding:7px 14px;border:2px solid #1b66b3;
                  border-radius:5px;font-size:13px;font-family:inherit;outline:none">
         <select id="sam-year-sel" onchange="samYearChange(this.value)"
           style="padding:7px 12px;border:2px solid #1b66b3;border-radius:5px;font-size:12px;font-weight:700;
                  color:#1b66b3;cursor:pointer;font-family:inherit;outline:none;background:#fff;">
-          </select>
-        <div style="display:flex;gap:5px;">
+        </select>
+        <div id="sam-list-sort-buttons" style="display:flex;gap:5px;">
           <button onclick="samSort('status')" id="sam-sort-status"
             style="padding:6px 12px;border:2px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">
             Status &#8593;
@@ -10616,6 +10681,13 @@ iframe.active{{display:block}}
           </button>
         </div>
       </div>
+
+      <div id="sam-chart-tabs" style="display:none;gap:5px;flex-wrap:wrap;margin:0 0 11px 0;">
+        <button id="sam-chart-matrix" onclick="samSetChartMode('matrix')" style="padding:6px 11px;border:1px solid #1b66b3;border-radius:5px;background:#1b66b3;color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">Einsatzmatrix</button>
+        <button id="sam-chart-drivers" onclick="samSetChartMode('drivers')" style="padding:6px 11px;border:1px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">Einsätze je Fahrer</button>
+        <button id="sam-chart-months" onclick="samSetChartMode('months')" style="padding:6px 11px;border:1px solid #1b66b3;border-radius:5px;background:#fff;color:#1b66b3;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">Monatsverteilung</button>
+      </div>
+
       <div id="sam-stats" style="margin-bottom:12px;"></div>
       <div id="sam-content"></div>
     </div>
@@ -12110,6 +12182,8 @@ function telRender(q) {{
 var samCurrentSort  = "count";
 var samYearFilter   = String(new Date().getFullYear());
 var samStatusFilter = "all";
+var samViewMode     = "list";
+var samChartMode    = "matrix";
 var SAM_ZIEL        = 12;
 
 function samSort(mode) {{
@@ -12133,6 +12207,36 @@ function samYearChange(yr) {{
 
 function samSetStatusFilter(status) {{
   samStatusFilter = status || "all";
+  samRender((document.getElementById("sam-search")||{{value:""}}).value);
+}}
+
+function samSetView(mode) {{
+  samViewMode = mode === "charts" ? "charts" : "list";
+  var listBtn = document.getElementById("sam-view-list");
+  var chartBtn = document.getElementById("sam-view-charts");
+  if(listBtn) {{
+    listBtn.style.background = samViewMode === "list" ? "#1b66b3" : "#fff";
+    listBtn.style.color = samViewMode === "list" ? "#fff" : "#1b66b3";
+  }}
+  if(chartBtn) {{
+    chartBtn.style.background = samViewMode === "charts" ? "#1b66b3" : "#fff";
+    chartBtn.style.color = samViewMode === "charts" ? "#fff" : "#1b66b3";
+  }}
+  var sortBtns = document.getElementById("sam-list-sort-buttons");
+  var chartTabs = document.getElementById("sam-chart-tabs");
+  if(sortBtns) sortBtns.style.display = samViewMode === "list" ? "flex" : "none";
+  if(chartTabs) chartTabs.style.display = samViewMode === "charts" ? "flex" : "none";
+  samRender((document.getElementById("sam-search")||{{value:""}}).value);
+}}
+
+function samSetChartMode(mode) {{
+  samChartMode = ["matrix","drivers","months"].indexOf(mode) >= 0 ? mode : "matrix";
+  ["matrix","drivers","months"].forEach(function(m) {{
+    var btn = document.getElementById("sam-chart-"+m);
+    if(!btn) return;
+    btn.style.background = samChartMode === m ? "#1b66b3" : "#fff";
+    btn.style.color = samChartMode === m ? "#fff" : "#1b66b3";
+  }});
   samRender((document.getElementById("sam-search")||{{value:""}}).value);
 }}
 
@@ -12178,13 +12282,110 @@ function samEsc(v) {{
     .replace(/"/g, "&quot;");
 }}
 
+function samAttr(v) {{
+  return samEsc(v).replace(/'/g, "&#39;");
+}}
+
+function samNameKey(v) {{
+  var s = String(v||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  s = s.replace(/ß/g,"ss").replace(/[^a-z0-9]+/g," ").trim();
+  return s.split(/\s+/).filter(Boolean).sort().join("|");
+}}
+
+function samMergeText(a, b) {{
+  var parts = [];
+  String(a||"").split(/\s*,\s*/).concat(String(b||"").split(/\s*,\s*/)).forEach(function(x) {{
+    x = x.trim();
+    if(x && parts.indexOf(x) === -1) parts.push(x);
+  }});
+  return parts.join(", ");
+}}
+
+function samPrepareDrivers() {{
+  var merged = {{}};
+  (SAM_DATA||[]).forEach(function(d) {{
+    var key = String(d.person_key||"").trim();
+    if(!key) key = "name:" + samNameKey(d.name||"");
+    if(!key || key === "name:") return;
+    if(!merged[key]) {{
+      merged[key] = {{
+        person_key:key,
+        name:String(d.name||"").trim(),
+        nachname:d.nachname||"",
+        vorname:d.vorname||"",
+        daten:[],
+        aktive_jahre:[]
+      }};
+    }}
+    var out = merged[key];
+    if(String(d.name||"").trim().length > String(out.name||"").trim().length) out.name = String(d.name||"").trim();
+    (d.aktive_jahre||[]).forEach(function(y) {{
+      y = String(y);
+      if(out.aktive_jahre.indexOf(y) === -1) out.aktive_jahre.push(y);
+    }});
+    var eventMap = out._eventMap || (out._eventMap = {{}});
+    (d.daten||[]).forEach(function(e) {{
+      var eventKey = String(e.iso||"") + "|" + String(e.tag||"") + "|" + String(e.datum||"");
+      if(!eventMap[eventKey]) {{
+        eventMap[eventKey] = Object.assign({{}}, e);
+        out.daten.push(eventMap[eventKey]);
+      }} else {{
+        eventMap[eventKey].tour = samMergeText(eventMap[eventKey].tour, e.tour);
+        eventMap[eventKey].beginn = samMergeText(eventMap[eventKey].beginn, e.beginn);
+      }}
+    }});
+  }});
+  return Object.keys(merged).map(function(k) {{
+    var d = merged[k];
+    delete d._eventMap;
+    d.aktive_jahre.sort().reverse();
+    d.daten.sort(function(a,b) {{ return String(a.iso||a.datum||"").localeCompare(String(b.iso||b.datum||"")); }});
+    return d;
+  }});
+}}
+
+function samDateFromEntry(e) {{
+  var iso = String((e||{{}}).iso||"");
+  var m = iso.match(/^(\d{{4}})-(\d{{2}})-(\d{{2}})$/);
+  if(m) return new Date(parseInt(m[1],10),parseInt(m[2],10)-1,parseInt(m[3],10));
+  m = String((e||{{}}).datum||"").match(/(\d{{2}})\.(\d{{2}})\.(\d{{4}})/);
+  return m ? new Date(parseInt(m[3],10),parseInt(m[2],10)-1,parseInt(m[1],10)) : null;
+}}
+
+function samISODate(d) {{
+  if(!d) return "";
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}}
+
+function samShortDate(d) {{
+  return String(d.getDate()).padStart(2,"0")+"."+String(d.getMonth()+1).padStart(2,"0")+".";
+}}
+
+function samISOWeek(d) {{
+  var x = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  var day = x.getUTCDay() || 7;
+  x.setUTCDate(x.getUTCDate() + 4 - day);
+  var y0 = new Date(Date.UTC(x.getUTCFullYear(),0,1));
+  return Math.ceil((((x-y0)/86400000)+1)/7);
+}}
+
+function samWeekendSaturday(e) {{
+  var d = samDateFromEntry(e);
+  if(!d) return null;
+  var tag = String(e.tag||"");
+  if(tag === "Fr→Sa" || tag === "Fr->Sa") d.setDate(d.getDate()+1);
+  else if(tag === "So") d.setDate(d.getDate()-1);
+  return d;
+}}
+
 function samRender(q) {{
   q = (q||"").toLowerCase().trim();
   var content = document.getElementById("sam-content");
   var statsEl = document.getElementById("sam-stats");
   if(!content) return;
 
-  if(!SAM_DATA || !SAM_DATA.length) {{
+  var prepared = samPrepareDrivers();
+  if(!prepared.length) {{
     if(statsEl) statsEl.innerHTML = "";
     content.innerHTML =
       "<div style='color:#64748b;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:34px;text-align:center;font-size:14px;line-height:1.55;'>" +
@@ -12195,10 +12396,10 @@ function samRender(q) {{
   var today   = new Date();
   var curYear = today.getFullYear();
 
-  var driverData = SAM_DATA.map(function(d) {{
+  var driverData = prepared.map(function(d) {{
     var byYear = {{}};
     (d.daten||[]).forEach(function(e) {{
-      var yr = samParseYear(e.datum||"");
+      var yr = samParseYear(e.datum||"") || (samDateFromEntry(e)||{{getFullYear:function(){{return null;}}}}).getFullYear();
       if(!yr) return;
       var key = String(yr);
       if(!byYear[key]) byYear[key] = [];
@@ -12208,11 +12409,10 @@ function samRender(q) {{
     return Object.assign({{}}, d, {{_byYear:byYear, _activeYears:activeYears}});
   }});
 
-  // Verfügbare Jahre bestimmen; das aktuelle Jahr bleibt immer auswählbar.
   var allYears = [String(curYear)];
   driverData.forEach(function(d) {{
-    Object.keys(d._byYear).forEach(function(yr) {{
-      if(allYears.indexOf(yr) === -1) allYears.push(yr);
+    Object.keys(d._byYear).concat(d._activeYears||[]).forEach(function(yr) {{
+      if(allYears.indexOf(String(yr)) === -1) allYears.push(String(yr));
     }});
   }});
   allYears.sort(function(a,b){{ return parseInt(b,10)-parseInt(a,10); }});
@@ -12250,8 +12450,6 @@ function samRender(q) {{
     d._diff = diff;
   }});
 
-  // Im gewählten Jahr nur Fahrer zeigen, die laut Tachograph/Fahrerliste aktiv waren.
-  // Innerhalb dieses Fahrerbestands bleiben auch echte Nullstände sichtbar.
   var baseFiltered = driverData.filter(function(d) {{
     if(d._activeYears.length && d._activeYears.indexOf(String(selectedYear)) === -1) return false;
     return !q || String(d.name||"").toLowerCase().includes(q);
@@ -12291,6 +12489,11 @@ function samRender(q) {{
     "<span style='margin-left:auto;color:#64748b;font-size:10px;'>"+sollText+": <b style='color:#1b66b3;'>"+soll+"</b> / "+SAM_ZIEL+
       " &nbsp;("+satElapsed+" von "+satTotal+" Samstagen)</span></div>";
 
+  if(samViewMode === "charts") {{
+    samRenderCharts(filtered, selectedYear, soll, satTotal, satElapsed);
+    return;
+  }}
+
   var statusCfg = {{
     done: {{border:"#16a34a",bg:"#f0fdf4",badge:"#16a34a",icon:"✓",label:"Jahresziel erreicht"}},
     ok:   {{border:"#1b66b3",bg:"#eff6ff",badge:"#1b66b3",icon:"↑",label:"Im Soll"}},
@@ -12306,15 +12509,14 @@ function samRender(q) {{
     var sollPct = Math.min(100, Math.round(soll / SAM_ZIEL * 100));
 
     var sortedDaten = (d._byYear[String(selectedYear)]||[]).slice().sort(function(a,b){{
-      var pa=String(a.datum||"").match(/(\d{{2}})\.(\d{{2}})\.(\d{{4}})/);
-      var pb=String(b.datum||"").match(/(\d{{2}})\.(\d{{2}})\.(\d{{4}})/);
-      if(!pa||!pb) return 0;
-      return new Date(pa[3],pa[2]-1,pa[1]) - new Date(pb[3],pb[2]-1,pb[1]);
+      return String(a.iso||a.datum||"").localeCompare(String(b.iso||b.datum||""));
     }});
 
     var datesHtml = sortedDaten.length ? sortedDaten.map(function(e) {{
       var infoTxt = String(e.tour||"").trim();
+      var startTxt = String(e.beginn||"").trim();
       var infoHtml = infoTxt ? " <b style='color:#1b66b3;'>"+samEsc(infoTxt)+"</b>" : "";
+      if(startTxt) infoHtml += " <span style='color:#64748b;'>"+samEsc(startTxt)+" Uhr</span>";
       return "<span style='display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid #d8dee8;border-radius:5px;padding:4px 8px;margin:3px;font-size:10.5px;color:#334155;'>" +
         "<b style='color:"+cfg.badge+";'>"+samEsc(e.tag||"Sa")+"</b> "+samEsc(e.datum||"")+infoHtml+"</span>";
     }}).join("") : "<span style='display:inline-block;color:#64748b;font-size:11px;padding:4px 0;'>Keine Einsätze im gewählten Jahr.</span>";
@@ -12358,6 +12560,153 @@ function samRender(q) {{
   content.innerHTML = html;
 }}
 
+function samRenderCharts(drivers, selectedYear, soll, satTotal, satElapsed) {{
+  if(samChartMode === "drivers") return samRenderDriverBars(drivers, selectedYear, soll);
+  if(samChartMode === "months") return samRenderMonths(drivers, selectedYear);
+  return samRenderMatrix(drivers, selectedYear, satTotal, satElapsed);
+}}
+
+function samLegend() {{
+  return "<div style='display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:10px;font-weight:800;color:#475569;'>"+
+    "<span><i style='display:inline-block;width:11px;height:11px;border-radius:3px;background:#7c3aed;margin-right:4px;vertical-align:-1px;'></i>Fr→Sa</span>"+
+    "<span><i style='display:inline-block;width:11px;height:11px;border-radius:3px;background:#1b66b3;margin-right:4px;vertical-align:-1px;'></i>Samstag</span>"+
+    "<span><i style='display:inline-block;width:11px;height:11px;border-radius:3px;background:#d97706;margin-right:4px;vertical-align:-1px;'></i>Sonntag</span>"+
+    "<span><i style='display:inline-block;width:11px;height:11px;border-radius:3px;background:#0f766e;margin-right:4px;vertical-align:-1px;'></i>mehrere Einsätze</span>"+
+    "</div>";
+}}
+
+function samRenderMatrix(drivers, year, satTotal, satElapsed) {{
+  var content = document.getElementById("sam-content");
+  if(!content) return;
+  var sats = [];
+  var d = new Date(year,0,1);
+  while(d.getDay() !== 6) d.setDate(d.getDate()+1);
+  while(d.getFullYear() === year) {{ sats.push(new Date(d)); d.setDate(d.getDate()+7); }}
+
+  var html = "<div style='background:#fff;border:1px solid #cbd5e1;border-radius:7px;box-shadow:0 1px 5px rgba(15,23,42,.06);overflow:hidden;'>"+
+    "<div style='display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;padding:11px 13px;border-bottom:1px solid #e2e8f0;background:#f8fafc;'>"+
+      "<div><div style='font-size:14px;font-weight:900;color:#0f172a;'>Einsatzmatrix "+samEsc(year)+"</div>"+
+      "<div style='font-size:10.5px;color:#64748b;margin-top:2px;'>Zeile = Fahrer, Spalte = Wochenende. Mit der Maus über ein Feld fahren, um Datum, Uhrzeit und LKW zu sehen.</div></div>"+
+      samLegend()+"</div>";
+
+  if(!drivers.length) {{
+    content.innerHTML = html + "<div style='padding:30px;text-align:center;color:#64748b;'>Keine Fahrer für diesen Filter.</div></div>";
+    return;
+  }}
+
+  html += "<div style='overflow:auto;max-height:68vh;'>"+
+    "<table style='border-collapse:separate;border-spacing:0;table-layout:fixed;min-width:"+(210+sats.length*39)+"px;width:max-content;font-size:9px;'>"+
+    "<thead><tr><th style='position:sticky;left:0;top:0;z-index:5;width:210px;min-width:210px;background:#e2e8f0;border-right:2px solid #94a3b8;border-bottom:1px solid #94a3b8;padding:7px 9px;text-align:left;font-size:10px;color:#334155;'>Fahrer</th>";
+  sats.forEach(function(s, idx) {{
+    var future = year === new Date().getFullYear() && idx >= satElapsed;
+    html += "<th title='Samstag, "+samAttr(samShortDate(s)+year)+"' style='position:sticky;top:0;z-index:3;width:39px;min-width:39px;max-width:39px;background:"+(future?"#f8fafc":"#e2e8f0")+";border-right:1px solid #cbd5e1;border-bottom:1px solid #94a3b8;padding:4px 1px;text-align:center;color:"+(future?"#94a3b8":"#334155")+";'>"+
+      "<div style='font-size:8px;font-weight:900;'>KW"+samISOWeek(s)+"</div><div style='font-size:7.5px;'>"+samShortDate(s)+"</div></th>";
+  }});
+  html += "<th style='position:sticky;right:0;top:0;z-index:5;width:54px;min-width:54px;background:#e2e8f0;border-left:2px solid #94a3b8;border-bottom:1px solid #94a3b8;text-align:center;color:#334155;'>Σ</th></tr></thead><tbody>";
+
+  drivers.slice().sort(function(a,b){{return String(a.name||"").localeCompare(String(b.name||""),"de");}}).forEach(function(driver, rowIdx) {{
+    var weekendMap = {{}};
+    var entries = driver._byYear[String(year)]||[];
+    entries.forEach(function(e) {{
+      var sat = samWeekendSaturday(e);
+      if(!sat || sat.getFullYear() !== year) return;
+      var key = samISODate(sat);
+      if(!weekendMap[key]) weekendMap[key] = [];
+      weekendMap[key].push(e);
+    }});
+    var rowBg = rowIdx%2 ? "#f8fafc" : "#fff";
+    html += "<tr><td style='position:sticky;left:0;z-index:2;width:210px;max-width:210px;background:"+rowBg+";border-right:2px solid #94a3b8;border-bottom:1px solid #e2e8f0;padding:6px 9px;font-size:10.5px;font-weight:800;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' title='"+samAttr(driver.name)+"'>"+samEsc(driver.name)+"</td>";
+    sats.forEach(function(s) {{
+      var list = weekendMap[samISODate(s)]||[];
+      if(!list.length) {{
+        html += "<td style='width:39px;height:30px;background:"+rowBg+";border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;text-align:center;color:#cbd5e1;'>·</td>";
+        return;
+      }}
+      var tags = list.map(function(e){{return String(e.tag||"Sa");}});
+      var color = list.length > 1 ? "#0f766e" : (tags[0] === "So" ? "#d97706" : (tags[0].indexOf("Fr") === 0 ? "#7c3aed" : "#1b66b3"));
+      var label = list.length > 1 ? String(list.length)+"×" : (tags[0] === "So" ? "So" : (tags[0].indexOf("Fr") === 0 ? "Fr" : "Sa"));
+      var title = driver.name + "\n" + list.map(function(e){{
+        return String(e.tag||"Sa")+" · "+String(e.datum||"")+(e.beginn?" · "+e.beginn+" Uhr":"")+(e.tour?" · "+e.tour:"");
+      }}).join("\n");
+      html += "<td title='"+samAttr(title)+"' style='width:39px;height:30px;background:"+rowBg+";border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;text-align:center;padding:2px;'>"+
+        "<span style='display:inline-flex;align-items:center;justify-content:center;width:28px;height:22px;border-radius:4px;background:"+color+";color:#fff;font-size:8px;font-weight:950;box-shadow:0 1px 2px rgba(15,23,42,.15);'>"+label+"</span></td>";
+    }});
+    html += "<td style='position:sticky;right:0;z-index:2;width:54px;background:"+rowBg+";border-left:2px solid #94a3b8;border-bottom:1px solid #e2e8f0;text-align:center;font-size:12px;font-weight:950;color:#1b66b3;'>"+entries.length+"</td></tr>";
+  }});
+  html += "</tbody></table></div></div>";
+  content.innerHTML = html;
+}}
+
+function samRenderDriverBars(drivers, year, soll) {{
+  var content = document.getElementById("sam-content");
+  if(!content) return;
+  if(!drivers.length) {{
+    content.innerHTML = "<div style='background:#fff;border:1px solid #cbd5e1;border-radius:7px;padding:30px;text-align:center;color:#64748b;'>Keine Fahrer für diesen Filter.</div>";
+    return;
+  }}
+  var list = drivers.slice().sort(function(a,b){{return b._selectedCount-a._selectedCount || String(a.name).localeCompare(String(b.name),"de");}});
+  var maxVal = Math.max.apply(null, list.map(function(d){{return d._selectedCount;}}).concat([SAM_ZIEL,1]));
+  var html = "<div style='background:#fff;border:1px solid #cbd5e1;border-radius:7px;padding:13px;box-shadow:0 1px 5px rgba(15,23,42,.06);'>"+
+    "<div style='display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:13px;'>"+
+    "<div><div style='font-size:14px;font-weight:900;color:#0f172a;'>Einsätze je Fahrer "+samEsc(year)+"</div><div style='font-size:10.5px;color:#64748b;margin-top:2px;'>Gestapelt nach Einsatzart; die dunkle Markierung zeigt das Jahresziel "+SAM_ZIEL+".</div></div>"+samLegend()+"</div>";
+  list.forEach(function(d) {{
+    var entries = d._byYear[String(year)]||[];
+    var fr=0,sa=0,so=0;
+    entries.forEach(function(e){{var t=String(e.tag||"Sa"); if(t==="So")so++; else if(t.indexOf("Fr")===0)fr++; else sa++;}});
+    var frPct=fr/maxVal*100, saPct=sa/maxVal*100, soPct=so/maxVal*100, zielPct=SAM_ZIEL/maxVal*100;
+    html += "<div style='display:grid;grid-template-columns:minmax(170px,260px) minmax(280px,1fr) 52px;gap:10px;align-items:center;padding:7px 4px;border-top:1px solid #eef2f7;'>"+
+      "<div style='font-size:11.5px;font-weight:850;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' title='"+samAttr(d.name)+"'>"+samEsc(d.name)+"</div>"+
+      "<div><div style='height:18px;background:#eef2f7;border-radius:4px;position:relative;overflow:hidden;display:flex;'>"+
+        "<span title='Fr→Sa: "+fr+"' style='height:100%;width:"+frPct+"%;background:#7c3aed;'></span>"+
+        "<span title='Samstag: "+sa+"' style='height:100%;width:"+saPct+"%;background:#1b66b3;'></span>"+
+        "<span title='Sonntag: "+so+"' style='height:100%;width:"+soPct+"%;background:#d97706;'></span>"+
+        "<i style='position:absolute;left:"+zielPct+"%;top:0;width:2px;height:100%;background:#0f172a;opacity:.65;'></i>"+
+      "</div><div style='display:flex;gap:8px;margin-top:2px;font-size:8.5px;color:#64748b;font-weight:700;'><span>Fr "+fr+"</span><span>Sa "+sa+"</span><span>So "+so+"</span><span style='margin-left:auto;'>Soll aktuell "+soll+"</span></div></div>"+
+      "<div style='font-size:20px;font-weight:950;text-align:right;color:"+(entries.length>=SAM_ZIEL?"#16a34a":"#1b66b3")+";'>"+entries.length+"</div></div>";
+  }});
+  html += "</div>";
+  content.innerHTML = html;
+}}
+
+function samRenderMonths(drivers, year) {{
+  var content = document.getElementById("sam-content");
+  if(!content) return;
+  var months = Array.from({{length:12}},function(){{return {{fr:0,sa:0,so:0,total:0,drivers:{{}}}};}});
+  drivers.forEach(function(d) {{
+    (d._byYear[String(year)]||[]).forEach(function(e) {{
+      var dt = samDateFromEntry(e); if(!dt) return;
+      var m = months[dt.getMonth()];
+      var t = String(e.tag||"Sa");
+      if(t === "So") m.so++; else if(t.indexOf("Fr")===0) m.fr++; else m.sa++;
+      m.total++;
+      m.drivers[d.person_key||d.name] = 1;
+    }});
+  }});
+  var maxVal = Math.max.apply(null, months.map(function(m){{return m.total;}}).concat([1]));
+  var names = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
+  var html = "<div style='background:#fff;border:1px solid #cbd5e1;border-radius:7px;padding:13px;box-shadow:0 1px 5px rgba(15,23,42,.06);'>"+
+    "<div style='display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px;'>"+
+    "<div><div style='font-size:14px;font-weight:900;color:#0f172a;'>Monatsverteilung "+samEsc(year)+"</div><div style='font-size:10.5px;color:#64748b;margin-top:2px;'>Anzahl aller Einsätze der aktuell gefilterten Fahrer pro Monat.</div></div>"+samLegend()+"</div>"+
+    "<div style='height:310px;display:flex;align-items:flex-end;gap:8px;border-left:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1;padding:14px 10px 0 10px;background:linear-gradient(to top,#f8fafc,#fff);'>";
+  months.forEach(function(m,idx) {{
+    var h = Math.round(m.total/maxVal*245);
+    var hFr = m.total ? Math.round(h*m.fr/m.total) : 0;
+    var hSa = m.total ? Math.round(h*m.sa/m.total) : 0;
+    var hSo = Math.max(0,h-hFr-hSa);
+    var title = names[idx]+" "+year+": "+m.total+" Einsätze · "+Object.keys(m.drivers).length+" Fahrer · Fr "+m.fr+" · Sa "+m.sa+" · So "+m.so;
+    html += "<div title='"+samAttr(title)+"' style='flex:1;min-width:48px;height:285px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;'>"+
+      "<div style='font-size:11px;font-weight:950;color:#0f172a;margin-bottom:4px;'>"+m.total+"</div>"+
+      "<div style='width:min(42px,80%);height:"+h+"px;min-height:"+(m.total?4:0)+"px;display:flex;flex-direction:column-reverse;border-radius:5px 5px 0 0;overflow:hidden;box-shadow:"+(m.total?"0 1px 3px rgba(15,23,42,.18)":"none")+";'>"+
+        "<span style='height:"+hFr+"px;background:#7c3aed;'></span>"+
+        "<span style='height:"+hSa+"px;background:#1b66b3;'></span>"+
+        "<span style='height:"+hSo+"px;background:#d97706;'></span></div>"+
+      "<div style='font-size:10px;font-weight:850;color:#475569;margin-top:5px;'>"+names[idx]+"</div>"+
+      "<div style='font-size:8px;color:#94a3b8;'>"+Object.keys(m.drivers).length+" F.</div></div>";
+  }});
+  html += "</div></div>";
+  content.innerHTML = html;
+}}
+
 function samToggle(el) {{
   var dates = el.querySelector(".sam-dates");
   if(!dates) return;
@@ -12366,6 +12715,7 @@ function samToggle(el) {{
   var arrow = el.querySelector(".sam-arrow");
   if(arrow) arrow.textContent = open ? "⌄" : "⌃";
 }}
+
 
 {fa_js_code}
 
@@ -15708,7 +16058,9 @@ def _extra_single_upload(label, types, key_prefix, parser, summary_fn=None,
     json_key = f"{key_prefix}_json"
     sig_key  = f"{key_prefix}_sig"
     if up:
-        sig = upload_signature(up)
+        # Parser-Version in die Signatur aufnehmen. Dadurch werden bereits
+        # hochgeladene Dateien nach einer Parser-Aenderung sicher neu eingelesen.
+        sig = combine_signatures(EXTRA_CACHE_VERSION, key_prefix, upload_signature(up))
         if st.session_state.get(sig_key) != sig:
             with st.spinner(spinner_text):
                 st.session_state[json_key] = parser(up)
