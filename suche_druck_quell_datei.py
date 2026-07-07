@@ -18783,8 +18783,8 @@ iframe.active{{display:block}}
     </div>
   </div>
 
-  <div id="panel-knapp" style="display:none;flex:1;min-height:0;overflow:hidden;padding:18px;background:linear-gradient(180deg,#f3f7fb 0%,#e8f0f7 100%);font-family:'Segoe UI',Arial,sans-serif;flex-direction:column">
-    <div style="width:100%;height:100%;max-width:1440px;margin:0 auto;display:flex;flex-direction:column;min-height:0">
+  <div id="panel-knapp" style="display:none;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:18px;background:linear-gradient(180deg,#f3f7fb 0%,#e8f0f7 100%);font-family:'Segoe UI',Arial,sans-serif;flex-direction:column;scrollbar-gutter:stable">
+    <div style="width:100%;height:auto;min-height:100%;max-width:1440px;margin:0 auto;display:flex;flex-direction:column">
       <div style="background:#fff;border:1px solid #cad7e8;border-radius:12px;padding:16px 20px;box-shadow:0 2px 10px rgba(30,96,145,.08);margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;flex-shrink:0">
         <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#f28c28 0%,#d96712 100%);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 2px 7px rgba(217,103,18,.28);flex-shrink:0">&#9881;&#65039;</div>
         <div style="min-width:0;flex:1">
@@ -18811,8 +18811,8 @@ iframe.active{{display:block}}
         </div>
       </div>
 
-      <div style="position:relative;flex:1;min-height:0;background:#fff;border:1px solid #cad7e8;border-radius:12px;box-shadow:0 2px 10px rgba(30,96,145,.08);overflow:hidden">
-        <iframe id="knapp-pdf-frame" title="KNAPP Eskalationspyramide" style="display:none;width:100%;height:100%;min-height:520px;border:0;background:#eef2f7"></iframe>
+      <div style="position:relative;flex:none;height:clamp(760px,calc(100vh - 120px),1200px);min-height:760px;background:#fff;border:1px solid #cad7e8;border-radius:12px;box-shadow:0 2px 10px rgba(30,96,145,.08);overflow:hidden;margin-bottom:18px">
+        <iframe id="knapp-pdf-frame" title="KNAPP Eskalationspyramide" style="display:none;width:100%;height:100%;min-height:760px;border:0;background:#eef2f7"></iframe>
         <div id="knapp-pdf-fallback" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:30px;text-align:center;color:#64748b">
           <div style="font-size:42px">&#128196;</div>
           <div style="font-size:14px;font-weight:800;color:#334155">Die PDF-Vorschau wird von diesem Browser nicht unterstützt.</div>
