@@ -18794,6 +18794,23 @@ iframe.active{{display:block}}
         <button onclick="knappOpenPdf()" style="padding:10px 16px;background:linear-gradient(180deg,#f28c28 0%,#d96712 100%);color:#fff;border:none;border-radius:8px;font-weight:850;font-size:12px;cursor:pointer;font-family:inherit;box-shadow:0 2px 6px rgba(217,103,18,.28);display:inline-flex;align-items:center;gap:7px;white-space:nowrap">&#128196; PDF öffnen</button>
         <button onclick="knappDownloadPdf()" style="padding:10px 16px;background:#fff;color:#334155;border:1.5px solid #cbd5e1;border-radius:8px;font-weight:850;font-size:12px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:7px;white-space:nowrap">&#11015;&#65039; Herunterladen</button>
       </div>
+
+      <div style="background:#fff;border:1px solid #cad7e8;border-left:5px solid #d96712;border-radius:12px;padding:14px 18px;box-shadow:0 2px 10px rgba(30,96,145,.07);margin-bottom:14px;flex-shrink:0;color:#334155">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:9px">
+          <span style="font-size:17px">&#9888;&#65039;</span>
+          <div style="font-size:13px;font-weight:900;color:#0f172a;text-transform:uppercase;letter-spacing:.35px">Ablauf bei kritischen Störungen</div>
+        </div>
+        <ul style="margin:0 0 10px 23px;padding:0;font-size:13px;line-height:1.55;font-weight:600">
+          <li style="margin-bottom:4px">Jegliche Tickets in kritischen Bereichen müssen bei der Hotline mit <b>Prio&nbsp;1</b> angelegt werden.</li>
+          <li style="margin-bottom:4px">Ab <b>2&nbsp;Stunden Lagerstillstand</b> muss ich telefonisch informiert werden.</li>
+          <li style="margin-bottom:4px">Anschließend muss alle <b>30&nbsp;Minuten</b> ein Update über die Situation erfolgen.</li>
+          <li>Ab <b>4&nbsp;Stunden Lagerstillstand</b> werden weitere Schritte situativ entschieden.</li>
+        </ul>
+        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:9px 12px;font-size:13px;font-weight:800;color:#9a3412">
+          Die Eskalation bei KNAPP an die nächsten Stufen übernimmt <b>Christian Henning</b>.
+        </div>
+      </div>
+
       <div style="position:relative;flex:1;min-height:0;background:#fff;border:1px solid #cad7e8;border-radius:12px;box-shadow:0 2px 10px rgba(30,96,145,.08);overflow:hidden">
         <iframe id="knapp-pdf-frame" title="KNAPP Eskalationspyramide" style="display:none;width:100%;height:100%;min-height:520px;border:0;background:#eef2f7"></iframe>
         <div id="knapp-pdf-fallback" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:30px;text-align:center;color:#64748b">
