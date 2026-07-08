@@ -18802,7 +18802,7 @@ iframe.active{{display:block}}
         </div>
         <ul style="margin:0 0 10px 23px;padding:0;font-size:13px;line-height:1.55;font-weight:600">
           <li style="margin-bottom:4px">Jegliche Tickets in kritischen Bereichen müssen bei der Hotline mit <b>Prio&nbsp;1</b> angelegt werden.</li>
-          <li style="margin-bottom:4px">Ab <b>2&nbsp;Stunden Lagerstillstand</b> muss ich telefonisch informiert werden.</li>
+          <li style="margin-bottom:4px">Ab <b>2&nbsp;Stunden Lagerstillstand</b> muss Christian Henning telefonisch informiert werden.</li>
           <li style="margin-bottom:4px">Anschließend muss alle <b>30&nbsp;Minuten</b> ein Update über die Situation erfolgen.</li>
           <li>Ab <b>4&nbsp;Stunden Lagerstillstand</b> werden weitere Schritte situativ entschieden.</li>
         </ul>
