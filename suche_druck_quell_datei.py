@@ -21,7 +21,7 @@ from typing import List
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
 APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-07-v47-knapp-pdf"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-02-v43-samstags-matrix-vollbreite"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-08-v44-sam-workday-popup"
 
 # Fest eingebettete KNAPP-Eskalations-PDF (selbstständig in der erzeugten HTML verfügbar).
 _KNAPP_PDF_B64 = (
@@ -20857,9 +20857,101 @@ function samLegend() {{
     "</div>";
 }}
 
+// Klickbare Arbeitstage in der Einsatzmatrix
+var samWorkdayPopupData = {{}};
+var samWorkdayBodyOverflow = "";
+
+function samWorkdayTypeLabel(tag) {{
+  tag = String(tag || "Sa");
+  if(tag === "So") return "Sonntag bis 15 Uhr";
+  if(tag.indexOf("Fr") === 0) return "Freitag ab 18 Uhr";
+  return "Samstag";
+}}
+
+function samWorkdayBadgeColor(tag) {{
+  tag = String(tag || "Sa");
+  if(tag === "So") return "#d97706";
+  if(tag.indexOf("Fr") === 0) return "#7c3aed";
+  return "#1b66b3";
+}}
+
+function samCloseWorkdayPopup() {{
+  var overlay = document.getElementById("sam-workday-popup");
+  if(overlay) overlay.style.display = "none";
+  document.body.style.overflow = samWorkdayBodyOverflow || "";
+}}
+
+function samOpenWorkdayPopup(key) {{
+  var data = samWorkdayPopupData[key];
+  if(!data) return;
+
+  var overlay = document.getElementById("sam-workday-popup");
+  if(!overlay) {{
+    overlay = document.createElement("div");
+    overlay.id = "sam-workday-popup";
+    overlay.setAttribute("role", "presentation");
+    overlay.onclick = function(ev) {{
+      if(ev.target === overlay) samCloseWorkdayPopup();
+    }};
+    document.body.appendChild(overlay);
+  }}
+
+  var entries = Array.isArray(data.entries) ? data.entries : [];
+  var cards = entries.map(function(e, idx) {{
+    var tag = String(e.tag || "Sa");
+    var badgeColor = samWorkdayBadgeColor(tag);
+    var tour = String(e.tour || "").trim() || "—";
+    var beginn = String(e.beginn || "").trim() || "—";
+    var datum = String(e.datum || "").trim() || "—";
+    return "<div style='border:1px solid #d8e0ea;border-left:5px solid "+badgeColor+";border-radius:8px;background:#fff;padding:12px 14px;box-shadow:0 1px 3px rgba(15,23,42,.06);'>" +
+      "<div style='display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;'>" +
+        "<span style='display:inline-flex;align-items:center;border-radius:5px;background:"+badgeColor+";color:#fff;padding:4px 9px;font-size:11px;font-weight:900;'>" +
+          samEsc(samWorkdayTypeLabel(tag)) + "</span>" +
+        (entries.length > 1 ? "<span style='font-size:10px;font-weight:800;color:#64748b;'>Eintrag "+(idx+1)+" von "+entries.length+"</span>" : "") +
+      "</div>" +
+      "<div style='display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px 12px;font-size:12px;line-height:1.4;'>" +
+        "<div style='font-weight:800;color:#64748b;'>Fahrer</div><div style='font-weight:900;color:#0f172a;'>"+samEsc(data.driver)+"</div>" +
+        "<div style='font-weight:800;color:#64748b;'>Arbeitstag</div><div style='font-weight:800;color:#0f172a;'>"+samEsc(datum)+"</div>" +
+        "<div style='font-weight:800;color:#64748b;'>Beginn</div><div style='font-weight:800;color:#0f172a;'>"+samEsc(beginn)+(beginn !== "—" ? " Uhr" : "")+"</div>" +
+        "<div style='font-weight:800;color:#64748b;'>LKW</div><div style='font-weight:900;color:#1b66b3;'>"+samEsc(tour)+"</div>" +
+      "</div>" +
+    "</div>";
+  }}).join("");
+
+  if(!cards) {{
+    cards = "<div style='padding:24px;text-align:center;color:#64748b;'>Für diesen Arbeitstag sind keine Detaildaten vorhanden.</div>";
+  }}
+
+  overlay.style.cssText = "display:flex;position:fixed;inset:0;z-index:99999;align-items:center;justify-content:center;padding:22px;background:rgba(15,23,42,.58);backdrop-filter:blur(2px);";
+  overlay.innerHTML =
+    "<div role='dialog' aria-modal='true' aria-label='Arbeitstag Details' onclick='event.stopPropagation()' " +
+      "style='width:min(660px,96vw);max-height:88vh;display:flex;flex-direction:column;background:#f8fafc;border:1px solid #cbd5e1;border-radius:12px;box-shadow:0 24px 70px rgba(15,23,42,.35);overflow:hidden;font-family:Segoe UI,Arial,sans-serif;'>" +
+      "<div style='display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:16px 18px;background:linear-gradient(180deg,#eef6ff 0%,#fff 100%);border-bottom:1px solid #dbe3ed;'>" +
+        "<div style='min-width:0;'>" +
+          "<div style='font-size:18px;font-weight:950;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>Arbeitstag – "+samEsc(data.driver)+"</div>" +
+          "<div style='margin-top:4px;font-size:11px;font-weight:750;color:#64748b;'>Wochenende KW "+samEsc(data.kw)+" · Samstag, "+samEsc(data.weekendDate)+"</div>" +
+        "</div>" +
+        "<button type='button' onclick='samCloseWorkdayPopup()' aria-label='Fenster schließen' " +
+          "style='flex:0 0 auto;width:34px;height:34px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#334155;font-size:21px;line-height:1;cursor:pointer;font-weight:700;'>&times;</button>" +
+      "</div>" +
+      "<div style='overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;'>" + cards + "</div>" +
+      "<div style='padding:10px 14px;border-top:1px solid #dbe3ed;background:#fff;display:flex;justify-content:flex-end;'>" +
+        "<button type='button' onclick='samCloseWorkdayPopup()' style='padding:8px 16px;border:1px solid #1b66b3;border-radius:6px;background:#1b66b3;color:#fff;font-size:11px;font-weight:900;cursor:pointer;font-family:inherit;'>Schließen</button>" +
+      "</div>" +
+    "</div>";
+
+  samWorkdayBodyOverflow = document.body.style.overflow || "";
+  document.body.style.overflow = "hidden";
+}}
+
+document.addEventListener("keydown", function(ev) {{
+  if(ev.key === "Escape") samCloseWorkdayPopup();
+}});
+
 function samRenderMatrix(drivers, year, satTotal, satElapsed) {{
   var content = document.getElementById("sam-content");
   if(!content) return;
+  samWorkdayPopupData = {{}};
   var sats = [];
   var d = new Date(year,0,1);
   while(d.getDay() !== 6) d.setDate(d.getDate()+1);
@@ -20909,8 +21001,23 @@ function samRenderMatrix(drivers, year, satTotal, satElapsed) {{
       var title = driver.name + "\\n" + list.map(function(e){{
         return String(e.tag||"Sa")+" · "+String(e.datum||"")+(e.beginn?" · "+e.beginn+" Uhr":"")+(e.tour?" · "+e.tour:"");
       }}).join("\\n");
-      html += "<td title='"+samAttr(title)+"' style='width:39px;height:30px;background:"+rowBg+";border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;text-align:center;padding:2px;'>"+
-        "<span style='display:inline-flex;align-items:center;justify-content:center;width:28px;height:22px;border-radius:4px;background:"+color+";color:#fff;font-size:8px;font-weight:950;box-shadow:0 1px 2px rgba(15,23,42,.15);'>"+label+"</span></td>";
+      var workdayKey = "sam-workday-"+rowIdx+"-"+samISODate(s);
+      samWorkdayPopupData[workdayKey] = {{
+        driver: String(driver.name || ""),
+        weekendDate: samShortDate(s) + year,
+        kw: samISOWeek(s),
+        entries: list.map(function(e) {{
+          return {{
+            tag: String(e.tag || "Sa"),
+            datum: String(e.datum || ""),
+            beginn: String(e.beginn || ""),
+            tour: String(e.tour || "")
+          }};
+        }})
+      }};
+      html += "<td title='"+samAttr(title)+"\\nKlicken für Details' onclick='samOpenWorkdayPopup(&quot;"+workdayKey+"&quot;);event.stopPropagation();' " +
+        "style='width:39px;height:30px;background:"+rowBg+";border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;text-align:center;padding:2px;cursor:pointer;'>"+
+        "<span style='display:inline-flex;align-items:center;justify-content:center;width:28px;height:22px;border-radius:4px;background:"+color+";color:#fff;font-size:8px;font-weight:950;box-shadow:0 1px 2px rgba(15,23,42,.15);transition:transform .12s,box-shadow .12s;'>"+label+"</span></td>";
     }});
     html += "<td style='position:sticky;right:0;z-index:2;width:54px;background:"+rowBg+";border-left:2px solid #94a3b8;border-bottom:1px solid #e2e8f0;text-align:center;font-size:12px;font-weight:950;color:#1b66b3;'>"+entries.length+"</td></tr>";
   }});
