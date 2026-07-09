@@ -21,8 +21,8 @@ from typing import List
 
 st.set_page_config(page_title="NFC Generator", layout="wide")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-09-v50-komprimierte-pdfs"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-09-v47-komprimierte-pdfs"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-09-v51-pdf-stream-fix"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-09-v48-pdf-stream-fix"
 
 # PDF-Dokumente: zlib-komprimiert + Base64. Dadurch bleiben sie in der einzigen
 # Ausgabe-Datei enthalten, ohne dass ein separater Ordner benoetigt wird.
@@ -26488,11 +26488,12 @@ async function documentPdfInflate(chunks){
   if(typeof DecompressionStream !== "function"){
     throw new Error("Dieser Browser kann die eingebettete PDF nicht entpacken.");
   }
-  var ds = new DecompressionStream("deflate");
-  var writer = ds.writable.getWriter();
-  await writer.write(bytes);
-  await writer.close();
-  return new Uint8Array(await new Response(ds.readable).arrayBuffer());
+  // Wichtig: Schreiben und Lesen muessen gleichzeitig laufen. Wenn zuerst auf
+  // writer.write() gewartet wird, kann der TransformStream wegen Backpressure
+  // haengen bleiben und die PDF-Vorschau bleibt leer.
+  var inputStream = new Blob([bytes]).stream();
+  var outputStream = inputStream.pipeThrough(new DecompressionStream("deflate"));
+  return new Uint8Array(await new Response(outputStream).arrayBuffer());
 }
 
 async function documentPdfGetUrl(id){
