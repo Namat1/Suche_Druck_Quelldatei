@@ -20,11 +20,11 @@ import zlib
 from pathlib import Path
 from typing import List
 
-st.set_page_config(page_title="NFC Generator v34", layout="wide")
+st.set_page_config(page_title="NFC Generator v35", layout="wide")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-10-v34-dateipruefung-duplikate"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-10-v34-dateipruefung-duplikate"
-APP_DISPLAY_VERSION = "34"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-10-v35-cloudsafe-dateipruefung"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-10-v35-cloudsafe-dateipruefung"
+APP_DISPLAY_VERSION = "35"
 APP_DISPLAY_NAME = "NFC Generator"
 
 
@@ -17789,39 +17789,6 @@ def _record_processing_success(key: str, area: str, detail: str = "",
     _set_processing_status(key, area, "ok", detail, filename)
 
 
-def _peek_upload_bytes(uploaded_file) -> bytes:
-    """Liest einen Upload, ohne dessen aktuelle Dateiposition zu veraendern."""
-    if uploaded_file is None:
-        return b""
-    old_pos = None
-    try:
-        old_pos = uploaded_file.tell()
-    except Exception:
-        pass
-    try:
-        if hasattr(uploaded_file, "getvalue"):
-            data = uploaded_file.getvalue()
-        else:
-            uploaded_file.seek(0)
-            data = uploaded_file.read()
-    finally:
-        if old_pos is not None:
-            try:
-                uploaded_file.seek(old_pos)
-            except Exception:
-                pass
-        else:
-            try:
-                uploaded_file.seek(0)
-            except Exception:
-                pass
-    if data is None:
-        return b""
-    if isinstance(data, str):
-        return data.encode("utf-8")
-    return bytes(data)
-
-
 def _quality_result(status: str, area: str, filename: str, size: int,
                     summary: str, details=None, warnings=None, errors=None,
                     content_hash: str = "", required: bool = False,
@@ -17851,77 +17818,67 @@ def _decode_text_sample(payload: bytes) -> tuple[str, str]:
     return payload.decode("utf-8", errors="replace"), "utf-8 (Ersatzzeichen)"
 
 
-def _inspect_week_workbook(payload: bytes) -> tuple[list[str], list[str], list[str]]:
-    """Prueft Wochen-Excel leichtgewichtig auf Blaetter, Kernspalten und Datum."""
-    details: list[str] = []
-    warnings: list[str] = []
-    errors: list[str] = []
+def _stream_upload_hash(uploaded_file, chunk_size: int = 1024 * 1024) -> str:
+    """SHA-256 ohne den gesamten Upload ein zweites Mal in den RAM zu kopieren."""
+    if uploaded_file is None:
+        return ""
+    old_pos = None
     try:
-        book = pd.ExcelFile(io.BytesIO(payload), engine=EXCEL_READ_ENGINE)
-    except Exception as exc:
-        return details, warnings, [f"Excel kann nicht geoeffnet werden: {type(exc).__name__}: {exc}"]
-
-    sheets = list(book.sheet_names)
-    details.append(f"{len(sheets)} Tabellenblaetter")
-    recognised = []
-    column_issues = []
-    for target, aliases in BLATT_ALIASE.items():
-        real = find_existing_sheet_name(sheets, *aliases)
-        if not real:
-            continue
-        recognised.append(real)
+        old_pos = uploaded_file.tell()
+    except Exception:
+        pass
+    digest = hashlib.sha256()
+    try:
+        uploaded_file.seek(0)
+        while True:
+            chunk = uploaded_file.read(chunk_size)
+            if not chunk:
+                break
+            if isinstance(chunk, str):
+                chunk = chunk.encode("utf-8", errors="ignore")
+            digest.update(chunk)
+    finally:
         try:
-            header = pd.read_excel(book, sheet_name=real, nrows=0)
-            cols = list(header.columns)
-        except Exception as exc:
-            column_issues.append(f"{real}: Kopfzeile nicht lesbar ({type(exc).__name__})")
-            continue
-        identity_ok = any(find_column_index(cols, SPALTEN_ALIASE[k]) is not None for k in ("csb_nummer", "sap_nummer", "name"))
-        day_ok = any(first_existing_column(cols, [short, long]) for long, short in LIEFERTAGE_MAPPING.items())
-        if not identity_ok:
-            column_issues.append(f"{real}: keine CSB-/SAP-/Namensspalte erkannt")
-        if not day_ok:
-            column_issues.append(f"{real}: keine Liefertagsspalte erkannt")
-
-    if not recognised:
-        errors.append("Keines der erwarteten Wochenblaetter DIREKT, MK, HUPA_NMS oder HUPA_MALCHOW erkannt")
-    else:
-        details.append("Erkannte Bereiche: " + ", ".join(recognised))
-        if len(recognised) < len(BLATT_ALIASE):
-            missing = [target for target, aliases in BLATT_ALIASE.items() if not find_existing_sheet_name(sheets, *aliases)]
-            warnings.append("Nicht gefundene Bereiche: " + ", ".join(missing))
-    warnings.extend(column_issues)
-
-    # Datumsbereich aus der Druckquelle, sofern vorhanden. Dies ist ein Hinweis,
-    # kein harter Fehler, weil manche Quelldateien dort kein Datum fuehren.
-    date_sheet = find_existing_sheet_name(
-        sheets, "T-B-Druck Quelle", "T-B Druck Quelle", "T B Druck Quelle",
-        "T_B_Druck_Quelle", "TBDruckQuelle",
-    )
-    if date_sheet:
-        try:
-            date_df = pd.read_excel(book, sheet_name=date_sheet, nrows=5000)
-            date_col = first_existing_column(list(date_df.columns), ["Datum", "Date", "Liefertag Datum"])
-            if date_col:
-                dates = pd.to_datetime(date_df[date_col], errors="coerce", dayfirst=True).dropna()
-                if not dates.empty:
-                    dmin = dates.min().date()
-                    dmax = dates.max().date()
-                    details.append(f"Datumsbereich {dmin:%d.%m.%Y} bis {dmax:%d.%m.%Y}")
-                    today = datetime.date.today()
-                    if dmax < today - datetime.timedelta(days=45):
-                        warnings.append(f"Neuester Datensatz ist aelter als 45 Tage ({dmax:%d.%m.%Y})")
-                    if dmax > today + datetime.timedelta(days=90):
-                        warnings.append(f"Datumswerte liegen auffaellig weit in der Zukunft ({dmax:%d.%m.%Y})")
+            uploaded_file.seek(old_pos if old_pos is not None else 0)
         except Exception:
             pass
-    return details, warnings, errors
+    return digest.hexdigest()
+
+
+def _read_upload_sample(uploaded_file, limit: int = 131072) -> bytes:
+    """Liest nur einen kleinen Anfangsbereich und stellt die Dateiposition wieder her."""
+    if uploaded_file is None:
+        return b""
+    old_pos = None
+    try:
+        old_pos = uploaded_file.tell()
+    except Exception:
+        pass
+    try:
+        uploaded_file.seek(0)
+        data = uploaded_file.read(limit)
+    finally:
+        try:
+            uploaded_file.seek(old_pos if old_pos is not None else 0)
+        except Exception:
+            pass
+    if data is None:
+        return b""
+    if isinstance(data, str):
+        return data.encode("utf-8", errors="ignore")
+    return bytes(data)
 
 
 def _validate_uploaded_file(uploaded_file, expected_types, quality_key: str,
                             *, area: str = "Datei", kind: str = "auto",
                             required: bool = False) -> dict:
-    """Fuehrt eine gecachte, inhaltliche Vorpruefung eines Uploads durch."""
+    """Speicherschonende Grundprüfung eines Uploads.
+
+    Anders als Version 34 wird die Datei hier nicht komplett per ``getvalue``
+    dupliziert und nicht vorsorglich mit pandas geoeffnet. Die eigentlichen
+    Parser pruefen den Inhalt spaeter ohnehin nochmals. Dadurch bleibt der
+    Start auch mit vielen grossen Uploads auf Streamlit Cloud stabil.
+    """
     checks = st.session_state.setdefault("_quality_checks", {})
     filename = _uploaded_name(uploaded_file)
     source_sig = upload_signature(uploaded_file)
@@ -17929,20 +17886,21 @@ def _validate_uploaded_file(uploaded_file, expected_types, quality_key: str,
     if cached and cached.get("source_signature") == source_sig and cached.get("kind") == kind:
         return cached
 
-    payload = _peek_upload_bytes(uploaded_file)
-    size = len(payload)
+    try:
+        size = int(getattr(uploaded_file, "size", 0) or 0)
+    except Exception:
+        size = 0
     ext = Path(filename).suffix.lower().lstrip(".")
     allowed = {str(x).lower().lstrip(".") for x in (expected_types or [])}
     details: list[str] = []
     warnings: list[str] = []
     errors: list[str] = []
-    content_hash = hashlib.sha256(payload).hexdigest() if payload else ""
 
     if not filename:
         errors.append("Dateiname fehlt")
     if allowed and ext not in allowed:
         errors.append(f"Falscher Dateityp .{ext or '?'}; erwartet: " + ", ".join(sorted(allowed)))
-    if size == 0:
+    if size <= 0:
         errors.append("Datei ist leer")
     else:
         details.append(_human_size(size))
@@ -17951,59 +17909,50 @@ def _validate_uploaded_file(uploaded_file, expected_types, quality_key: str,
 
     actual_kind = kind
     if actual_kind == "auto":
-        if ext == "xlsx": actual_kind = "xlsx"
-        elif ext == "csv": actual_kind = "csv"
-        elif ext == "json": actual_kind = "json"
-        elif ext in {"png", "jpg", "jpeg", "svg"}: actual_kind = "logo"
+        if ext == "xlsx":
+            actual_kind = "xlsx"
+        elif ext == "csv":
+            actual_kind = "csv"
+        elif ext == "json":
+            actual_kind = "json"
+        elif ext in {"png", "jpg", "jpeg", "svg"}:
+            actual_kind = "logo"
 
-    if payload and not errors:
+    sample = _read_upload_sample(uploaded_file) if size > 0 else b""
+    if sample and not errors:
         if actual_kind in {"xlsx", "week_excel", "key_excel"}:
-            if not payload.startswith(b"PK"):
+            if not sample.startswith(b"PK"):
                 errors.append("Datei besitzt keine gueltige XLSX-Signatur")
             else:
-                try:
-                    book = pd.ExcelFile(io.BytesIO(payload), engine=EXCEL_READ_ENGINE)
-                    details.append(f"Excel lesbar · {len(book.sheet_names)} Blatt/Blaetter")
-                except Exception as exc:
-                    errors.append(f"Excel kann nicht geoeffnet werden: {type(exc).__name__}: {exc}")
-            if not errors and actual_kind == "week_excel":
-                d, w, e = _inspect_week_workbook(payload)
-                details.extend(d); warnings.extend(w); errors.extend(e)
-            elif not errors and actual_kind == "key_excel":
-                try:
-                    key_map = cached_key_map(payload)
-                    if key_map:
-                        details.append(f"{len(key_map)} Schluesselzuordnungen erkannt")
-                    else:
-                        errors.append("Keine Schluesselzuordnungen erkannt")
-                except Exception as exc:
-                    errors.append(f"Schluesseldatei nicht verwertbar: {type(exc).__name__}: {exc}")
+                details.append("XLSX-Signatur gueltig")
+                if actual_kind == "week_excel":
+                    details.append("Wocheninhalt wird beim Verarbeiten geprueft")
+                elif actual_kind == "key_excel":
+                    details.append("Schluesselzuordnungen werden beim Verarbeiten geprueft")
         elif actual_kind == "csv":
-            text, encoding = _decode_text_sample(payload)
+            text, encoding = _decode_text_sample(sample)
             lines = [line for line in text.splitlines() if line.strip()]
             if not lines:
-                errors.append("CSV enthaelt keine Datenzeilen")
+                errors.append("CSV enthaelt im Dateianfang keine Daten")
             else:
-                sample = lines[:20]
-                delimiters = {sep: sum(line.count(sep) for line in sample) for sep in (";", ",", "\t", "|")}
+                probe = lines[:20]
+                delimiters = {sep: sum(line.count(sep) for line in probe) for sep in (";", ",", "\t", "|")}
                 delimiter = max(delimiters, key=delimiters.get)
-                col_count = max(1, sample[0].count(delimiter) + 1) if delimiters[delimiter] else 1
-                details.append(f"{len(lines)} nichtleere Zeilen · ca. {col_count} Spalten · {encoding}")
+                col_count = max(1, probe[0].count(delimiter) + 1) if delimiters[delimiter] else 1
+                details.append(f"Dateianfang lesbar · ca. {col_count} Spalten · {encoding}")
                 if col_count == 1:
-                    warnings.append("Kein eindeutiges CSV-Trennzeichen erkannt")
+                    warnings.append("Kein eindeutiges CSV-Trennzeichen im Dateianfang erkannt")
         elif actual_kind == "json":
-            try:
-                text, encoding = _decode_text_sample(payload)
-                obj = json.loads(text)
-                count = len(obj) if isinstance(obj, (list, dict)) else 1
-                details.append(f"Gueltiges JSON · {type(obj).__name__} · {count} Eintraege · {encoding}")
-            except Exception as exc:
-                errors.append(f"Ungueltiges JSON: {type(exc).__name__}: {exc}")
+            stripped = sample.lstrip()
+            if not stripped.startswith((b"{", b"[")):
+                errors.append("Dateianfang sieht nicht wie JSON aus")
+            else:
+                details.append("JSON-Dateianfang erkannt; Vollpruefung erfolgt beim Verarbeiten")
         elif actual_kind == "logo":
-            lower = payload[:500].lstrip().lower()
+            lower = sample[:500].lstrip().lower()
             valid = (
-                payload.startswith(b"\x89PNG\r\n\x1a\n")
-                or payload.startswith(b"\xff\xd8\xff")
+                sample.startswith(b"\x89PNG\r\n\x1a\n")
+                or sample.startswith(b"\xff\xd8\xff")
                 or (ext == "svg" and (lower.startswith(b"<svg") or b"<svg" in lower))
             )
             if not valid:
@@ -18011,13 +17960,20 @@ def _validate_uploaded_file(uploaded_file, expected_types, quality_key: str,
             else:
                 details.append("Bildsignatur gueltig")
 
+    # Nur Wochen-Dateien werden inhaltlich gehasht, damit auch umbenannte
+    # Duplikate erkannt werden. Das Hashing erfolgt gestreamt ohne Vollkopie.
+    if size > 0 and actual_kind == "week_excel" and not errors:
+        content_hash = _stream_upload_hash(uploaded_file)
+    else:
+        content_hash = hashlib.sha256(f"{filename}|{size}|{source_sig}".encode("utf-8", errors="ignore")).hexdigest()
+
     status = "error" if errors else ("warning" if warnings else "ok")
     if status == "ok":
-        summary = "Datei lesbar"
+        summary = "Grundprüfung bestanden"
     elif status == "warning":
-        summary = f"Datei lesbar · {len(warnings)} Hinweis(e)"
+        summary = f"Grundprüfung bestanden · {len(warnings)} Hinweis(e)"
     else:
-        summary = f"Dateipruefung fehlgeschlagen · {len(errors)} Fehler"
+        summary = f"Dateiprüfung fehlgeschlagen · {len(errors)} Fehler"
     result = _quality_result(
         status, area, filename, size, summary, details, warnings, errors,
         content_hash=content_hash, required=required, source_signature=source_sig,
@@ -18032,7 +17988,7 @@ def _render_quality_result(result: dict, *, compact: bool = True) -> None:
         return
     detail_text = " · ".join(result.get("details", [])[:3])
     prefix = {"ok": "✓", "warning": "⚠", "error": "✗"}.get(result.get("status"), "•")
-    line = f"{prefix} Dateipruefung: {result.get('summary', '')}"
+    line = f"{prefix} Dateiprüfung: {result.get('summary', '')}"
     if detail_text:
         line += f" · {detail_text}"
     if result.get("status") == "error":
@@ -18343,22 +18299,22 @@ def _build_export_preflight(ready_instances: list) -> tuple[list[dict], list[str
     if required_quality_errors:
         rows.append({
             "Status": "✗ Fehler",
-            "Prüfung": "Dateiqualitaet",
+            "Prüfung": "Dateiqualität",
             "Details": quality_detail + f" · {len(required_quality_errors)} Pflichtdatei(en) fehlerhaft",
             "Pflicht": "Ja",
         })
-        blockers.append("Dateiqualitaet")
+        blockers.append("Dateiqualität")
     elif quality_warnings or optional_quality_errors:
         rows.append({
             "Status": "⚠ Hinweis",
-            "Prüfung": "Dateiqualitaet",
+            "Prüfung": "Dateiqualität",
             "Details": quality_detail,
             "Pflicht": "Nein",
         })
     else:
         rows.append({
             "Status": "✓ Bereit",
-            "Prüfung": "Dateiqualitaet",
+            "Prüfung": "Dateiqualität",
             "Details": quality_detail,
             "Pflicht": "Nein",
         })
@@ -18438,7 +18394,7 @@ def _global_uploader(label, types, ss_key, widget_key):
             )
         else:
             _set_processing_status(
-                f"upload_{ss_key}", label, "error", quality.get("summary", "Dateipruefung fehlgeschlagen"), _uploaded_name(up)
+                f"upload_{ss_key}", label, "error", quality.get("summary", "Dateiprüfung fehlgeschlagen"), _uploaded_name(up)
             )
     elif st.session_state.get(ss_key):
         stored = st.session_state.get(ss_key)
@@ -18461,7 +18417,7 @@ def _extra_single_upload(label, types, key_prefix, parser, summary_fn=None,
         )
         _render_quality_result(quality)
         if quality.get("status") == "error":
-            _set_processing_status(status_key, label, "error", quality.get("summary", "Dateipruefung fehlgeschlagen"), filename)
+            _set_processing_status(status_key, label, "error", quality.get("summary", "Dateiprüfung fehlgeschlagen"), filename)
             return
         sig = combine_signatures(EXTRA_CACHE_VERSION, key_prefix, upload_signature(up))
         if st.session_state.get(sig_key) != sig:
@@ -18523,7 +18479,7 @@ def _extra_multi_upload(label, types, key_prefix, parsers, summary_fn=None,
         if duplicate_count:
             st.warning(f"{duplicate_count} doppelte Datei(en) im Mehrfach-Upload erkannt; bitte entfernen.")
         if any(q.get("status") == "error" for q in quality_results) or duplicate_count:
-            _set_processing_status(group_status_key, label, "error", "Dateipruefung oder Duplikatpruefung fehlgeschlagen", filenames)
+            _set_processing_status(group_status_key, label, "error", "Dateiprüfung oder Duplikatpruefung fehlgeschlagen", filenames)
             return
         sig = combine_signatures(EXTRA_CACHE_VERSION, key_prefix, uploads_signature(ups))
         if st.session_state.get(sig_key) != sig:
@@ -69685,7 +69641,7 @@ EMBEDDED_PDF_DOCUMENTS = {
 # endregion
 
 st.title(f"{APP_DISPLAY_NAME} · Version {APP_DISPLAY_VERSION}")
-st.caption("Modularer Einzeldatei-Generator mit Dateipruefung, Duplikaterkennung und sicherem Export")
+st.caption("Modularer Einzeldatei-Generator mit speicherschonender Dateiprüfung und sicherem Export")
 
 tab_stamm, tab_wochen, tab_extra, tab_dl = st.tabs(
     ["Stammdaten", "Wochen", "Zusatzdateien", "Download"]
@@ -70001,7 +69957,7 @@ with tab_dl:
     _quality_rows = _quality_table_rows()
     if _quality_rows:
         _quality_has_issue = any(row.get("Status") != "✓ OK" for row in _quality_rows)
-        with st.expander("Dateiqualitaet", expanded=_quality_has_issue):
+        with st.expander("Dateiqualität", expanded=_quality_has_issue):
             st.dataframe(_quality_rows, width="stretch", hide_index=True)
 
     st.markdown("##### Startprüfung")
