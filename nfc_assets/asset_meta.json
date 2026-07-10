@@ -1,0 +1,55 @@
+{
+  "asset_version": "36",
+  "pdf_count": 8,
+  "pdf_compressed_bytes": 4383553,
+  "pdf_b64_chars": 5844748,
+  "dashboard_js_chars": 347215,
+  "static_payload_uncompressed_bytes": 486867,
+  "static_payload_compressed_bytes": 115099,
+  "pdf_payload_uncompressed_bytes": 5998522,
+  "pdf_payload_compressed_bytes": 4529811,
+  "pdf_documents": [
+    {
+      "id": "knapp",
+      "filename": "knapp_eskalation.pdf",
+      "title": "KNAPP Eskalationspyramide"
+    },
+    {
+      "id": "schluessel",
+      "filename": "schluesseluebergabe.pdf",
+      "title": "Schlüsselübergabe"
+    },
+    {
+      "id": "entgelt",
+      "filename": "entgeltportal.pdf",
+      "title": "Entgeltportal"
+    },
+    {
+      "id": "schaden",
+      "filename": "schadenmeldung.pdf",
+      "title": "Schadenmeldung Fuhrpark"
+    },
+    {
+      "id": "maengel",
+      "filename": "maengelanzeige.pdf",
+      "title": "Mängelanzeige Fuhrpark"
+    },
+    {
+      "id": "lkw_uebergabe",
+      "filename": "uebergabeprotokoll_lkw.pdf",
+      "title": "Übergabeprotokoll LKW"
+    },
+    {
+      "id": "balzer",
+      "filename": "Balzer_Infos.pdf",
+      "title": "Balzer Informationen"
+    },
+    {
+      "id": "termine",
+      "filename": "Termine_Fahrer.pdf",
+      "title": "Termine Fahrer"
+    }
+  ],
+  "static_sha256": "fbf95d58e4190062348070e4cd2f0881996c4c7d92d03c8ec004779ba7c6d8ac",
+  "pdf_sha256": "494dfe6ab9db7cad72d8bf8e2c09c5641dc0abc4f1988acf9f7b7518fe5b783b"
+}
