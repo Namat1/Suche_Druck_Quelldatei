@@ -20,11 +20,11 @@ import zlib
 from pathlib import Path
 from typing import List
 
-st.set_page_config(page_title="NFC Generator v31", layout="wide")
+st.set_page_config(page_title="NFC Generator v33", layout="wide")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-10-v31-cloud-stabil-datenstand"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-10-v31-cloud-stabil-datenstand"
-APP_DISPLAY_VERSION = "31"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-10-v33-startpruefung-fortschritt-reset"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-10-v33-startpruefung-fortschritt-reset"
+APP_DISPLAY_VERSION = "33"
 APP_DISPLAY_NAME = "NFC Generator"
 
 
@@ -11408,7 +11408,6 @@ iframe.active{{display:block}}
     <div class="dd-menu" id="ddmenu-infos"></div>
   </div>
   </div>
-  <button class="topnav-meta-btn" type="button" onclick="openBuildInfo()">&#9432; Datenstand</button>
   <span class="topnav-stamp">v{APP_DISPLAY_VERSION} &middot; {last_updated}</span>
 </nav>
 
@@ -17916,6 +17915,154 @@ def _build_generation_metadata(ready_instances: list, generated_at: datetime.dat
             "pdf_compressed_bytes": pdf_bytes,
         },
     }
+
+
+def _estimate_export_size(ready_instances: list) -> int:
+    """Grobe Exportprognose ohne die große HTML vorab zu erzeugen.
+
+    Wochen-HTML und Zusatzdaten werden beim Export stark komprimiert; die
+    eingebetteten PDF-Blöcke liegen dagegen bereits als Base64 vor. Die
+    Schätzung dient nur als Orientierung in der Startprüfung.
+    """
+    week_chars = 0
+    for inst in ready_instances or []:
+        week_chars += len(str(inst.get("suche_html", "") or ""))
+        week_chars += len(str(inst.get("druck_html", "") or ""))
+
+    extra_chars = 0
+    for key in (
+        "tel_json", "sam_json", "fa_json", "zulage_json",
+        "drittkunden_json", "fahrzeugwaesche_json", "verstoss_json",
+        "spesen_json", "grosskunden_json", "timerec_json",
+        "spediteure_json", "fahrerbewertung_json",
+    ):
+        extra_chars += len(str(st.session_state.get(key, "") or ""))
+
+    pdf_b64_chars = 0
+    for meta in (globals().get("EMBEDDED_PDF_DOCUMENTS", {}) or {}).values():
+        pdf_b64_chars += sum(len(str(chunk)) for chunk in (meta.get("z", []) or []))
+
+    static_js_chars = sum(
+        len(str(value or ""))
+        for value in (_dashboard_javascript_parts() or {}).values()
+    )
+
+    # Erfahrungswerte: Wochen-HTML ca. 35–45 %, JSON ca. 45–60 % nach
+    # Deflate + Base64. Ein Sicherheitsaufschlag deckt HTML/CSS/Metadaten ab.
+    estimated = (
+        pdf_b64_chars
+        + int(week_chars * 0.43)
+        + int(extra_chars * 0.56)
+        + static_js_chars
+        + 700_000
+    )
+    return max(0, int(estimated))
+
+
+def _build_export_preflight(ready_instances: list) -> tuple[list[dict], list[str], int]:
+    """Erstellt die sichtbare Startprüfung und nennt echte Blocker."""
+    rows: list[dict] = []
+    blockers: list[str] = []
+
+    def add(label: str, ok: bool, detail: str, *, required: bool = False,
+            warning: bool = False) -> None:
+        if ok:
+            status = "✓ Bereit"
+        elif required:
+            status = "✗ Fehlt"
+            blockers.append(label)
+        elif warning:
+            status = "⚠ Hinweis"
+        else:
+            status = "– Optional"
+        rows.append({
+            "Status": status,
+            "Prüfung": label,
+            "Details": detail,
+            "Pflicht": "Ja" if required else "Nein",
+        })
+
+    logo = st.session_state.get("g_logo")
+    key_file = st.session_state.get("g_key")
+    add("Logo", bool(logo), _uploaded_name(logo) or "Noch nicht hochgeladen", required=True)
+    add("Schlüsseldatei", bool(key_file), _uploaded_name(key_file) or "Noch nicht hochgeladen", required=True)
+
+    ready_names = [str(inst.get("name", "Woche") or "Woche") for inst in ready_instances or []]
+    add(
+        "Verarbeitete Woche", bool(ready_names),
+        ", ".join(ready_names) if ready_names else "Noch keine Woche vollständig verarbeitet",
+        required=True,
+    )
+
+    all_instances = st.session_state.get("instances", []) or []
+    incomplete = [
+        str(inst.get("name", "Woche") or "Woche")
+        for inst in all_instances
+        if not (inst.get("suche_html") and inst.get("druck_html"))
+    ]
+    add(
+        "Weitere angelegte Wochen", not incomplete,
+        "Alle angelegten Wochen sind bereit" if not incomplete else "Nicht bereit: " + ", ".join(incomplete),
+        warning=bool(incomplete),
+    )
+
+    pdf_count, pdf_bytes = _embedded_pdf_stats()
+    add(
+        "Eingebettete PDFs", pdf_count > 0,
+        f"{pdf_count} Dokumente · {_human_size(pdf_bytes)} komprimiert" if pdf_count else "Keine PDFs eingebettet",
+        warning=(pdf_count == 0),
+    )
+
+    optional_keys = (
+        "tel_json", "zulage_json", "drittkunden_json", "fahrzeugwaesche_json",
+        "verstoss_json", "spesen_json", "grosskunden_json", "timerec_json",
+        "spediteure_json", "fahrerbewertung_json",
+    )
+    loaded_optional = sum(
+        1 for key in optional_keys
+        if str(st.session_state.get(key, "") or "") not in ("", "[]", "{}", '{"drivers":[],"total_violations":0}', '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}')
+    )
+    add(
+        "Zusatzdaten", loaded_optional > 0,
+        f"{loaded_optional} von {len(optional_keys)} Datenbereichen geladen" if loaded_optional else "Keine Zusatzdaten geladen",
+    )
+
+    error_count = sum(
+        1 for row in (st.session_state.get("_processing_status", {}) or {}).values()
+        if row.get("status") == "error"
+    )
+    add(
+        "Verarbeitungsfehler", error_count == 0,
+        "Keine aktuellen Fehler" if error_count == 0 else f"{error_count} Fehler im Verarbeitungsstatus – Export bleibt möglich",
+        warning=(error_count > 0),
+    )
+
+    estimate = _estimate_export_size(ready_instances)
+    rows.append({
+        "Status": "• Prognose",
+        "Prüfung": "Erwartete HTML-Größe",
+        "Details": f"ca. {_human_size(estimate)}",
+        "Pflicht": "Nein",
+    })
+    return rows, blockers, estimate
+
+
+def _reset_all_app_data() -> None:
+    """Leert Uploads, Sessiondaten, Caches und die temporäre Exportdatei."""
+    _clear_generated_html_file()
+    try:
+        st.cache_data.clear()
+    except Exception:
+        pass
+    try:
+        st.cache_resource.clear()
+    except Exception:
+        pass
+    for key in list(st.session_state.keys()):
+        try:
+            del st.session_state[key]
+        except Exception:
+            pass
 
 
 def _safe_cached_export_b64(cache_key: str, source_value: str, builder,
@@ -69167,7 +69314,7 @@ EMBEDDED_PDF_DOCUMENTS = {
 # endregion
 
 st.title(f"{APP_DISPLAY_NAME} · Version {APP_DISPLAY_VERSION}")
-st.caption("Modularer Einzeldatei-Generator mit Datenstand und Generierungsstatistik")
+st.caption("Modularer Einzeldatei-Generator mit Startprüfung, Fortschritt und sicherem Reset")
 
 tab_stamm, tab_wochen, tab_extra, tab_dl = st.tabs(
     ["Stammdaten", "Wochen", "Zusatzdateien", "Download"]
@@ -69449,6 +69596,14 @@ with tab_dl:
     ready = [inst for inst in instances_state
              if inst.get("suche_html") and inst.get("druck_html")]
 
+    st.markdown("##### Startprüfung")
+    _preflight_rows, _preflight_blockers, _estimated_html_size = _build_export_preflight(ready)
+    st.dataframe(_preflight_rows, width="stretch", hide_index=True)
+    if _preflight_blockers:
+        st.warning("Vor der HTML-Erstellung fehlt noch: " + ", ".join(_preflight_blockers))
+    else:
+        st.success(f"Startprüfung bestanden · erwartete Größe ca. {_human_size(_estimated_html_size)}")
+
     if ready:
         zulage_json_state      = st.session_state.get("zulage_json", "{}")
         drittkunden_json_state = st.session_state.get("drittkunden_json", "[]")
@@ -69499,6 +69654,7 @@ with tab_dl:
             type="primary",
             width="stretch",
             key="build_suche_html",
+            disabled=bool(_preflight_blockers),
         )
 
         if build_clicked:
@@ -69509,10 +69665,12 @@ with tab_dl:
 
             generated_at = datetime.datetime.now()
             generation_meta = _build_generation_metadata(ready, generated_at)
+            _build_progress = st.progress(5, text="1/5 Startprüfung abgeschlossen")
             try:
                 _generation_started = time.perf_counter()
-                with st.spinner("Kombiniere suche.html ..."):
-                    app_html = combine_html(
+                _build_progress.progress(20, text="2/5 Zusatzdaten und Metadaten vorbereiten")
+                _build_progress.progress(35, text="3/5 Wochen, Auswertungen und PDFs zusammenführen")
+                app_html = combine_html(
                         instances=ready,
                         tel_json=st.session_state.get("tel_json", "[]"),
                         sam_json=st.session_state.get("sam_json", "[]"),
@@ -69534,22 +69692,25 @@ with tab_dl:
                         generation_meta=generation_meta,
                     )
 
-                    # Direkt auf die Platte schreiben. TextIOWrapper kodiert
-                    # schrittweise, sodass keine zweite vollständige Byte-Kopie
-                    # der großen HTML im RAM entsteht.
-                    import tempfile as _tempfile
-                    with _tempfile.NamedTemporaryFile(
-                        mode="w",
-                        encoding="utf-8",
-                        newline="",
-                        suffix=".html",
-                        prefix="nfc_suche_",
-                        delete=False,
-                    ) as _tmp_html:
-                        _tmp_html.write(app_html)
-                        generated_html_path = _tmp_html.name
-                    del app_html
+                _build_progress.progress(78, text="4/5 HTML-Datei auf dem Server speichern")
 
+                # Direkt auf die Platte schreiben. TextIOWrapper kodiert
+                # schrittweise, sodass keine zweite vollständige Byte-Kopie
+                # der großen HTML im RAM entsteht.
+                import tempfile as _tempfile
+                with _tempfile.NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    newline="",
+                    suffix=".html",
+                    prefix="nfc_suche_",
+                    delete=False,
+                ) as _tmp_html:
+                    _tmp_html.write(app_html)
+                    generated_html_path = _tmp_html.name
+                del app_html
+
+                _build_progress.progress(92, text="5/5 Dateigröße und Download vorbereiten")
                 generation_seconds = time.perf_counter() - _generation_started
                 generated_html_size = Path(generated_html_path).stat().st_size
                 _pdf_count, _pdf_bytes = _embedded_pdf_stats()
@@ -69568,6 +69729,8 @@ with tab_dl:
                     "download_html", "Gesamtdatei suche.html",
                     f"{_human_size(generated_html_size)}, {len(ready)} Woche(n), {generation_seconds:.2f} s",
                 )
+                _build_progress.progress(100, text=f"Fertig · {_human_size(generated_html_size)} in {generation_seconds:.2f} s")
+                st.success("suche.html wurde erfolgreich erstellt und steht zum Download bereit.")
                 _gc.collect()
             except Exception as exc:
                 try:
@@ -69577,6 +69740,10 @@ with tab_dl:
                     pass
                 _clear_generated_html_file()
                 _record_processing_error("download_html", "Gesamtdatei suche.html", exc)
+                try:
+                    _build_progress.progress(100, text="Erstellung abgebrochen – Fehlerdetails stehen unten im Status")
+                except Exception:
+                    pass
                 st.error(f"suche.html konnte nicht erzeugt werden: {type(exc).__name__}: {exc}")
                 _gc.collect()
 
@@ -69623,7 +69790,6 @@ with tab_dl:
                 f"Datenstand: {created_label} · "
                 f"{len(week_names)} Woche(n): {', '.join(week_names)}"
             )
-            st.caption("In der fertigen HTML ist der Datenstand oben rechts über den Button „Datenstand“ abrufbar.")
         else:
             st.info("Nach dem letzten Daten-Upload wurde noch keine aktuelle suche.html erstellt.")
 
@@ -69641,7 +69807,14 @@ with tab_dl:
             on_click="ignore",
         )
     else:
-        st.info("Mindestens Logo, Schluesseldatei und eine Wochen-Excel hochladen.")
+        st.button(
+            "suche.html erstellen / aktualisieren",
+            type="primary",
+            width="stretch",
+            key="build_suche_html_disabled",
+            disabled=True,
+        )
+        st.info("Mindestens Logo, Schlüsseldatei und eine vollständig verarbeitete Wochen-Excel hochladen.")
         zulage_json_state      = st.session_state.get("zulage_json", "{}")
         drittkunden_json_state = st.session_state.get("drittkunden_json", "[]")
         if zulage_json_state not in ("{}", "") or drittkunden_json_state not in ("[]", ""):
@@ -69658,6 +69831,26 @@ with tab_dl:
                 width="stretch",
                 on_click="ignore",
             )
+
+# === Vollständiger Reset =====================================================
+st.divider()
+with st.expander("App vollständig zurücksetzen", expanded=False):
+    st.warning(
+        "Dabei werden alle Uploads, verarbeiteten Daten, Statusmeldungen, Caches "
+        "und die temporär erzeugte suche.html dieser Sitzung entfernt."
+    )
+    _reset_confirmed = st.checkbox(
+        "Ich möchte wirklich alle Daten dieser Sitzung löschen.",
+        key="_confirm_full_app_reset",
+    )
+    if st.button(
+        "Alle Daten und Uploads zurücksetzen",
+        width="stretch",
+        disabled=not _reset_confirmed,
+        key="full_app_reset",
+    ):
+        _reset_all_app_data()
+        st.rerun()
 
 # === Zentrale Verarbeitungsanzeige ===========================================
 st.divider()
