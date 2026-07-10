@@ -13,16 +13,19 @@ import base64
 import unicodedata
 import re
 import datetime
+import time
 import hashlib
 import io
 import zlib
 from pathlib import Path
 from typing import List
 
-st.set_page_config(page_title="NFC Generator", layout="wide")
+st.set_page_config(page_title="NFC Generator v30", layout="wide")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-10-v55-termine-fahrer"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-10-v52-termine-fahrer"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-10-v61-datenstand"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-10-v58-datenstand"
+APP_DISPLAY_VERSION = "30"
+APP_DISPLAY_NAME = "NFC Generator"
 
 
 
@@ -97,7 +100,7 @@ def upload_signature(uploaded_file) -> str:
 def uploads_signature(uploaded_files) -> str:
     digest = hashlib.sha1()
     for uploaded_file in uploaded_files or []:
-        digest.update(upload_signature(uploaded_file).encode("ascii"))
+        digest.update(upload_signature(uploaded_file).encode("utf-8", errors="ignore"))
         digest.update(b"|")
     return digest.hexdigest()
 
@@ -4131,18 +4134,14 @@ def parse_timerecording_csv(uploaded_file) -> str:
     return _json.dumps(by_driver, ensure_ascii=False)
 
 
-def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', spesen_json: str = '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}', grosskunden_json: str = "[]", timerec_json: str = "{}", spediteure_json: str = '{"katalog":[],"fahrten":[]}', fahrerbewertung_json: str = '{"profile":"","event_types":[],"g_months":{},"g_ev":{},"drivers":[]}', versp_abfahrt_json: str = "{}", last_updated: str = "") -> str:
-    try:
-        _logo_up = st.session_state.get("g_logo")
-    except Exception:
-        _logo_up = None
-    logo_data_url = logo_file_to_data_uri(_logo_up) or load_logo_data_uri()
 
-    """
-    Bettet beliebig viele Suche+Druck-Paare (Instanzen) in eine HTML ein.
-    Instanz-Wechsler im Topnav. BLP Druck ist intern (hidden iframe für FW-Daten).
-    """
-    spesen_js_code = r"""
+# =============================================================================
+# JAVASCRIPT-BAUSTEINE DES DASHBOARDS
+# Statische Skripte liegen bewusst außerhalb von combine_html(). Dadurch bleibt
+# die eigentliche Zusammenstellung der HTML-Datei kurz und besser wartbar.
+# =============================================================================
+
+_JS_SPESEN = r"""
 // ── Spesen / Reisekosten ───────────────────────────────────────────────────
 var spesenSearchQuery = "";
 var spesenMonthFilter = "all";
@@ -4724,13 +4723,772 @@ function spesenShowLateStarts() {
 }
 """
 
-    fa_js_code = '\n// ── Fahrerauswertung ──────────────────────────────────────────────────────────\nvar faCurrentSort  = \"name\";\nvar faYearFilter   = String(new Date().getFullYear());\nvar faSelectedName = null;\nvar faSearchQuery  = \"\";\n\nfunction faSort(mode) {\n  faCurrentSort = mode;\n  [\"name\",\"arbeit\"].forEach(function(m) {\n    var btn = document.getElementById(\"fa-sort-\"+m);\n    if(!btn) return;\n    btn.style.background = mode===m ? \"#334155\" : \"#fff\";\n    btn.style.color      = mode===m ? \"#fff\"    : \"#334155\";\n  });\n  faBuildSidebarHighlight(faSelectedName);\n}\n\nfunction faFilter(q) { faSearchQuery = q; faBuildSidebarHighlight(faSelectedName); }\nfunction faYearChange(yr) {\n  faYearFilter = yr;\n  faBuildSidebarHighlight(faSelectedName);\n  if(faSelectedName) faShowDetail(faSelectedName);\n}\n\nfunction faGetStats(driver, yr) {\n  if(!driver.years) return {krank:0,urlaub:0,ausgleich:0,arbeit:0,arbeit_samstag:0,touren:{},lkw:{},eintraege:[]};\n  var years = yr===\"all\" ? Object.keys(driver.years) : [yr];\n  var out = {krank:0,urlaub:0,ausgleich:0,arbeit:0,arbeit_samstag:0,touren:{},lkw:{},eintraege:[]};\n  years.forEach(function(y) {\n    var d = driver.years[y];\n    if(!d) return;\n    out.krank          += d.krank          || 0;\n    out.urlaub         += d.urlaub         || 0;\n    out.ausgleich      += d.ausgleich      || 0;\n    out.arbeit         += d.arbeit         || 0;\n    out.arbeit_samstag += d.arbeit_samstag || 0;\n    Object.keys(d.touren||{}).forEach(function(t){\n      out.touren[t] = (out.touren[t]||0) + d.touren[t];\n    });\n    // Use pre-computed lkw if available, otherwise compute from eintraege\n    var lkwSource = d.lkw && Object.keys(d.lkw).length > 0 ? d.lkw : (function(){\n      var cnt = {};\n      (d.eintraege||[]).forEach(function(e){\n        var lv = (e.lkw||\"\").trim();\n        var tl = (e.tour||\"\").toLowerCase();\n        if(lv && lv!==\"0\" && !/krank|urlaub|ausgleich/i.test(tl)){\n          cnt[lv] = (cnt[lv]||0) + 1;\n        }\n      });\n      return cnt;\n    })();\n    Object.keys(lkwSource).forEach(function(l){\n      out.lkw[l] = (out.lkw[l]||0) + lkwSource[l];\n    });\n    out.eintraege = out.eintraege.concat(d.eintraege||[]);\n  });\n  return out;\n}\n\nfunction faGetFiltered() {\n  var q = faSearchQuery.toLowerCase().trim();\n  var list = FA_DATA.filter(function(d) {\n    if(q && !d.name.toLowerCase().includes(q)) return false;\n    if(faYearFilter !== \"all\" && !d.years[faYearFilter]) return false;\n    return true;\n  });\n  if(faCurrentSort === \"arbeit\") {\n    list.sort(function(a,b){ return faGetStats(b,faYearFilter).arbeit - faGetStats(a,faYearFilter).arbeit; });\n  } else {\n    list.sort(function(a,b){ return a.name.localeCompare(b.name,\"de\"); });\n  }\n  return list;\n}\n\nfunction faRender(q) {\n  faSearchQuery = q || \"\";\n  if(!FA_DATA || !FA_DATA.length) {\n    var c = document.getElementById(\"fa-detail-panel\");\n    if(c) c.innerHTML = \"<div style=\'color:#94a3b8;padding:40px;text-align:center;font-size:14px;\'>Keine Daten vorhanden.<br>Bitte Fahrerauswertungs-Dateien in Streamlit hochladen.</div>\";\n    return;\n  }\n  faPopulateYears();\n  faBuildSidebarHighlight(null);\n}\n\nfunction faPopulateYears() {\n  var allYears = [];\n  FA_DATA.forEach(function(d) {\n    Object.keys(d.years||{}).forEach(function(y){\n      if(y !== \"2024\" && allYears.indexOf(y) === -1) allYears.push(y);\n    });\n  });\n  allYears.sort().reverse();\n  var yrSel = document.getElementById(\"fa-year-sel\");\n  if(!yrSel) return;\n  var current = yrSel.value;\n  var curYr = String(new Date().getFullYear());\n  yrSel.innerHTML = allYears.map(function(y){ return \"<option value=\'\"+y+\"\'>\"+y+\"</option>\"; }).join(\"\");\n  // Default to current year\n  if(current && allYears.indexOf(current) !== -1) yrSel.value = current;\n  else if(allYears.indexOf(curYr) !== -1) yrSel.value = curYr;\n  else if(allYears.length) yrSel.value = allYears[0];\n  faYearFilter = yrSel.value;\n}\n\nfunction faBuildSidebarHighlight(activeName) {\n  var sidebar = document.getElementById(\"fa-sidebar-list\");\n  if(!sidebar) return;\n  var filtered = faGetFiltered();\n\n  var statsEl = document.getElementById(\"fa-stats\");\n  if(statsEl) {\n    var total   = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).arbeit;    },0);\n    var totalK  = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).krank;     },0);\n    var totalU  = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).urlaub;    },0);\n    statsEl.innerHTML =\n      \"<b>\"+filtered.length+\"</b> Fahrer &nbsp;&middot;&nbsp; Σ <b>\"+total+\"</b> Arbeitstage\" +\n      (totalK ? \" &nbsp;&middot;&nbsp; <span style=\'color:#dc2626;\'>Krank Σ <b>\"+totalK+\"</b></span>\" : \"\") +\n      (totalU ? \" &nbsp;&middot;&nbsp; <span style=\'color:#0891b2;\'>Urlaub Σ <b>\"+totalU+\"</b></span>\" : \"\");\n  }\n\n  var html = \"\";\n  filtered.forEach(function(d) {\n    var s = faGetStats(d, faYearFilter);\n    var active = d.name === activeName;\n    var bg = active ? \"#334155\" : \"#fff\";\n    var fg = active ? \"#fff\" : \"#0b1220\";\n    html += \"<div onclick=\'faShowDetail(\\\"\"+d.name.replace(/\"/g,\"&quot;\")+\"\\\")\'\"+\n      \" style=\'padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;background:\"+bg+\";\'>\" +\n      \"<div style=\'font-weight:700;font-size:13px;color:\"+fg+\";\'>\"+d.name+\"</div>\" +\n      \"<div style=\'display:flex;gap:3px;flex-wrap:wrap;margin-top:3px;\'>\" +\n        \"<span style=\'font-size:8px;font-weight:600;padding:0px 3px;border-radius:2px;background:\"+(active?\"rgba(255,255,255,.35)\":\"#f1f5f9\")+\";color:\"+(active?\"#fff\":\"#334155\")+\"\'>\"+s.arbeit+\" T</span>\" +\n        (s.arbeit_samstag ? \"<span style=\'font-size:8px;font-weight:600;padding:0px 3px;border-radius:2px;background:\"+(active?\"#92400e\":\"#f1f5f9\")+\";color:\"+(active?\"#fef3c7\":\"#b45309\")+\"\'>Sa \"+s.arbeit_samstag+\"</span>\" : \"\") +\n        (s.krank ? \"<span style=\'font-size:8px;font-weight:600;padding:0px 3px;border-radius:2px;background:\"+(active?\"#991b1b\":\"#fee2e2\")+\";color:\"+(active?\"#fecaca\":\"#dc2626\")+\"\'>K \"+s.krank+\"</span>\" : \"\") +\n      \"</div></div>\";\n  });\n  sidebar.innerHTML = html || \"<div style=\'padding:20px;color:#94a3b8;font-size:12px;text-align:center;\'>Kein Fahrer gefunden</div>\";\n\n  if(!activeName && filtered.length) { faSelectedName = filtered[0].name; faShowDetail(filtered[0].name); }\n  else if(activeName) faSelectedName = activeName;\n}\n\nfunction faShowDetail(name) {\n  faSelectedName = name;\n  faBuildSidebarHighlight(name);\n  var driver = FA_DATA.find(function(d){ return d.name === name; });\n  var panel = document.getElementById(\"fa-detail-panel\");\n  if(!panel || !driver) return;\n\n  var yr = faYearFilter;\n  var s  = faGetStats(driver, yr);\n  var years = (yr === \"all\" ? Object.keys(driver.years||{}).sort().reverse() : [yr]).filter(function(y){return y!==\"2024\";});\n\n  var lkwEntries = Object.entries(s.lkw||{}).sort(function(a,b){return b[1]-a[1];});\n  var lkwHtml = lkwEntries.length\n    ? lkwEntries.map(function(e){\n        return \"<span style=\'display:inline-block;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;padding:3px 12px;margin:2px;font-size:12px;font-weight:700;color:#166534;\'>\"+e[0]+\" <span style=\'color:#64748b;font-weight:500;\'>\"+e[1]+\"x</span></span>\";\n      }).join(\"\")\n    : \"<span style=\'color:#94a3b8;font-size:12px;\'>Keine LKW-Daten</span>\";\n\n  var html = \"\";\n\n  // Header\n  html += \"<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;padding:16px 20px;margin-bottom:14px;\'>\";\n  html += \"<div style=\'font-size:20px;font-weight:900;color:#0b1220;margin-bottom:10px;\'>\"+driver.name+\"</div>\";\n  html += \"<div style=\'display:flex;flex-wrap:wrap;gap:7px;\'>\";\n  html += \"<span style=\'background:#f1f5f9;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#334155;\'>&#9733; \"+s.arbeit+\" Arbeitstage</span>\";\n  if(s.arbeit_samstag) html += \"<span style=\'background:#f1f5f9;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#b45309;\'>Samstag \"+s.arbeit_samstag+\"</span>\";\n  if(s.krank)          html += \"<span style=\'background:#fee2e2;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#dc2626;\'>Krank \"+s.krank+\"</span>\";\n  if(s.urlaub)         html += \"<span style=\'background:#f1f5f9;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#0891b2;\'>Urlaub \"+s.urlaub+\"</span>\";\n  if(s.ausgleich)      html += \"<span style=\'background:#f0fdf4;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#16a34a;\'>Ausgl. \"+s.ausgleich+\"</span>\";\n  html += \"</div></div>\";\n\n  // LKW Section\n  html += \"<div style=\'background:#fff;border:1.5px solid #bbf7d0;border-radius:5px;padding:12px 16px;margin-bottom:14px;\'>\";\n  html += \"<div style=\'font-size:11px;font-weight:900;text-transform:uppercase;color:#166534;letter-spacing:.4px;margin-bottom:8px;\'>LKW-Einsätze</div>\";\n  html += \"<div>\"+lkwHtml+\"</div>\";\n  html += \"</div>\";\n\n  // Year chips\n  if(yr === \"all\" && years.length > 1) {\n    html += \"<div style=\'display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;\'>\";\n    years.forEach(function(y) {\n      var ys = driver.years[y]; if(!ys) return;\n      html += \"<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:4px;padding:8px 14px;min-width:110px;\'>\";\n      html += \"<div style=\'font-size:12px;font-weight:900;color:#334155;margin-bottom:4px;\'>\"+y+\"</div>\";\n      html += \"<div style=\'font-size:12.5px;font-weight:800;\'>&#9733; \"+ys.arbeit+\"</div>\";\n      if(ys.arbeit_samstag) html += \"<div style=\'font-size:11px;color:#b45309;\'>Sa: \"+ys.arbeit_samstag+\"</div>\";\n      if(ys.krank)  html += \"<div style=\'font-size:11px;color:#dc2626;\'>Krank: \"+ys.krank+\"</div>\";\n      if(ys.urlaub) html += \"<div style=\'font-size:11px;color:#0891b2;\'>Urlaub: \"+ys.urlaub+\"</div>\";\n      html += \"</div>\";\n    });\n    html += \"</div>\";\n  }\n\n  // KW table\n  years.forEach(function(y) {\n    var yd = driver.years[y]; if(!yd) return;\n    var kwMap = {};\n    var dispYr = parseInt(y);\n    (yd.eintraege||[]).forEach(function(e){\n      // Skip entries whose date doesn\'t belong to the displayed year\n      var m = (e.datum||\"\").match(/(\\d{4})$/);\n      if(m && parseInt(m[1]) !== dispYr) return;\n      var k=\"KW \"+e.kw; if(!kwMap[k]) kwMap[k]=[]; kwMap[k].push(e);\n    });\n    var kwKeys = Object.keys(kwMap).sort(function(a,b){return parseInt(a.split(\" \")[1])-parseInt(b.split(\" \")[1]);});\n\n    if(years.length > 1)\n      html += \"<div style=\'font-size:13px;font-weight:900;color:#334155;margin:12px 0 6px;border-left:3px solid #334155;padding-left:8px;\'>\"+y+\"</div>\";\n\n    html += \"<div style=\'background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;overflow:hidden;margin-bottom:12px;\'>\";\n    html += \"<table style=\'width:100%;border-collapse:collapse;font-size:12px;\'>\";\n    html += \"<thead><tr style=\'background:#1e3a5f;color:#fff;\'><th style=\'padding:6px 10px;text-align:left;\'>KW</th><th style=\'padding:6px 10px;text-align:left;\'>Datum</th><th style=\'padding:6px 10px;text-align:left;\'>Tour</th><th style=\'padding:6px 10px;text-align:left;\'>Zeit</th><th style=\'padding:6px 10px;text-align:left;\'>LKW</th></tr></thead><tbody>\";\n    kwKeys.forEach(function(kw) {\n      html += \"<tr style=\'background:#f1f5f9;\'><td colspan=\'5\' style=\'padding:3px 10px;font-weight:800;color:#334155;font-size:11px;\'>\"+kw+\"</td></tr>\";\n      kwMap[kw].forEach(function(e,i) {\n        var bg = e.samstag ? \"#fff7ed\" : (i%2===0?\"#f8fafc\":\"#fff\");\n        var tc = /krank/i.test(e.tour)?\"color:#dc2626;font-weight:700;\":/urlaub/i.test(e.tour)?\"color:#0891b2;font-weight:700;\":/ausgleich/i.test(e.tour)?\"color:#16a34a;font-weight:700;\":\"font-weight:600;\";\n        html += \"<tr style=\'background:\"+bg+\";border-bottom:1px solid #f1f5f9;\'>\";\n        html += \"<td style=\'padding:3px 10px;\'></td>\";\n        html += \"<td style=\'padding:3px 10px;\"+(e.samstag?\"font-weight:700;color:#b45309;\":\"color:#334155;\")+\"\'>\"+e.datum+\"</td>\";\n        html += \"<td style=\'padding:3px 10px;\"+tc+\"\'>\"+e.tour+\"</td>\";\n        html += \"<td style=\'padding:3px 10px;color:#475569;\'>\"+e.zeit+\"</td>\";\n        html += \"<td style=\'padding:3px 10px;font-weight:700;color:#166534;\'>\"+(e.lkw && e.lkw!==\"0\" ? e.lkw : \"\")+\"</td>\";\n        html += \"</tr>\";\n      });\n    });\n    html += \"</tbody></table></div>\";\n  });\n\n  panel.innerHTML = html;\n  panel.scrollTop = 0;\n}\n\nfunction faPDF() {\n  if(!FA_DATA || !FA_DATA.length) { alert(\"Keine Daten vorhanden.\"); return; }\n  // If a driver is selected in sidebar, export only that driver\n  var filtered;\n  if(faSelectedName) {\n    filtered = FA_DATA.filter(function(d){ return d.name === faSelectedName; });\n  } else {\n    filtered = faGetFiltered();\n  }\n  var yr = faYearFilter;\n  var today = new Date().toLocaleDateString(\"de-DE\",{day:\"2-digit\",month:\"long\",year:\"numeric\"});\n  var yrLabel = yr === \"all\" ? \"Alle Jahre\" : yr;\n  var css = \"@page{size:A4 portrait;margin:10mm 9mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:\'Segoe UI\',Arial,sans-serif;color:#1e293b;font-size:7pt}.cover{text-align:center;padding:16mm 0 8mm;border-bottom:3px solid #334155;margin-bottom:8mm}.cover h1{font-size:18pt;color:#334155;font-weight:900;margin-bottom:2mm}.sub{font-size:9pt;color:#64748b}.db{page-break-inside:avoid;margin-bottom:7mm}.dh{background:#334155;color:#fff;padding:2mm 4mm;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:6px}.dn{font-size:10pt;font-weight:900;flex:1}.ds{display:flex;gap:4px;flex-wrap:wrap;font-size:6.5pt}.badge{display:inline-block;border-radius:4px;padding:1px 5px;font-weight:800}.lsec{padding:2mm 4mm;background:#f0fdf4;border:1px solid #bbf7d0}.ys{margin-bottom:3mm}.yl{font-size:8pt;font-weight:900;color:#334155;margin:2mm 0 1mm;border-left:2px solid #334155;padding-left:3px}table{width:100%;border-collapse:collapse}thead tr{background:#1e3a5f;color:#fff}thead th{padding:2px 5px;font-weight:800;font-size:6pt;text-align:left}tbody tr.kr{background:#f1f5f9}tbody tr.kr td{padding:2px 5px;font-weight:800;color:#334155;font-size:5.5pt}tbody tr.dr td{padding:2px 5px;border-bottom:1px solid #f1f5f9}tbody tr.sa{background:#fff7ed!important}.ft{text-align:right;color:#94a3b8;font-size:5.5pt;margin-top:1mm;border-top:1px solid #f1f5f9}\";\n  var body = \"<div class=\'cover\'><div style=\'font-size:24pt;margin-bottom:2mm;\'>&#128101;</div><h1>Fahrerauswertung</h1><div class=\'sub\'>Fuhrpark NFC &middot; \"+yrLabel+\" &middot; \"+today+\"</div><div class=\'sub\'>\"+filtered.length+\" Fahrer</div></div>\";\n  filtered.forEach(function(driver) {\n    var years = (yr===\"all\"?Object.keys(driver.years||{}).sort().reverse():[yr]).filter(function(y){return y!==\"2024\";});\n    var ts = faGetStats(driver,yr);\n    var lkwList = Object.entries(ts.lkw||{}).sort(function(a,b){return b[1]-a[1];});\n    body += \"<div class=\'db\'><div class=\'dh\'><span class=\'dn\'>\"+driver.name+\"</span><div class=\'ds\'>\";\n    body += \"<span class=\'badge\' style=\'background:#f1f5f9;color:#334155;\'>&#9733; \"+ts.arbeit+\"</span>\";\n    if(ts.arbeit_samstag) body += \"<span class=\'badge\' style=\'background:#f1f5f9;color:#b45309;\'>Sa \"+ts.arbeit_samstag+\"</span>\";\n    if(ts.krank)  body += \"<span style=\'background:#fee2e2;color:#dc2626;\'>K \"+ts.krank+\"</span>\";\n    if(ts.urlaub) body += \"<span class=\'badge\' style=\'background:#f1f5f9;color:#0891b2;\'>U \"+ts.urlaub+\"</span>\";\n    if(ts.ausgleich) body += \"<span class=\'badge\' style=\'background:#f0fdf4;color:#16a34a;\'>Az \"+ts.ausgleich+\"</span>\";\n    body += \"</div></div>\";\n    if(lkwList.length){body+=\"<div class=\'lsec\'><b style=\'color:#166534;font-size:6pt;\'>LKW: </b>\";lkwList.forEach(function(e){body+=\"<span style=\'display:inline-block;background:#fff;border:1px solid #bbf7d0;border-radius:2px;padding:0 4px;margin:1px;font-size:6pt;color:#166534;font-weight:700;\'>\"+e[0]+\" \"+e[1]+\"x</span>\";});body+=\"</div>\";}\n    years.forEach(function(y){var yd=driver.years[y];if(!yd)return;var kwMap={};(yd.eintraege||[]).forEach(function(e){var k=\"KW \"+e.kw;if(!kwMap[k])kwMap[k]=[];kwMap[k].push(e);});var kwKeys=Object.keys(kwMap).sort(function(a,b){return parseInt(a.split(\" \")[1])-parseInt(b.split(\" \")[1]);});body+=\"<div class=\'ys\'>\";if(years.length>1)body+=\"<div class=\'yl\'>\"+y+\"</div>\";body+=\"<table><thead><tr><th>KW</th><th>Datum</th><th>Tour</th><th>Zeit</th><th>LKW</th></tr></thead><tbody>\";kwKeys.forEach(function(kw){body+=\"<tr class=\'kr\'><td colspan=\'5\'>\"+kw+\"</td></tr>\";kwMap[kw].forEach(function(e,i){var tc=/krank/i.test(e.tour)?\"color:#dc2626;\":/urlaub/i.test(e.tour)?\"color:#0891b2;\":\"\";body+=\"<tr class=\'dr\"+(e.samstag?\" sa\":\"\")+\"\'><td></td><td style=\'\"+(e.samstag?\"color:#b45309;font-weight:700;\":\"\")+\"\'>\"+e.datum+\"</td><td style=\'font-weight:700;\"+tc+\"\'>\"+e.tour+\"</td><td>\"+e.zeit+\"</td><td style=\'color:#166534;font-weight:700;\'>\"+e.lkw+\"</td></tr>\";});});body+=\"</tbody></table></div>\";});\n    body+=\"<div class=\'ft\'>NordFrischeCenter &middot; Fahrerauswertung &middot; \"+driver.name+\"</div></div>\";\n  });\n  var w=window.open(\"\",\"_blank\",\"width=900,height=800\");\n  w.document.write(\"<!DOCTYPE html><html><head><meta charset=\'utf-8\'><title>Fahrerauswertung</title><style>\"+css+\"</style></head><body>\"+body+\"</body></html>\");\n  w.document.close();w.focus();setTimeout(function(){w.print();},600);\n}\n'
-    zulage_js_code = '\n// ── ZULAGEN ──────────────────────────────────────────────────────────────\nvar _zTab = "sonder";\n\nfunction zulagenInit() { zulagenBuildMonthSel(); zulagenRender(); }\n\nfunction zulagenTab(tab) {\n  _zTab = tab;\n  ["sonder","fuengers","drittkunden"].forEach(function(t) {\n    var btn = document.getElementById("ztab-"+t);\n    if(btn){ btn.style.background=tab===t?"#334155":"#fff"; btn.style.color=tab===t?"#fff":"#334155"; }\n  });\n  zulagenBuildMonthSel(); zulagenRender();\n}\n\nfunction zulagenBuildMonthSel() {\n  var sel = document.getElementById("zulage-month-sel");\n  if(!sel) return;\n  var arr = _zTab==="drittkunden"\n    ? (Array.isArray(DRITTKUNDEN_DATA) ? DRITTKUNDEN_DATA : [])\n    : (_zTab==="sonder" ? (ZULAGE_DATA.sonder||[]) : (ZULAGE_DATA.fuengers||[]));\n  var cur = sel ? sel.value : "all";\n  sel.innerHTML = "<option value=\'all\'>Alle Monate</option>" +\n    arr.map(function(m){ return "<option value=\'"+m.monat+"\'"+(m.monat===cur?" selected":"")+">" + m.monat + "</option>"; }).join("");\n}\n\nfunction zulagenRender() {\n  var el = document.getElementById("zulage-content");\n  var stats = document.getElementById("zulage-stats");\n  if(!el) return;\n  if(_zTab==="drittkunden") {\n    if(!DRITTKUNDEN_DATA || !Array.isArray(DRITTKUNDEN_DATA) || !DRITTKUNDEN_DATA.length) {\n      el.innerHTML = "<div style=\'color:#94a3b8;padding:60px;text-align:center;font-size:14px;\'>Keine Drittkunden-Daten \\u2013 bitte Touren-Excel hochladen.</div>";\n      if(stats) stats.innerHTML = ""; return;\n    }\n  } else if(!ZULAGE_DATA || typeof ZULAGE_DATA !== "object" || (!ZULAGE_DATA.sonder && !ZULAGE_DATA.fuengers)) {\n    el.innerHTML = "<div style=\'color:#94a3b8;padding:60px;text-align:center;font-size:14px;\'>Keine Zulage-Daten \\u2013 bitte Touren-Excel hochladen.</div>";\n    if(stats) stats.innerHTML = ""; return;\n  }\n  var arr = _zTab==="drittkunden" ? (Array.isArray(DRITTKUNDEN_DATA) ? DRITTKUNDEN_DATA : []) : (_zTab==="sonder" ? (ZULAGE_DATA.sonder||[]) : (ZULAGE_DATA.fuengers||[]));\n  if(!arr.length) {\n    el.innerHTML = "<div style=\'color:#94a3b8;padding:60px;text-align:center;\'>Keine Daten f\\u00fcr diesen Tab.</div>";\n    if(stats) stats.innerHTML = ""; return;\n  }\n  var sel = document.getElementById("zulage-month-sel");\n  var filterM = sel ? sel.value : "all";\n  var data = filterM!=="all" ? arr.filter(function(m){return m.monat===filterM;}) : arr;\n  var totalAll = 0, html = "";\n  var isSonder = _zTab === "sonder";\n\n  data.forEach(function(monat) {\n    var mSum = monat.fahrer.reduce(function(s,f){return s+f.gesamt;},0);\n    totalAll += mSum;\n\n    // Month section header – same style as rest of app\n    html += "<div style=\'display:flex;align-items:center;gap:10px;margin-bottom:10px;\'>";\n    html += "<h3 style=\'margin:0;font-size:12px;font-weight:700;color:#334155;white-space:nowrap;\'>" + monat.monat + "</h3>";\n    html += "<span style=\'flex:1;height:1px;background:#e2e8f0;display:block;\'></span>";\n    html += "<span style=\'font-size:11px;font-weight:700;color:#334155;\'>\\u03a3 " + mSum.toFixed(2) + " \\u20ac</span>";\n    html += "</div>";\n\n    // 3-col card grid – same as samRender\n    html += "<div style=\'display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:stretch;margin-bottom:28px;\'>";\n\n    monat.fahrer.forEach(function(f) {\n\n      // Entry chips\n      var chipsHtml = f.tage.map(function(t) {\n        var isDK = (_zTab==="drittkunden");\n        var verdienst = isDK ? (t.zulage||0) : (t.verdienst||0);\n        var datumStr = isDK\n          ? t.datum + " <span style=\'color:#94a3b8;font-size:10px;\'>(" + (t.kw||"") + ")</span>"\n          : t.datum;\n        var rightHtml = "";\n        if(isDK) {\n          var dkLabel = (t.lkw||"") + (t.info ? " \\u00b7 " + t.info : "");\n          rightHtml = "<span style=\'color:#475569;font-weight:600;\'>" + dkLabel + "</span>";\n        } else if(isSonder) {\n          var tour = t.tour && t.tour!=="zbv" && t.tour!=="" ? t.tour : "z.b.v.";\n          var ac = t.art==="Gigaliner" ? "background:#fef3c7;color:#92400e;"\n                 : t.art==="Tandem"    ? "background:#dbeafe;color:#1e40af;"\n                 :                       "background:#dcfce7;color:#166534;";\n          rightHtml = "<span style=\'color:#475569;font-weight:600;\'>" + tour + " \\u00b7 " + t.lkw + "</span>"\n                    + "<span style=\'" + ac + "padding:1px 7px;border-radius:5px;font-size:10px;font-weight:700;\'>" + t.art + "</span>";\n        } else {\n          rightHtml = "<span style=\'color:#475569;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\'>" + (t.kommentar||"") + "</span>";\n        }\n        return "<div style=\'display:flex;align-items:center;justify-content:space-between;"\n               +"background:#edf0f5;border-radius:4px;padding:5px 8px;margin-bottom:4px;font-size:11px;\'>"\n               +"<span style=\'color:#64748b;\'>" + datumStr + "</span>"\n               +"<span style=\'display:flex;align-items:center;gap:5px;\'>"\n               + rightHtml\n               +"<span style=\'font-weight:700;color:#15803d;margin-left:4px;\'>" + verdienst.toFixed(2) + " \\u20ac</span>"\n               +"</span>"\n               +"</div>";\n      }).join("");\n\n      // Card – same shell as samRender: border:2px solid, border-radius:5px, padding:14px 16px\n      html += "<div style=\'background:#fff;border:2px solid #334155;border-radius:5px;"\n             +"padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.06);\'>";\n\n      // Header row – mirroring samRender header\n      html += "<div style=\'display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px;\'>";\n      html += "<div style=\'flex:1;min-width:0;\'>";\n      html += "<div style=\'font-weight:900;font-size:14px;color:#0b1220;white-space:nowrap;"\n             +"overflow:hidden;text-overflow:ellipsis;\'>" + f.name + "</div>";\n      html += "<div style=\'margin-top:3px;font-size:10px;color:#94a3b8;\'>" + (f.persnr||"") + "</div>";\n      html += "</div>";\n      // Big total number – same style as the einsaetze count in samRender\n      html += "<div style=\'text-align:right;flex-shrink:0;\'>";\n      html += "<div style=\'font-size:24px;font-weight:900;color:#334155;line-height:1;\'>" + f.gesamt.toFixed(2) + "</div>";\n      html += "<div style=\'font-size:9px;color:#94a3b8;font-weight:600;\'>" + (_zTab==="drittkunden" ? "\\u20ac Zulage" : "\\u20ac Verdienst") + "</div>";\n      html += "</div>";\n      html += "</div>";\n\n      // Chips\n      html += "<div style=\'flex:1;\'>"+chipsHtml+"</div>";\n\n      // Footer: count badge\n      html += "<div style=\'margin-top:8px;border-top:1px solid #e2e8f0;padding-top:8px;"\n             +"display:flex;align-items:center;gap:6px;\'>";\n      html += "<span style=\'background:#eff6ff;color:#334155;border-radius:4px;padding:2px 8px;"\n             +"font-size:10px;font-weight:700;\'>" + f.tage.length + " Eintr\\u00e4ge</span>";\n      html += "</div>";\n\n      html += "</div>"; // end card\n    });\n\n    html += "</div>"; // end grid\n  });\n\n  el.innerHTML = html || "<div style=\'color:#94a3b8;padding:40px;text-align:center;\'>Keine Daten.</div>";\n  if(stats) stats.innerHTML = totalAll>0 ? "\\u03a3 <b>"+totalAll.toFixed(2)+" \\u20ac</b>" : "";\n}\n\n\n\nfunction zulagenExportExcel() {\n  var b64 = _zTab==="sonder" ? ZULAGE_XLSX_SONDER : _zTab==="fuengers" ? ZULAGE_XLSX_FUENGERS : ZULAGE_XLSX_DRITTKUNDEN;\n  if(!b64) { alert("Keine Excel-Daten.\\nBitte Touren-Dateien in Streamlit hochladen und App neu generieren."); return; }\n  var bc = atob(b64), bytes = new Uint8Array(bc.length);\n  for(var i=0;i<bc.length;i++) bytes[i]=bc.charCodeAt(i);\n  var blob = new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});\n  var url = URL.createObjectURL(blob);\n  var a = document.createElement("a"); a.href=url;\n  a.download = "Zulagen_"+(_zTab==="sonder"?"Sonderfahrzeuge":_zTab==="fuengers"?"Fuengers":"Drittkunden")+".xlsx";\n  a.click(); URL.revokeObjectURL(url);\n}\n'
+_JS_FA = r"""
+// ── Fahrerauswertung ──────────────────────────────────────────────────────────
+var faCurrentSort  = "name";
+var faYearFilter   = String(new Date().getFullYear());
+var faSelectedName = null;
+var faSearchQuery  = "";
 
-    wash_js_code = '\n// ── Fahrzeugwäsche Übersicht ───────────────────────────────────────────────\nfunction fwOverviewEsc(v) {\n  return String(v == null ? "" : v)\n    .replace(/&/g, "&amp;")\n    .replace(/</g, "&lt;")\n    .replace(/>/g, "&gt;");\n}\n\nfunction fwOverviewData() {\n  return Array.isArray(FAHRZEUGWAESCHE_DATA) ? FAHRZEUGWAESCHE_DATA : [];\n}\n\nvar FW_EXCLUDED_DRIVER_NAMES = ["Ch.Holtz", "Paasch", "Meyer", "Ihde", "Spedition M+S Express 4", "Spedition M+S Express 3", "Spedition M+S Express 2", "Spedition M+S Express 1", "Spedition Meyer 1", "Spedition Meyer 2", "Spedition Meyer 3", "Spedition Meyer 4", "Spedition Meyer 5", "Spedition Meyer 6", "Spedition Meyer 7 (36er)", "Spedition Meyer 8", "Spedition Meyer Sz.", "Paasch & Reinke 1", "Paasch & Reinke 2", "Paasch & Reinke 3", "deVries", "Spedition Ihde", "Insellogistik 1", "Insellogistik 2", "Zippel Logistik T1", "Zippel Logistik T2", "Zippel Logistik T3", "Ch. Holtz T1", "Ch. Holtz T2", "Ch. Holtz T3", "T&D Spedition", "Kudex 1", "Kudex 2", "FP Fleischwerk"];\n\nfunction fwNameClean(value) {\n  var s = String(value == null ? "" : value).toLowerCase();\n  // Deutsche Schreibweisen zuerst angleichen: Müller/Mueller/Muller, Jörg/Joerg usw.\n  s = s.replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss");\n  s = s.replace(/æ/g, "ae").replace(/œ/g, "oe");\n  try { s = s.normalize("NFKD").replace(/[\\u0300-\\u036f]/g, ""); } catch(e) {}\n  s = s.replace(/&[a-z]+;/g, " ");\n  s = s.replace(/\\([^)]*\\)/g, " ");\n  s = s.replace(/[_.\\/,;:|]+/g, " ");\n  s = s.replace(/[-–—]+/g, " ");\n  s = s.replace(/\\s+/g, " ").trim();\n  return s;\n}\n\nfunction fwNameTokens(value) {\n  var ignore = {\n    "fahrer":1, "fahrerin":1, "herr":1, "frau":1, "dr":1, "lkw":1,\n    "spedition":1, "firma":1, "team":1, "nfc":1, "fp":1, "fleischwerk":1\n  };\n  var seen = {};\n  return fwNameClean(value).split(" ").filter(function(t){\n    if(!t || ignore[t] || /^\\d+$/.test(t)) return false;\n    if(seen[t]) return false;\n    seen[t] = 1;\n    return true;\n  });\n}\n\nfunction fwDriverNameKey(value) {\n  var tokens = fwNameTokens(value).filter(function(t){ return t.length > 1; });\n  return tokens.sort().join(" ");\n}\n\nfunction fwTokenDistance(a, b) {\n  a = String(a || "");\n  b = String(b || "");\n  if(a === b) return 0;\n  if(!a.length) return b.length;\n  if(!b.length) return a.length;\n  var prev = [];\n  for(var j = 0; j <= b.length; j++) prev[j] = j;\n  for(var i = 1; i <= a.length; i++) {\n    var cur = [i];\n    var rowMin = cur[0];\n    for(var jj = 1; jj <= b.length; jj++) {\n      var cost = a.charAt(i - 1) === b.charAt(jj - 1) ? 0 : 1;\n      var val = Math.min(prev[jj] + 1, cur[jj - 1] + 1, prev[jj - 1] + cost);\n      cur[jj] = val;\n      if(val < rowMin) rowMin = val;\n    }\n    prev = cur;\n  }\n  return prev[b.length];\n}\n\nfunction fwTokenVariants(t) {\n  t = String(t || "");\n  var out = [t];\n  var simpleUmlaut = t.replace(/ae/g, "a").replace(/oe/g, "o").replace(/ue/g, "u");\n  out.push(simpleUmlaut);\n  out.push(t.replace(/c/g, "k"));\n  if(t === "jacob") out.push("jakub");\n  if(t === "jakub") out.push("jacob");\n  var seen = {};\n  return out.filter(function(v){ if(!v || seen[v]) return false; seen[v]=1; return true; });\n}\n\nfunction fwTokenSimilarity(a, b) {\n  a = String(a || "");\n  b = String(b || "");\n  if(!a || !b) return 0;\n  if(a === b) return 1;\n  var av = fwTokenVariants(a);\n  var bv = fwTokenVariants(b);\n  for(var ai = 0; ai < av.length; ai++) {\n    for(var bi = 0; bi < bv.length; bi++) {\n      if(av[ai] && av[ai] === bv[bi]) return 0.98;\n    }\n  }\n  // Initialen: M. Lange gegen Michael Lange.\n  if(a.length === 1 && b.length >= 2 && b.charAt(0) === a) return 0.78;\n  if(b.length === 1 && a.length >= 2 && a.charAt(0) === b) return 0.78;\n  // Abgekürzte oder zusammengesetzte Vornamen / Drittnamen.\n  if(a.length >= 3 && b.length >= 3 && (a.indexOf(b) === 0 || b.indexOf(a) === 0)) return 0.88;\n  var best = 0;\n  av.forEach(function(aa){\n    bv.forEach(function(bb){\n      var minLen = Math.min(aa.length, bb.length);\n      var d = fwTokenDistance(aa, bb);\n      var sc = 0;\n      if(minLen >= 5 && d <= 1) sc = 0.88;\n      else if(minLen >= 5 && d <= 2) sc = 0.76;\n      else if(minLen >= 4 && d <= 1) sc = 0.80;\n      if(sc > best) best = sc;\n    });\n  });\n  return best;\n}\n\nfunction fwTokenQueryMatchSummary(aTokens, bTokens) {\n  if(!aTokens || !bTokens || !aTokens.length || !bTokens.length) return { score: 0, matched: 0 };\n  var used = {};\n  var sum = 0;\n  var matched = 0;\n  aTokens.forEach(function(a){\n    var bestIdx = -1;\n    var bestScore = 0;\n    bTokens.forEach(function(b, idx){\n      if(used[idx]) return;\n      var sc = fwTokenSimilarity(a, b);\n      if(sc > bestScore) { bestScore = sc; bestIdx = idx; }\n    });\n    if(bestIdx >= 0 && bestScore >= 0.72) {\n      used[bestIdx] = 1;\n      sum += bestScore;\n      matched += 1;\n    }\n  });\n  return { score: sum / aTokens.length, matched: matched };\n}\n\nfunction fwTokenOverlapScore(aTokens, bTokens) {\n  if(!aTokens || !bTokens || !aTokens.length || !bTokens.length) return 0;\n  var used = {};\n  var sum = 0;\n  aTokens.forEach(function(a){\n    var bestIdx = -1;\n    var bestScore = 0;\n    bTokens.forEach(function(b, idx){\n      if(used[idx]) return;\n      var sc = fwTokenSimilarity(a, b);\n      if(sc > bestScore) { bestScore = sc; bestIdx = idx; }\n    });\n    if(bestIdx >= 0 && bestScore >= 0.72) {\n      used[bestIdx] = 1;\n      sum += bestScore;\n    }\n  });\n  return sum / Math.max(aTokens.length, bTokens.length);\n}\n\nfunction fwBuildKnownDriverLookup() {\n  var profiles = [];\n  var byKey = {};\n  var tokenOwners = {};\n  fwAllKnownDrivers().forEach(function(name){\n    var tokens = fwNameTokens(name);\n    var key = fwDriverNameKey(name);\n    if(!key || byKey[key]) return;\n    var profile = { name: name, key: key, tokens: tokens };\n    profiles.push(profile);\n    byKey[key] = profile;\n    tokens.forEach(function(t){\n      if(t.length < 3) return;\n      if(!tokenOwners[t]) tokenOwners[t] = {};\n      tokenOwners[t][key] = 1;\n    });\n  });\n  return { profiles: profiles, byKey: byKey, tokenOwners: tokenOwners };\n}\n\nfunction fwResolveKnownDriverProfile(value, lookup) {\n  lookup = lookup || fwBuildKnownDriverLookup();\n  var raw = String(value == null ? "" : value).trim();\n  if(!raw) return null;\n  var key = fwDriverNameKey(raw);\n  if(key && lookup.byKey[key]) return lookup.byKey[key];\n\n  var tokens = fwNameTokens(raw);\n  if(!tokens.length) return null;\n\n  // Nur ein Name in der Waschdatei: nur zuordnen, wenn dieser Name im Timerecording eindeutig ist.\n  if(tokens.length === 1 && tokens[0].length >= 3) {\n    var owners = lookup.tokenOwners[tokens[0]] || {};\n    var ownerKeys = Object.keys(owners);\n    if(ownerKeys.length === 1) return lookup.byKey[ownerKeys[0]];\n  }\n\n  var best = null;\n  var secondScore = 0;\n  lookup.profiles.forEach(function(p){\n    var fullScore = fwTokenOverlapScore(tokens, p.tokens);\n    var queryMatch = fwTokenQueryMatchSummary(tokens, p.tokens);\n    var score = Math.max(fullScore, queryMatch.score);\n    if(!best || score > best.score) {\n      secondScore = best ? best.score : 0;\n      best = { profile: p, score: score, matched: queryMatch.matched };\n    } else if(score > secondScore) {\n      secondScore = score;\n    }\n  });\n\n  if(!best || best.score <= 0) return null;\n  // Waschlisten enthalten oft nur Nachname + Rufname, Timerecording aber mehrere Vornamen.\n  // Deshalb zählt hier der Treffer auf Basis der Waschlisten-Tokens, aber mindestens 2 Tokens müssen passen.\n  if(best.score >= 0.72 && best.matched >= Math.min(2, tokens.length)) return best.profile;\n  if(best.score >= 0.60 && best.matched >= Math.min(2, tokens.length) && (best.score - secondScore) >= 0.14) return best.profile;\n  return null;\n}\n\nfunction fwKnownDriverKeyForWashName(value, lookup) {\n  var p = fwResolveKnownDriverProfile(value, lookup);\n  return p ? p.key : "";\n}\n\nfunction fwIsExcludedDriverName(name) {\n  var s = String(name == null ? "" : name);\n  return FW_EXCLUDED_DRIVER_NAMES.some(function(ex){ return ex && s.indexOf(ex) !== -1; });\n}\n\nfunction fwAddKnownDriver(bucket, value) {\n  var name = String(value == null ? "" : value).trim();\n  if(!name || fwIsExcludedDriverName(name)) return;\n  var key = fwDriverNameKey(name);\n  if(!key) return;\n  if(!bucket[key]) bucket[key] = name;\n}\n\nfunction fwAllKnownDrivers() {\n  var bucket = {};\n  // Fahrerbasis für Fahrzeugwäsche: nur Timerecording / Tachograph.\n  // Dadurch werden Kollegen mit 0 Waschungen sauber aus der Schichten-CSV ergänzt.\n  var trData = (typeof TIMEREC_DATA !== "undefined" && TIMEREC_DATA) ? TIMEREC_DATA : {};\n  Object.keys(trData || {}).forEach(function(name){ fwAddKnownDriver(bucket, name); });\n  return Object.keys(bucket).map(function(k){ return bucket[k]; }).sort(function(a,b){ return a.localeCompare(b, "de"); });\n}\n\nfunction fwZeroDriverCount() {\n  return fwComputeRanking().filter(function(d){ return (d.waschungen || 0) === 0; }).length;\n}\n\nfunction fwBuildOverviewFilters() {\n  var driverSel = document.getElementById("fw-overview-driver");\n  if(!driverSel) return;\n\n  var curDriver = driverSel.value || "all";\n  var drivers = fwAllKnownDrivers();\n\n  driverSel.innerHTML = "<option value=\'all\'>Alle Fahrer</option>" + drivers.map(function(v){\n    return "<option value=\'" + fwOverviewEsc(v) + "\'>" + fwOverviewEsc(v) + "</option>";\n  }).join("");\n\n  driverSel.value = drivers.indexOf(curDriver) !== -1 ? curDriver : "all";\n}\n\nfunction fwGetOverviewRows() {\n  var rows = fwOverviewData().slice();\n  var driverEl = document.getElementById("fw-overview-driver");\n  var driver = driverEl ? driverEl.value : "all";\n\n  if(driver && driver !== "all") {\n    var lookup = fwBuildKnownDriverLookup();\n    var selectedProfile = fwResolveKnownDriverProfile(driver, lookup);\n    var selectedKey = selectedProfile ? selectedProfile.key : fwDriverNameKey(driver);\n    rows = rows.filter(function(r){ return fwKnownDriverKeyForWashName(r && r.fahrer, lookup) === selectedKey; });\n  }\n\n  rows.sort(function(a,b){\n    var ak = a.datetime_iso || "";\n    var bk = b.datetime_iso || "";\n    if(ak !== bk) return bk.localeCompare(ak);\n    return (a.fahrer || "").localeCompare(b.fahrer || "", "de");\n  });\n  return rows;\n}\n\nfunction fwRenderOverview() {\n  var wrap = document.getElementById("fw-overview-table");\n  var stats = document.getElementById("fw-overview-stats");\n  if(!wrap) return;\n\n  var allDrivers = fwAllKnownDrivers();\n  if(!fwOverviewData().length && !allDrivers.length) {\n    if(stats) stats.textContent = "";\n    wrap.innerHTML = "<div style=\'padding:24px 16px;color:#94a3b8;text-align:center;font-size:13px;\'>Keine Fahrzeugwäsche-Dateien geladen.</div>";\n    return;\n  }\n\n  fwBuildOverviewFilters();\n  var rows = fwGetOverviewRows();\n  var driverCount = allDrivers.length;\n  var zeroDriverCount = fwZeroDriverCount();\n  var lkwCount = new Set(rows.map(function(r){ return ((r.fahrzeug || r.fahrzeug_ia || "").trim()); }).filter(Boolean)).size;\n  var waschungenCount = new Set(rows.map(function(r, idx){\n    var fz = (r.fahrzeug || r.fahrzeug_ia || "").trim();\n    var dt = (r.datum || "").trim();\n    return (dt && fz) ? (dt + "||" + fz) : ("__row_" + idx);\n  })).size;\n  if(stats) {\n    var _pc = "display:inline-flex;align-items:baseline;gap:5px;padding:4px 11px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.2";\n    var _nc = "font-size:13px;font-weight:900;letter-spacing:-.3px";\n    stats.innerHTML = "<span style=\\"" + _pc + ";background:#ecf7f1;color:#165532;border:1px solid #c7e5d4\\"><span style=\\"" + _nc + "\\">" + waschungenCount + "</span> Waschungen</span>" + "<span style=\\"" + _pc + ";background:#e8f2fb;color:#1e6091;border:1px solid #bdd0e7\\"><span style=\\"" + _nc + "\\">" + driverCount + "</span> Fahrer</span>" + "<span style=\\"" + _pc + ";background:#fee2e2;color:#991b1b;border:1px solid #fecaca\\"><span style=\\"" + _nc + "\\">" + zeroDriverCount + "</span> ohne Waschung</span>" + "<span style=\\"" + _pc + ";background:#fff7e6;color:#9a5b00;border:1px solid #f6d9b3\\"><span style=\\"" + _nc + "\\">" + lkwCount + "</span> LKW</span>";\n  }\n\n  if(!rows.length) {\n    wrap.innerHTML = "<div style=\'padding:24px 16px;color:#94a3b8;text-align:center;font-size:13px;\'>Keine Waschungen für den ausgewählten Fahrer.</div>";\n    return;\n  }\n\n  var html = "<div style=\'overflow:auto;max-height:540px;background:#fff;\'><table style=\'width:100%;border-collapse:collapse;font-size:12px;\'>";\n  html += "<thead><tr style=\'position:sticky;top:0;background:linear-gradient(180deg,#2f80b7 0%,#1e6091 100%);z-index:2;box-shadow:0 2px 4px rgba(0,0,0,.08);\'>";\n  ["Datum","Zeit","Fahrer","LKW","Produkt","Kategorie","Quelle"].forEach(function(h){\n    html += "<th style=\'padding:11px 12px;text-align:left;color:#fff;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;border-right:1px solid rgba(255,255,255,.15);white-space:nowrap;\'>" + h + "</th>";\n  });\n  html += "</tr></thead><tbody>";\n\n  rows.forEach(function(r, i){\n    var bg = i % 2 === 0 ? "#ffffff" : "#f8fafc";\n    html += "<tr onmouseover=\\"this.style.background=\'#eaf3fb\'\\" onmouseout=\\"this.style.background=\'" + bg + "\'\\" style=\'background:" + bg + ";border-bottom:1px solid #eef2f7;transition:background .1s;\'>";\n    html += "<td style=\'padding:10px 12px;white-space:nowrap;font-weight:800;color:#0f172a;\'>" + fwOverviewEsc(r.datum || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;white-space:nowrap;color:#64748b;font-variant-numeric:tabular-nums;\'>" + fwOverviewEsc(r.uhrzeit || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;font-weight:700;color:#0f172a;\'>" + fwOverviewEsc(r.fahrer || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;color:#0f172a;font-weight:600;\'>" + fwOverviewEsc(r.fahrzeug || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;color:#166534;font-weight:700;\'>" + fwOverviewEsc(r.produkt || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;color:#475569;\'>" + fwOverviewEsc(r.fahrzeug_kategorie || "") + "</td>";\n    html += "<td style=\'padding:10px 12px;color:#94a3b8;font-size:10.5px;\'>" + fwOverviewEsc(r.quelle || "") + "</td>";\n    html += "</tr>";\n  });\n\n  html += "</tbody></table></div>";\n  wrap.innerHTML = html;\n}\n\nfunction fwInitOverview() {\n  fwBuildOverviewFilters();\n  fwRenderOverview();\n}\n'
+function faSort(mode) {
+  faCurrentSort = mode;
+  ["name","arbeit"].forEach(function(m) {
+    var btn = document.getElementById("fa-sort-"+m);
+    if(!btn) return;
+    btn.style.background = mode===m ? "#334155" : "#fff";
+    btn.style.color      = mode===m ? "#fff"    : "#334155";
+  });
+  faBuildSidebarHighlight(faSelectedName);
+}
 
-    # Rangliste + PDF pro Fahrer (separate Variable, Triple-Quote → keine Escape-Hölle)
-    wash_ranking_js_code = r"""
+function faFilter(q) { faSearchQuery = q; faBuildSidebarHighlight(faSelectedName); }
+function faYearChange(yr) {
+  faYearFilter = yr;
+  faBuildSidebarHighlight(faSelectedName);
+  if(faSelectedName) faShowDetail(faSelectedName);
+}
+
+function faGetStats(driver, yr) {
+  if(!driver.years) return {krank:0,urlaub:0,ausgleich:0,arbeit:0,arbeit_samstag:0,touren:{},lkw:{},eintraege:[]};
+  var years = yr==="all" ? Object.keys(driver.years) : [yr];
+  var out = {krank:0,urlaub:0,ausgleich:0,arbeit:0,arbeit_samstag:0,touren:{},lkw:{},eintraege:[]};
+  years.forEach(function(y) {
+    var d = driver.years[y];
+    if(!d) return;
+    out.krank          += d.krank          || 0;
+    out.urlaub         += d.urlaub         || 0;
+    out.ausgleich      += d.ausgleich      || 0;
+    out.arbeit         += d.arbeit         || 0;
+    out.arbeit_samstag += d.arbeit_samstag || 0;
+    Object.keys(d.touren||{}).forEach(function(t){
+      out.touren[t] = (out.touren[t]||0) + d.touren[t];
+    });
+    // Use pre-computed lkw if available, otherwise compute from eintraege
+    var lkwSource = d.lkw && Object.keys(d.lkw).length > 0 ? d.lkw : (function(){
+      var cnt = {};
+      (d.eintraege||[]).forEach(function(e){
+        var lv = (e.lkw||"").trim();
+        var tl = (e.tour||"").toLowerCase();
+        if(lv && lv!=="0" && !/krank|urlaub|ausgleich/i.test(tl)){
+          cnt[lv] = (cnt[lv]||0) + 1;
+        }
+      });
+      return cnt;
+    })();
+    Object.keys(lkwSource).forEach(function(l){
+      out.lkw[l] = (out.lkw[l]||0) + lkwSource[l];
+    });
+    out.eintraege = out.eintraege.concat(d.eintraege||[]);
+  });
+  return out;
+}
+
+function faGetFiltered() {
+  var q = faSearchQuery.toLowerCase().trim();
+  var list = FA_DATA.filter(function(d) {
+    if(q && !d.name.toLowerCase().includes(q)) return false;
+    if(faYearFilter !== "all" && !d.years[faYearFilter]) return false;
+    return true;
+  });
+  if(faCurrentSort === "arbeit") {
+    list.sort(function(a,b){ return faGetStats(b,faYearFilter).arbeit - faGetStats(a,faYearFilter).arbeit; });
+  } else {
+    list.sort(function(a,b){ return a.name.localeCompare(b.name,"de"); });
+  }
+  return list;
+}
+
+function faRender(q) {
+  faSearchQuery = q || "";
+  if(!FA_DATA || !FA_DATA.length) {
+    var c = document.getElementById("fa-detail-panel");
+    if(c) c.innerHTML = "<div style='color:#94a3b8;padding:40px;text-align:center;font-size:14px;'>Keine Daten vorhanden.<br>Bitte Fahrerauswertungs-Dateien in Streamlit hochladen.</div>";
+    return;
+  }
+  faPopulateYears();
+  faBuildSidebarHighlight(null);
+}
+
+function faPopulateYears() {
+  var allYears = [];
+  FA_DATA.forEach(function(d) {
+    Object.keys(d.years||{}).forEach(function(y){
+      if(y !== "2024" && allYears.indexOf(y) === -1) allYears.push(y);
+    });
+  });
+  allYears.sort().reverse();
+  var yrSel = document.getElementById("fa-year-sel");
+  if(!yrSel) return;
+  var current = yrSel.value;
+  var curYr = String(new Date().getFullYear());
+  yrSel.innerHTML = allYears.map(function(y){ return "<option value='"+y+"'>"+y+"</option>"; }).join("");
+  // Default to current year
+  if(current && allYears.indexOf(current) !== -1) yrSel.value = current;
+  else if(allYears.indexOf(curYr) !== -1) yrSel.value = curYr;
+  else if(allYears.length) yrSel.value = allYears[0];
+  faYearFilter = yrSel.value;
+}
+
+function faBuildSidebarHighlight(activeName) {
+  var sidebar = document.getElementById("fa-sidebar-list");
+  if(!sidebar) return;
+  var filtered = faGetFiltered();
+
+  var statsEl = document.getElementById("fa-stats");
+  if(statsEl) {
+    var total   = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).arbeit;    },0);
+    var totalK  = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).krank;     },0);
+    var totalU  = filtered.reduce(function(s,d){ return s+faGetStats(d,faYearFilter).urlaub;    },0);
+    statsEl.innerHTML =
+      "<b>"+filtered.length+"</b> Fahrer &nbsp;&middot;&nbsp; Σ <b>"+total+"</b> Arbeitstage" +
+      (totalK ? " &nbsp;&middot;&nbsp; <span style='color:#dc2626;'>Krank Σ <b>"+totalK+"</b></span>" : "") +
+      (totalU ? " &nbsp;&middot;&nbsp; <span style='color:#0891b2;'>Urlaub Σ <b>"+totalU+"</b></span>" : "");
+  }
+
+  var html = "";
+  filtered.forEach(function(d) {
+    var s = faGetStats(d, faYearFilter);
+    var active = d.name === activeName;
+    var bg = active ? "#334155" : "#fff";
+    var fg = active ? "#fff" : "#0b1220";
+    html += "<div onclick='faShowDetail(\""+d.name.replace(/"/g,"&quot;")+"\")'"+
+      " style='padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;background:"+bg+";'>" +
+      "<div style='font-weight:700;font-size:13px;color:"+fg+";'>"+d.name+"</div>" +
+      "<div style='display:flex;gap:3px;flex-wrap:wrap;margin-top:3px;'>" +
+        "<span style='font-size:8px;font-weight:600;padding:0px 3px;border-radius:2px;background:"+(active?"rgba(255,255,255,.35)":"#f1f5f9")+";color:"+(active?"#fff":"#334155")+"'>"+s.arbeit+" T</span>" +
+        (s.arbeit_samstag ? "<span style='font-size:8px;font-weight:600;padding:0px 3px;border-radius:2px;background:"+(active?"#92400e":"#f1f5f9")+";color:"+(active?"#fef3c7":"#b45309")+"'>Sa "+s.arbeit_samstag+"</span>" : "") +
+        (s.krank ? "<span style='font-size:8px;font-weight:600;padding:0px 3px;border-radius:2px;background:"+(active?"#991b1b":"#fee2e2")+";color:"+(active?"#fecaca":"#dc2626")+"'>K "+s.krank+"</span>" : "") +
+      "</div></div>";
+  });
+  sidebar.innerHTML = html || "<div style='padding:20px;color:#94a3b8;font-size:12px;text-align:center;'>Kein Fahrer gefunden</div>";
+
+  if(!activeName && filtered.length) { faSelectedName = filtered[0].name; faShowDetail(filtered[0].name); }
+  else if(activeName) faSelectedName = activeName;
+}
+
+function faShowDetail(name) {
+  faSelectedName = name;
+  faBuildSidebarHighlight(name);
+  var driver = FA_DATA.find(function(d){ return d.name === name; });
+  var panel = document.getElementById("fa-detail-panel");
+  if(!panel || !driver) return;
+
+  var yr = faYearFilter;
+  var s  = faGetStats(driver, yr);
+  var years = (yr === "all" ? Object.keys(driver.years||{}).sort().reverse() : [yr]).filter(function(y){return y!=="2024";});
+
+  var lkwEntries = Object.entries(s.lkw||{}).sort(function(a,b){return b[1]-a[1];});
+  var lkwHtml = lkwEntries.length
+    ? lkwEntries.map(function(e){
+        return "<span style='display:inline-block;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;padding:3px 12px;margin:2px;font-size:12px;font-weight:700;color:#166534;'>"+e[0]+" <span style='color:#64748b;font-weight:500;'>"+e[1]+"x</span></span>";
+      }).join("")
+    : "<span style='color:#94a3b8;font-size:12px;'>Keine LKW-Daten</span>";
+
+  var html = "";
+
+  // Header
+  html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;padding:16px 20px;margin-bottom:14px;'>";
+  html += "<div style='font-size:20px;font-weight:900;color:#0b1220;margin-bottom:10px;'>"+driver.name+"</div>";
+  html += "<div style='display:flex;flex-wrap:wrap;gap:7px;'>";
+  html += "<span style='background:#f1f5f9;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#334155;'>&#9733; "+s.arbeit+" Arbeitstage</span>";
+  if(s.arbeit_samstag) html += "<span style='background:#f1f5f9;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#b45309;'>Samstag "+s.arbeit_samstag+"</span>";
+  if(s.krank)          html += "<span style='background:#fee2e2;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#dc2626;'>Krank "+s.krank+"</span>";
+  if(s.urlaub)         html += "<span style='background:#f1f5f9;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#0891b2;'>Urlaub "+s.urlaub+"</span>";
+  if(s.ausgleich)      html += "<span style='background:#f0fdf4;border-radius:4px;padding:4px 14px;font-size:12.5px;font-weight:800;color:#16a34a;'>Ausgl. "+s.ausgleich+"</span>";
+  html += "</div></div>";
+
+  // LKW Section
+  html += "<div style='background:#fff;border:1.5px solid #bbf7d0;border-radius:5px;padding:12px 16px;margin-bottom:14px;'>";
+  html += "<div style='font-size:11px;font-weight:900;text-transform:uppercase;color:#166534;letter-spacing:.4px;margin-bottom:8px;'>LKW-Einsätze</div>";
+  html += "<div>"+lkwHtml+"</div>";
+  html += "</div>";
+
+  // Year chips
+  if(yr === "all" && years.length > 1) {
+    html += "<div style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;'>";
+    years.forEach(function(y) {
+      var ys = driver.years[y]; if(!ys) return;
+      html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:4px;padding:8px 14px;min-width:110px;'>";
+      html += "<div style='font-size:12px;font-weight:900;color:#334155;margin-bottom:4px;'>"+y+"</div>";
+      html += "<div style='font-size:12.5px;font-weight:800;'>&#9733; "+ys.arbeit+"</div>";
+      if(ys.arbeit_samstag) html += "<div style='font-size:11px;color:#b45309;'>Sa: "+ys.arbeit_samstag+"</div>";
+      if(ys.krank)  html += "<div style='font-size:11px;color:#dc2626;'>Krank: "+ys.krank+"</div>";
+      if(ys.urlaub) html += "<div style='font-size:11px;color:#0891b2;'>Urlaub: "+ys.urlaub+"</div>";
+      html += "</div>";
+    });
+    html += "</div>";
+  }
+
+  // KW table
+  years.forEach(function(y) {
+    var yd = driver.years[y]; if(!yd) return;
+    var kwMap = {};
+    var dispYr = parseInt(y);
+    (yd.eintraege||[]).forEach(function(e){
+      // Skip entries whose date doesn't belong to the displayed year
+      var m = (e.datum||"").match(/(\d{4})$/);
+      if(m && parseInt(m[1]) !== dispYr) return;
+      var k="KW "+e.kw; if(!kwMap[k]) kwMap[k]=[]; kwMap[k].push(e);
+    });
+    var kwKeys = Object.keys(kwMap).sort(function(a,b){return parseInt(a.split(" ")[1])-parseInt(b.split(" ")[1]);});
+
+    if(years.length > 1)
+      html += "<div style='font-size:13px;font-weight:900;color:#334155;margin:12px 0 6px;border-left:3px solid #334155;padding-left:8px;'>"+y+"</div>";
+
+    html += "<div style='background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;overflow:hidden;margin-bottom:12px;'>";
+    html += "<table style='width:100%;border-collapse:collapse;font-size:12px;'>";
+    html += "<thead><tr style='background:#1e3a5f;color:#fff;'><th style='padding:6px 10px;text-align:left;'>KW</th><th style='padding:6px 10px;text-align:left;'>Datum</th><th style='padding:6px 10px;text-align:left;'>Tour</th><th style='padding:6px 10px;text-align:left;'>Zeit</th><th style='padding:6px 10px;text-align:left;'>LKW</th></tr></thead><tbody>";
+    kwKeys.forEach(function(kw) {
+      html += "<tr style='background:#f1f5f9;'><td colspan='5' style='padding:3px 10px;font-weight:800;color:#334155;font-size:11px;'>"+kw+"</td></tr>";
+      kwMap[kw].forEach(function(e,i) {
+        var bg = e.samstag ? "#fff7ed" : (i%2===0?"#f8fafc":"#fff");
+        var tc = /krank/i.test(e.tour)?"color:#dc2626;font-weight:700;":/urlaub/i.test(e.tour)?"color:#0891b2;font-weight:700;":/ausgleich/i.test(e.tour)?"color:#16a34a;font-weight:700;":"font-weight:600;";
+        html += "<tr style='background:"+bg+";border-bottom:1px solid #f1f5f9;'>";
+        html += "<td style='padding:3px 10px;'></td>";
+        html += "<td style='padding:3px 10px;"+(e.samstag?"font-weight:700;color:#b45309;":"color:#334155;")+"'>"+e.datum+"</td>";
+        html += "<td style='padding:3px 10px;"+tc+"'>"+e.tour+"</td>";
+        html += "<td style='padding:3px 10px;color:#475569;'>"+e.zeit+"</td>";
+        html += "<td style='padding:3px 10px;font-weight:700;color:#166534;'>"+(e.lkw && e.lkw!=="0" ? e.lkw : "")+"</td>";
+        html += "</tr>";
+      });
+    });
+    html += "</tbody></table></div>";
+  });
+
+  panel.innerHTML = html;
+  panel.scrollTop = 0;
+}
+
+function faPDF() {
+  if(!FA_DATA || !FA_DATA.length) { alert("Keine Daten vorhanden."); return; }
+  // If a driver is selected in sidebar, export only that driver
+  var filtered;
+  if(faSelectedName) {
+    filtered = FA_DATA.filter(function(d){ return d.name === faSelectedName; });
+  } else {
+    filtered = faGetFiltered();
+  }
+  var yr = faYearFilter;
+  var today = new Date().toLocaleDateString("de-DE",{day:"2-digit",month:"long",year:"numeric"});
+  var yrLabel = yr === "all" ? "Alle Jahre" : yr;
+  var css = "@page{size:A4 portrait;margin:10mm 9mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;font-size:7pt}.cover{text-align:center;padding:16mm 0 8mm;border-bottom:3px solid #334155;margin-bottom:8mm}.cover h1{font-size:18pt;color:#334155;font-weight:900;margin-bottom:2mm}.sub{font-size:9pt;color:#64748b}.db{page-break-inside:avoid;margin-bottom:7mm}.dh{background:#334155;color:#fff;padding:2mm 4mm;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:6px}.dn{font-size:10pt;font-weight:900;flex:1}.ds{display:flex;gap:4px;flex-wrap:wrap;font-size:6.5pt}.badge{display:inline-block;border-radius:4px;padding:1px 5px;font-weight:800}.lsec{padding:2mm 4mm;background:#f0fdf4;border:1px solid #bbf7d0}.ys{margin-bottom:3mm}.yl{font-size:8pt;font-weight:900;color:#334155;margin:2mm 0 1mm;border-left:2px solid #334155;padding-left:3px}table{width:100%;border-collapse:collapse}thead tr{background:#1e3a5f;color:#fff}thead th{padding:2px 5px;font-weight:800;font-size:6pt;text-align:left}tbody tr.kr{background:#f1f5f9}tbody tr.kr td{padding:2px 5px;font-weight:800;color:#334155;font-size:5.5pt}tbody tr.dr td{padding:2px 5px;border-bottom:1px solid #f1f5f9}tbody tr.sa{background:#fff7ed!important}.ft{text-align:right;color:#94a3b8;font-size:5.5pt;margin-top:1mm;border-top:1px solid #f1f5f9}";
+  var body = "<div class='cover'><div style='font-size:24pt;margin-bottom:2mm;'>&#128101;</div><h1>Fahrerauswertung</h1><div class='sub'>Fuhrpark NFC &middot; "+yrLabel+" &middot; "+today+"</div><div class='sub'>"+filtered.length+" Fahrer</div></div>";
+  filtered.forEach(function(driver) {
+    var years = (yr==="all"?Object.keys(driver.years||{}).sort().reverse():[yr]).filter(function(y){return y!=="2024";});
+    var ts = faGetStats(driver,yr);
+    var lkwList = Object.entries(ts.lkw||{}).sort(function(a,b){return b[1]-a[1];});
+    body += "<div class='db'><div class='dh'><span class='dn'>"+driver.name+"</span><div class='ds'>";
+    body += "<span class='badge' style='background:#f1f5f9;color:#334155;'>&#9733; "+ts.arbeit+"</span>";
+    if(ts.arbeit_samstag) body += "<span class='badge' style='background:#f1f5f9;color:#b45309;'>Sa "+ts.arbeit_samstag+"</span>";
+    if(ts.krank)  body += "<span style='background:#fee2e2;color:#dc2626;'>K "+ts.krank+"</span>";
+    if(ts.urlaub) body += "<span class='badge' style='background:#f1f5f9;color:#0891b2;'>U "+ts.urlaub+"</span>";
+    if(ts.ausgleich) body += "<span class='badge' style='background:#f0fdf4;color:#16a34a;'>Az "+ts.ausgleich+"</span>";
+    body += "</div></div>";
+    if(lkwList.length){body+="<div class='lsec'><b style='color:#166534;font-size:6pt;'>LKW: </b>";lkwList.forEach(function(e){body+="<span style='display:inline-block;background:#fff;border:1px solid #bbf7d0;border-radius:2px;padding:0 4px;margin:1px;font-size:6pt;color:#166534;font-weight:700;'>"+e[0]+" "+e[1]+"x</span>";});body+="</div>";}
+    years.forEach(function(y){var yd=driver.years[y];if(!yd)return;var kwMap={};(yd.eintraege||[]).forEach(function(e){var k="KW "+e.kw;if(!kwMap[k])kwMap[k]=[];kwMap[k].push(e);});var kwKeys=Object.keys(kwMap).sort(function(a,b){return parseInt(a.split(" ")[1])-parseInt(b.split(" ")[1]);});body+="<div class='ys'>";if(years.length>1)body+="<div class='yl'>"+y+"</div>";body+="<table><thead><tr><th>KW</th><th>Datum</th><th>Tour</th><th>Zeit</th><th>LKW</th></tr></thead><tbody>";kwKeys.forEach(function(kw){body+="<tr class='kr'><td colspan='5'>"+kw+"</td></tr>";kwMap[kw].forEach(function(e,i){var tc=/krank/i.test(e.tour)?"color:#dc2626;":/urlaub/i.test(e.tour)?"color:#0891b2;":"";body+="<tr class='dr"+(e.samstag?" sa":"")+"'><td></td><td style='"+(e.samstag?"color:#b45309;font-weight:700;":"")+"'>"+e.datum+"</td><td style='font-weight:700;"+tc+"'>"+e.tour+"</td><td>"+e.zeit+"</td><td style='color:#166534;font-weight:700;'>"+e.lkw+"</td></tr>";});});body+="</tbody></table></div>";});
+    body+="<div class='ft'>NordFrischeCenter &middot; Fahrerauswertung &middot; "+driver.name+"</div></div>";
+  });
+  var w=window.open("","_blank","width=900,height=800");
+  w.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Fahrerauswertung</title><style>"+css+"</style></head><body>"+body+"</body></html>");
+  w.document.close();w.focus();setTimeout(function(){w.print();},600);
+}
+"""
+
+_JS_ZULAGE = r"""
+// ── ZULAGEN ──────────────────────────────────────────────────────────────
+var _zTab = "sonder";
+
+function zulagenInit() { zulagenBuildMonthSel(); zulagenRender(); }
+
+function zulagenTab(tab) {
+  _zTab = tab;
+  ["sonder","fuengers","drittkunden"].forEach(function(t) {
+    var btn = document.getElementById("ztab-"+t);
+    if(btn){ btn.style.background=tab===t?"#334155":"#fff"; btn.style.color=tab===t?"#fff":"#334155"; }
+  });
+  zulagenBuildMonthSel(); zulagenRender();
+}
+
+function zulagenBuildMonthSel() {
+  var sel = document.getElementById("zulage-month-sel");
+  if(!sel) return;
+  var arr = _zTab==="drittkunden"
+    ? (Array.isArray(DRITTKUNDEN_DATA) ? DRITTKUNDEN_DATA : [])
+    : (_zTab==="sonder" ? (ZULAGE_DATA.sonder||[]) : (ZULAGE_DATA.fuengers||[]));
+  var cur = sel ? sel.value : "all";
+  sel.innerHTML = "<option value='all'>Alle Monate</option>" +
+    arr.map(function(m){ return "<option value='"+m.monat+"'"+(m.monat===cur?" selected":"")+">" + m.monat + "</option>"; }).join("");
+}
+
+function zulagenRender() {
+  var el = document.getElementById("zulage-content");
+  var stats = document.getElementById("zulage-stats");
+  if(!el) return;
+  if(_zTab==="drittkunden") {
+    if(!DRITTKUNDEN_DATA || !Array.isArray(DRITTKUNDEN_DATA) || !DRITTKUNDEN_DATA.length) {
+      el.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Drittkunden-Daten \u2013 bitte Touren-Excel hochladen.</div>";
+      if(stats) stats.innerHTML = ""; return;
+    }
+  } else if(!ZULAGE_DATA || typeof ZULAGE_DATA !== "object" || (!ZULAGE_DATA.sonder && !ZULAGE_DATA.fuengers)) {
+    el.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;font-size:14px;'>Keine Zulage-Daten \u2013 bitte Touren-Excel hochladen.</div>";
+    if(stats) stats.innerHTML = ""; return;
+  }
+  var arr = _zTab==="drittkunden" ? (Array.isArray(DRITTKUNDEN_DATA) ? DRITTKUNDEN_DATA : []) : (_zTab==="sonder" ? (ZULAGE_DATA.sonder||[]) : (ZULAGE_DATA.fuengers||[]));
+  if(!arr.length) {
+    el.innerHTML = "<div style='color:#94a3b8;padding:60px;text-align:center;'>Keine Daten f\u00fcr diesen Tab.</div>";
+    if(stats) stats.innerHTML = ""; return;
+  }
+  var sel = document.getElementById("zulage-month-sel");
+  var filterM = sel ? sel.value : "all";
+  var data = filterM!=="all" ? arr.filter(function(m){return m.monat===filterM;}) : arr;
+  var totalAll = 0, html = "";
+  var isSonder = _zTab === "sonder";
+
+  data.forEach(function(monat) {
+    var mSum = monat.fahrer.reduce(function(s,f){return s+f.gesamt;},0);
+    totalAll += mSum;
+
+    // Month section header – same style as rest of app
+    html += "<div style='display:flex;align-items:center;gap:10px;margin-bottom:10px;'>";
+    html += "<h3 style='margin:0;font-size:12px;font-weight:700;color:#334155;white-space:nowrap;'>" + monat.monat + "</h3>";
+    html += "<span style='flex:1;height:1px;background:#e2e8f0;display:block;'></span>";
+    html += "<span style='font-size:11px;font-weight:700;color:#334155;'>\u03a3 " + mSum.toFixed(2) + " \u20ac</span>";
+    html += "</div>";
+
+    // 3-col card grid – same as samRender
+    html += "<div style='display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:stretch;margin-bottom:28px;'>";
+
+    monat.fahrer.forEach(function(f) {
+
+      // Entry chips
+      var chipsHtml = f.tage.map(function(t) {
+        var isDK = (_zTab==="drittkunden");
+        var verdienst = isDK ? (t.zulage||0) : (t.verdienst||0);
+        var datumStr = isDK
+          ? t.datum + " <span style='color:#94a3b8;font-size:10px;'>(" + (t.kw||"") + ")</span>"
+          : t.datum;
+        var rightHtml = "";
+        if(isDK) {
+          var dkLabel = (t.lkw||"") + (t.info ? " \u00b7 " + t.info : "");
+          rightHtml = "<span style='color:#475569;font-weight:600;'>" + dkLabel + "</span>";
+        } else if(isSonder) {
+          var tour = t.tour && t.tour!=="zbv" && t.tour!=="" ? t.tour : "z.b.v.";
+          var ac = t.art==="Gigaliner" ? "background:#fef3c7;color:#92400e;"
+                 : t.art==="Tandem"    ? "background:#dbeafe;color:#1e40af;"
+                 :                       "background:#dcfce7;color:#166534;";
+          rightHtml = "<span style='color:#475569;font-weight:600;'>" + tour + " \u00b7 " + t.lkw + "</span>"
+                    + "<span style='" + ac + "padding:1px 7px;border-radius:5px;font-size:10px;font-weight:700;'>" + t.art + "</span>";
+        } else {
+          rightHtml = "<span style='color:#475569;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + (t.kommentar||"") + "</span>";
+        }
+        return "<div style='display:flex;align-items:center;justify-content:space-between;"
+               +"background:#edf0f5;border-radius:4px;padding:5px 8px;margin-bottom:4px;font-size:11px;'>"
+               +"<span style='color:#64748b;'>" + datumStr + "</span>"
+               +"<span style='display:flex;align-items:center;gap:5px;'>"
+               + rightHtml
+               +"<span style='font-weight:700;color:#15803d;margin-left:4px;'>" + verdienst.toFixed(2) + " \u20ac</span>"
+               +"</span>"
+               +"</div>";
+      }).join("");
+
+      // Card – same shell as samRender: border:2px solid, border-radius:5px, padding:14px 16px
+      html += "<div style='background:#fff;border:2px solid #334155;border-radius:5px;"
+             +"padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.06);'>";
+
+      // Header row – mirroring samRender header
+      html += "<div style='display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px;'>";
+      html += "<div style='flex:1;min-width:0;'>";
+      html += "<div style='font-weight:900;font-size:14px;color:#0b1220;white-space:nowrap;"
+             +"overflow:hidden;text-overflow:ellipsis;'>" + f.name + "</div>";
+      html += "<div style='margin-top:3px;font-size:10px;color:#94a3b8;'>" + (f.persnr||"") + "</div>";
+      html += "</div>";
+      // Big total number – same style as the einsaetze count in samRender
+      html += "<div style='text-align:right;flex-shrink:0;'>";
+      html += "<div style='font-size:24px;font-weight:900;color:#334155;line-height:1;'>" + f.gesamt.toFixed(2) + "</div>";
+      html += "<div style='font-size:9px;color:#94a3b8;font-weight:600;'>" + (_zTab==="drittkunden" ? "\u20ac Zulage" : "\u20ac Verdienst") + "</div>";
+      html += "</div>";
+      html += "</div>";
+
+      // Chips
+      html += "<div style='flex:1;'>"+chipsHtml+"</div>";
+
+      // Footer: count badge
+      html += "<div style='margin-top:8px;border-top:1px solid #e2e8f0;padding-top:8px;"
+             +"display:flex;align-items:center;gap:6px;'>";
+      html += "<span style='background:#eff6ff;color:#334155;border-radius:4px;padding:2px 8px;"
+             +"font-size:10px;font-weight:700;'>" + f.tage.length + " Eintr\u00e4ge</span>";
+      html += "</div>";
+
+      html += "</div>"; // end card
+    });
+
+    html += "</div>"; // end grid
+  });
+
+  el.innerHTML = html || "<div style='color:#94a3b8;padding:40px;text-align:center;'>Keine Daten.</div>";
+  if(stats) stats.innerHTML = totalAll>0 ? "\u03a3 <b>"+totalAll.toFixed(2)+" \u20ac</b>" : "";
+}
+
+
+
+function zulagenExportExcel() {
+  var b64 = _zTab==="sonder" ? ZULAGE_XLSX_SONDER : _zTab==="fuengers" ? ZULAGE_XLSX_FUENGERS : ZULAGE_XLSX_DRITTKUNDEN;
+  if(!b64) { alert("Keine Excel-Daten.\nBitte Touren-Dateien in Streamlit hochladen und App neu generieren."); return; }
+  var bc = atob(b64), bytes = new Uint8Array(bc.length);
+  for(var i=0;i<bc.length;i++) bytes[i]=bc.charCodeAt(i);
+  var blob = new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a"); a.href=url;
+  a.download = "Zulagen_"+(_zTab==="sonder"?"Sonderfahrzeuge":_zTab==="fuengers"?"Fuengers":"Drittkunden")+".xlsx";
+  a.click(); URL.revokeObjectURL(url);
+}
+"""
+
+_JS_WASH = r"""
+// ── Fahrzeugwäsche Übersicht ───────────────────────────────────────────────
+function fwOverviewEsc(v) {
+  return String(v == null ? "" : v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function fwOverviewData() {
+  return Array.isArray(FAHRZEUGWAESCHE_DATA) ? FAHRZEUGWAESCHE_DATA : [];
+}
+
+var FW_EXCLUDED_DRIVER_NAMES = ["Ch.Holtz", "Paasch", "Meyer", "Ihde", "Spedition M+S Express 4", "Spedition M+S Express 3", "Spedition M+S Express 2", "Spedition M+S Express 1", "Spedition Meyer 1", "Spedition Meyer 2", "Spedition Meyer 3", "Spedition Meyer 4", "Spedition Meyer 5", "Spedition Meyer 6", "Spedition Meyer 7 (36er)", "Spedition Meyer 8", "Spedition Meyer Sz.", "Paasch & Reinke 1", "Paasch & Reinke 2", "Paasch & Reinke 3", "deVries", "Spedition Ihde", "Insellogistik 1", "Insellogistik 2", "Zippel Logistik T1", "Zippel Logistik T2", "Zippel Logistik T3", "Ch. Holtz T1", "Ch. Holtz T2", "Ch. Holtz T3", "T&D Spedition", "Kudex 1", "Kudex 2", "FP Fleischwerk"];
+
+function fwNameClean(value) {
+  var s = String(value == null ? "" : value).toLowerCase();
+  // Deutsche Schreibweisen zuerst angleichen: Müller/Mueller/Muller, Jörg/Joerg usw.
+  s = s.replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss");
+  s = s.replace(/æ/g, "ae").replace(/œ/g, "oe");
+  try { s = s.normalize("NFKD").replace(/[\u0300-\u036f]/g, ""); } catch(e) {}
+  s = s.replace(/&[a-z]+;/g, " ");
+  s = s.replace(/\([^)]*\)/g, " ");
+  s = s.replace(/[_.\/,;:|]+/g, " ");
+  s = s.replace(/[-–—]+/g, " ");
+  s = s.replace(/\s+/g, " ").trim();
+  return s;
+}
+
+function fwNameTokens(value) {
+  var ignore = {
+    "fahrer":1, "fahrerin":1, "herr":1, "frau":1, "dr":1, "lkw":1,
+    "spedition":1, "firma":1, "team":1, "nfc":1, "fp":1, "fleischwerk":1
+  };
+  var seen = {};
+  return fwNameClean(value).split(" ").filter(function(t){
+    if(!t || ignore[t] || /^\d+$/.test(t)) return false;
+    if(seen[t]) return false;
+    seen[t] = 1;
+    return true;
+  });
+}
+
+function fwDriverNameKey(value) {
+  var tokens = fwNameTokens(value).filter(function(t){ return t.length > 1; });
+  return tokens.sort().join(" ");
+}
+
+function fwTokenDistance(a, b) {
+  a = String(a || "");
+  b = String(b || "");
+  if(a === b) return 0;
+  if(!a.length) return b.length;
+  if(!b.length) return a.length;
+  var prev = [];
+  for(var j = 0; j <= b.length; j++) prev[j] = j;
+  for(var i = 1; i <= a.length; i++) {
+    var cur = [i];
+    var rowMin = cur[0];
+    for(var jj = 1; jj <= b.length; jj++) {
+      var cost = a.charAt(i - 1) === b.charAt(jj - 1) ? 0 : 1;
+      var val = Math.min(prev[jj] + 1, cur[jj - 1] + 1, prev[jj - 1] + cost);
+      cur[jj] = val;
+      if(val < rowMin) rowMin = val;
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+function fwTokenVariants(t) {
+  t = String(t || "");
+  var out = [t];
+  var simpleUmlaut = t.replace(/ae/g, "a").replace(/oe/g, "o").replace(/ue/g, "u");
+  out.push(simpleUmlaut);
+  out.push(t.replace(/c/g, "k"));
+  if(t === "jacob") out.push("jakub");
+  if(t === "jakub") out.push("jacob");
+  var seen = {};
+  return out.filter(function(v){ if(!v || seen[v]) return false; seen[v]=1; return true; });
+}
+
+function fwTokenSimilarity(a, b) {
+  a = String(a || "");
+  b = String(b || "");
+  if(!a || !b) return 0;
+  if(a === b) return 1;
+  var av = fwTokenVariants(a);
+  var bv = fwTokenVariants(b);
+  for(var ai = 0; ai < av.length; ai++) {
+    for(var bi = 0; bi < bv.length; bi++) {
+      if(av[ai] && av[ai] === bv[bi]) return 0.98;
+    }
+  }
+  // Initialen: M. Lange gegen Michael Lange.
+  if(a.length === 1 && b.length >= 2 && b.charAt(0) === a) return 0.78;
+  if(b.length === 1 && a.length >= 2 && a.charAt(0) === b) return 0.78;
+  // Abgekürzte oder zusammengesetzte Vornamen / Drittnamen.
+  if(a.length >= 3 && b.length >= 3 && (a.indexOf(b) === 0 || b.indexOf(a) === 0)) return 0.88;
+  var best = 0;
+  av.forEach(function(aa){
+    bv.forEach(function(bb){
+      var minLen = Math.min(aa.length, bb.length);
+      var d = fwTokenDistance(aa, bb);
+      var sc = 0;
+      if(minLen >= 5 && d <= 1) sc = 0.88;
+      else if(minLen >= 5 && d <= 2) sc = 0.76;
+      else if(minLen >= 4 && d <= 1) sc = 0.80;
+      if(sc > best) best = sc;
+    });
+  });
+  return best;
+}
+
+function fwTokenQueryMatchSummary(aTokens, bTokens) {
+  if(!aTokens || !bTokens || !aTokens.length || !bTokens.length) return { score: 0, matched: 0 };
+  var used = {};
+  var sum = 0;
+  var matched = 0;
+  aTokens.forEach(function(a){
+    var bestIdx = -1;
+    var bestScore = 0;
+    bTokens.forEach(function(b, idx){
+      if(used[idx]) return;
+      var sc = fwTokenSimilarity(a, b);
+      if(sc > bestScore) { bestScore = sc; bestIdx = idx; }
+    });
+    if(bestIdx >= 0 && bestScore >= 0.72) {
+      used[bestIdx] = 1;
+      sum += bestScore;
+      matched += 1;
+    }
+  });
+  return { score: sum / aTokens.length, matched: matched };
+}
+
+function fwTokenOverlapScore(aTokens, bTokens) {
+  if(!aTokens || !bTokens || !aTokens.length || !bTokens.length) return 0;
+  var used = {};
+  var sum = 0;
+  aTokens.forEach(function(a){
+    var bestIdx = -1;
+    var bestScore = 0;
+    bTokens.forEach(function(b, idx){
+      if(used[idx]) return;
+      var sc = fwTokenSimilarity(a, b);
+      if(sc > bestScore) { bestScore = sc; bestIdx = idx; }
+    });
+    if(bestIdx >= 0 && bestScore >= 0.72) {
+      used[bestIdx] = 1;
+      sum += bestScore;
+    }
+  });
+  return sum / Math.max(aTokens.length, bTokens.length);
+}
+
+function fwBuildKnownDriverLookup() {
+  var profiles = [];
+  var byKey = {};
+  var tokenOwners = {};
+  fwAllKnownDrivers().forEach(function(name){
+    var tokens = fwNameTokens(name);
+    var key = fwDriverNameKey(name);
+    if(!key || byKey[key]) return;
+    var profile = { name: name, key: key, tokens: tokens };
+    profiles.push(profile);
+    byKey[key] = profile;
+    tokens.forEach(function(t){
+      if(t.length < 3) return;
+      if(!tokenOwners[t]) tokenOwners[t] = {};
+      tokenOwners[t][key] = 1;
+    });
+  });
+  return { profiles: profiles, byKey: byKey, tokenOwners: tokenOwners };
+}
+
+function fwResolveKnownDriverProfile(value, lookup) {
+  lookup = lookup || fwBuildKnownDriverLookup();
+  var raw = String(value == null ? "" : value).trim();
+  if(!raw) return null;
+  var key = fwDriverNameKey(raw);
+  if(key && lookup.byKey[key]) return lookup.byKey[key];
+
+  var tokens = fwNameTokens(raw);
+  if(!tokens.length) return null;
+
+  // Nur ein Name in der Waschdatei: nur zuordnen, wenn dieser Name im Timerecording eindeutig ist.
+  if(tokens.length === 1 && tokens[0].length >= 3) {
+    var owners = lookup.tokenOwners[tokens[0]] || {};
+    var ownerKeys = Object.keys(owners);
+    if(ownerKeys.length === 1) return lookup.byKey[ownerKeys[0]];
+  }
+
+  var best = null;
+  var secondScore = 0;
+  lookup.profiles.forEach(function(p){
+    var fullScore = fwTokenOverlapScore(tokens, p.tokens);
+    var queryMatch = fwTokenQueryMatchSummary(tokens, p.tokens);
+    var score = Math.max(fullScore, queryMatch.score);
+    if(!best || score > best.score) {
+      secondScore = best ? best.score : 0;
+      best = { profile: p, score: score, matched: queryMatch.matched };
+    } else if(score > secondScore) {
+      secondScore = score;
+    }
+  });
+
+  if(!best || best.score <= 0) return null;
+  // Waschlisten enthalten oft nur Nachname + Rufname, Timerecording aber mehrere Vornamen.
+  // Deshalb zählt hier der Treffer auf Basis der Waschlisten-Tokens, aber mindestens 2 Tokens müssen passen.
+  if(best.score >= 0.72 && best.matched >= Math.min(2, tokens.length)) return best.profile;
+  if(best.score >= 0.60 && best.matched >= Math.min(2, tokens.length) && (best.score - secondScore) >= 0.14) return best.profile;
+  return null;
+}
+
+function fwKnownDriverKeyForWashName(value, lookup) {
+  var p = fwResolveKnownDriverProfile(value, lookup);
+  return p ? p.key : "";
+}
+
+function fwIsExcludedDriverName(name) {
+  var s = String(name == null ? "" : name);
+  return FW_EXCLUDED_DRIVER_NAMES.some(function(ex){ return ex && s.indexOf(ex) !== -1; });
+}
+
+function fwAddKnownDriver(bucket, value) {
+  var name = String(value == null ? "" : value).trim();
+  if(!name || fwIsExcludedDriverName(name)) return;
+  var key = fwDriverNameKey(name);
+  if(!key) return;
+  if(!bucket[key]) bucket[key] = name;
+}
+
+function fwAllKnownDrivers() {
+  var bucket = {};
+  // Fahrerbasis für Fahrzeugwäsche: nur Timerecording / Tachograph.
+  // Dadurch werden Kollegen mit 0 Waschungen sauber aus der Schichten-CSV ergänzt.
+  var trData = (typeof TIMEREC_DATA !== "undefined" && TIMEREC_DATA) ? TIMEREC_DATA : {};
+  Object.keys(trData || {}).forEach(function(name){ fwAddKnownDriver(bucket, name); });
+  return Object.keys(bucket).map(function(k){ return bucket[k]; }).sort(function(a,b){ return a.localeCompare(b, "de"); });
+}
+
+function fwZeroDriverCount() {
+  return fwComputeRanking().filter(function(d){ return (d.waschungen || 0) === 0; }).length;
+}
+
+function fwBuildOverviewFilters() {
+  var driverSel = document.getElementById("fw-overview-driver");
+  if(!driverSel) return;
+
+  var curDriver = driverSel.value || "all";
+  var drivers = fwAllKnownDrivers();
+
+  driverSel.innerHTML = "<option value='all'>Alle Fahrer</option>" + drivers.map(function(v){
+    return "<option value='" + fwOverviewEsc(v) + "'>" + fwOverviewEsc(v) + "</option>";
+  }).join("");
+
+  driverSel.value = drivers.indexOf(curDriver) !== -1 ? curDriver : "all";
+}
+
+function fwGetOverviewRows() {
+  var rows = fwOverviewData().slice();
+  var driverEl = document.getElementById("fw-overview-driver");
+  var driver = driverEl ? driverEl.value : "all";
+
+  if(driver && driver !== "all") {
+    var lookup = fwBuildKnownDriverLookup();
+    var selectedProfile = fwResolveKnownDriverProfile(driver, lookup);
+    var selectedKey = selectedProfile ? selectedProfile.key : fwDriverNameKey(driver);
+    rows = rows.filter(function(r){ return fwKnownDriverKeyForWashName(r && r.fahrer, lookup) === selectedKey; });
+  }
+
+  rows.sort(function(a,b){
+    var ak = a.datetime_iso || "";
+    var bk = b.datetime_iso || "";
+    if(ak !== bk) return bk.localeCompare(ak);
+    return (a.fahrer || "").localeCompare(b.fahrer || "", "de");
+  });
+  return rows;
+}
+
+function fwRenderOverview() {
+  var wrap = document.getElementById("fw-overview-table");
+  var stats = document.getElementById("fw-overview-stats");
+  if(!wrap) return;
+
+  var allDrivers = fwAllKnownDrivers();
+  if(!fwOverviewData().length && !allDrivers.length) {
+    if(stats) stats.textContent = "";
+    wrap.innerHTML = "<div style='padding:24px 16px;color:#94a3b8;text-align:center;font-size:13px;'>Keine Fahrzeugwäsche-Dateien geladen.</div>";
+    return;
+  }
+
+  fwBuildOverviewFilters();
+  var rows = fwGetOverviewRows();
+  var driverCount = allDrivers.length;
+  var zeroDriverCount = fwZeroDriverCount();
+  var lkwCount = new Set(rows.map(function(r){ return ((r.fahrzeug || r.fahrzeug_ia || "").trim()); }).filter(Boolean)).size;
+  var waschungenCount = new Set(rows.map(function(r, idx){
+    var fz = (r.fahrzeug || r.fahrzeug_ia || "").trim();
+    var dt = (r.datum || "").trim();
+    return (dt && fz) ? (dt + "||" + fz) : ("__row_" + idx);
+  })).size;
+  if(stats) {
+    var _pc = "display:inline-flex;align-items:baseline;gap:5px;padding:4px 11px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.2";
+    var _nc = "font-size:13px;font-weight:900;letter-spacing:-.3px";
+    stats.innerHTML = "<span style=\"" + _pc + ";background:#ecf7f1;color:#165532;border:1px solid #c7e5d4\"><span style=\"" + _nc + "\">" + waschungenCount + "</span> Waschungen</span>" + "<span style=\"" + _pc + ";background:#e8f2fb;color:#1e6091;border:1px solid #bdd0e7\"><span style=\"" + _nc + "\">" + driverCount + "</span> Fahrer</span>" + "<span style=\"" + _pc + ";background:#fee2e2;color:#991b1b;border:1px solid #fecaca\"><span style=\"" + _nc + "\">" + zeroDriverCount + "</span> ohne Waschung</span>" + "<span style=\"" + _pc + ";background:#fff7e6;color:#9a5b00;border:1px solid #f6d9b3\"><span style=\"" + _nc + "\">" + lkwCount + "</span> LKW</span>";
+  }
+
+  if(!rows.length) {
+    wrap.innerHTML = "<div style='padding:24px 16px;color:#94a3b8;text-align:center;font-size:13px;'>Keine Waschungen für den ausgewählten Fahrer.</div>";
+    return;
+  }
+
+  var html = "<div style='overflow:auto;max-height:540px;background:#fff;'><table style='width:100%;border-collapse:collapse;font-size:12px;'>";
+  html += "<thead><tr style='position:sticky;top:0;background:linear-gradient(180deg,#2f80b7 0%,#1e6091 100%);z-index:2;box-shadow:0 2px 4px rgba(0,0,0,.08);'>";
+  ["Datum","Zeit","Fahrer","LKW","Produkt","Kategorie","Quelle"].forEach(function(h){
+    html += "<th style='padding:11px 12px;text-align:left;color:#fff;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;border-right:1px solid rgba(255,255,255,.15);white-space:nowrap;'>" + h + "</th>";
+  });
+  html += "</tr></thead><tbody>";
+
+  rows.forEach(function(r, i){
+    var bg = i % 2 === 0 ? "#ffffff" : "#f8fafc";
+    html += "<tr onmouseover=\"this.style.background='#eaf3fb'\" onmouseout=\"this.style.background='" + bg + "'\" style='background:" + bg + ";border-bottom:1px solid #eef2f7;transition:background .1s;'>";
+    html += "<td style='padding:10px 12px;white-space:nowrap;font-weight:800;color:#0f172a;'>" + fwOverviewEsc(r.datum || "") + "</td>";
+    html += "<td style='padding:10px 12px;white-space:nowrap;color:#64748b;font-variant-numeric:tabular-nums;'>" + fwOverviewEsc(r.uhrzeit || "") + "</td>";
+    html += "<td style='padding:10px 12px;font-weight:700;color:#0f172a;'>" + fwOverviewEsc(r.fahrer || "") + "</td>";
+    html += "<td style='padding:10px 12px;color:#0f172a;font-weight:600;'>" + fwOverviewEsc(r.fahrzeug || "") + "</td>";
+    html += "<td style='padding:10px 12px;color:#166534;font-weight:700;'>" + fwOverviewEsc(r.produkt || "") + "</td>";
+    html += "<td style='padding:10px 12px;color:#475569;'>" + fwOverviewEsc(r.fahrzeug_kategorie || "") + "</td>";
+    html += "<td style='padding:10px 12px;color:#94a3b8;font-size:10.5px;'>" + fwOverviewEsc(r.quelle || "") + "</td>";
+    html += "</tr>";
+  });
+
+  html += "</tbody></table></div>";
+  wrap.innerHTML = html;
+}
+
+function fwInitOverview() {
+  fwBuildOverviewFilters();
+  fwRenderOverview();
+}
+"""
+
+_JS_WASH_RANKING = r"""
 // ── Fahrzeugwäsche Rangliste + PDF pro Fahrer ────────────────────────────────
 function fwComputeRanking() {
   var rows = fwOverviewData();
@@ -5436,8 +6194,7 @@ function fwExportLkwPdf(lkwName) {
 })();
 """
 
-    # ── Fahrzeugwäsche Graph (eigener raw-string, analog zur Verstoßauswertung) ─
-    fw_graph_js_code = r"""
+_JS_FW_GRAPH = r"""
 // ── Fahrzeugwäsche Graph pro Jahr ────────────────────────────────────────────
 var _fwGraphState = { jahr: null, jahr2: null, compare: false };
 var _fwGraphCharts = {};
@@ -5888,8 +6645,7 @@ function ddSelectVzInst(instIdx) {
 }
 """
 
-    # ── Verstoßauswertung (eigener raw-string, damit keine Escape-Hölle) ─────
-    verstoss_js_code = r"""
+_JS_VERSTOSS = r"""
 // ── Verstoßauswertung ────────────────────────────────────────────────────────
 var _vsSearchQ = "";
 var _vsOpenDriver = null;      // welcher Fahrer ist aufgeklappt
@@ -7410,377 +8166,9 @@ function verstossPdfOne(name) {
 }
 """
 
-    def to_js_array(b64: str, width: int = 100) -> str:
-        chunks = [b64[i:i+width] for i in range(0, len(b64), width)]
-        return ",\n".join(f'"{c}"' for c in chunks)
+_JS_KNAPP = r""""""
 
-    pdf_documents_payload = {
-        doc_id: {
-            "z": list(meta["z"]),
-            "filename": meta["filename"],
-            "title": meta["title"],
-        }
-        for doc_id, meta in EMBEDDED_PDF_DOCUMENTS.items()
-    }
-    pdf_documents_js = json.dumps(pdf_documents_payload, ensure_ascii=False, separators=(",", ":"))
-
-    documents_js_code = r"""
-// ── Komprimiert eingebettete PDF-Dokumente ──────────────────────────────────
-// Die PDF-Daten stecken in dieser HTML-Datei und werden erst bei Bedarf
-// entpackt. Dadurch ist kein zusaetzlicher Dokumentenordner erforderlich.
-var PDF_DOCUMENTS = __PDF_DOCUMENTS__;
-var PDF_URL_CACHE = {};
-
-async function documentPdfInflate(chunks){
-  var b64 = (chunks || []).join("");
-  if(!b64) return null;
-  var bin = atob(b64);
-  var bytes = new Uint8Array(bin.length);
-  for(var i=0; i<bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  if(typeof DecompressionStream !== "function"){
-    throw new Error("Dieser Browser kann die eingebettete PDF nicht entpacken.");
-  }
-  // Wichtig: Schreiben und Lesen muessen gleichzeitig laufen. Wenn zuerst auf
-  // writer.write() gewartet wird, kann der TransformStream wegen Backpressure
-  // haengen bleiben und die PDF-Vorschau bleibt leer.
-  var inputStream = new Blob([bytes]).stream();
-  var outputStream = inputStream.pipeThrough(new DecompressionStream("deflate"));
-  return new Uint8Array(await new Response(outputStream).arrayBuffer());
-}
-
-async function documentPdfGetUrl(id){
-  if(PDF_URL_CACHE[id]) return PDF_URL_CACHE[id];
-  var doc = PDF_DOCUMENTS[id];
-  if(!doc || !doc.z) return "";
-  try{
-    var pdfBytes = await documentPdfInflate(doc.z);
-    if(!pdfBytes) return "";
-    var url = URL.createObjectURL(new Blob([pdfBytes], {type:"application/pdf"}));
-    PDF_URL_CACHE[id] = url;
-    return url;
-  }catch(err){
-    console.error("PDF konnte nicht entpackt werden:", id, err);
-    return "";
-  }
-}
-
-async function documentPdfInit(id){
-  var frame = document.getElementById(id + "-pdf-frame");
-  var fallback = document.getElementById(id + "-pdf-fallback");
-  var url = await documentPdfGetUrl(id);
-  if(!frame || !url){
-    if(frame) frame.style.display = "none";
-    if(fallback) fallback.style.display = "flex";
-    return;
-  }
-  if(!frame.dataset.loaded){
-    frame.src = url + "#view=FitH&toolbar=1&navpanes=0";
-    frame.dataset.loaded = "1";
-  }
-  frame.style.display = "block";
-  if(fallback) fallback.style.display = "none";
-}
-
-async function documentPdfOpen(id){
-  var url = await documentPdfGetUrl(id);
-  if(!url){ alert("Die PDF konnte nicht geladen werden."); return; }
-  var a = document.createElement("a");
-  a.href = url + "#view=FitH&toolbar=1&navpanes=0";
-  a.target = "_blank";
-  a.rel = "noopener";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-}
-
-async function documentPdfDownload(id){
-  var doc = PDF_DOCUMENTS[id];
-  var url = await documentPdfGetUrl(id);
-  if(!doc || !url){ alert("Die PDF konnte nicht geladen werden."); return; }
-  var a = document.createElement("a");
-  a.href = url;
-  a.download = doc.filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-}
-
-// Kompatibilitaetsfunktionen fuer den bereits vorhandenen KNAPP-Bereich.
-function knappGetPdfUrl(){ return documentPdfGetUrl("knapp"); }
-function knappInit(){ documentPdfInit("knapp"); }
-function knappOpenPdf(){ documentPdfOpen("knapp"); }
-function knappDownloadPdf(){ documentPdfDownload("knapp"); }
-""".replace("__PDF_DOCUMENTS__", pdf_documents_js)
-
-    knapp_js_code = ""  # Funktionen sind im gemeinsamen PDF-Code enthalten.
-
-    # Alle Instanzen als JS-Array vorbereiten
-    def _safe_json_obj(value: str) -> str:
-        try:
-            obj = json.loads(value or "{}")
-            if not isinstance(obj, dict):
-                obj = {}
-        except Exception:
-            obj = {}
-        return json.dumps(obj, ensure_ascii=False)
-
-    normal_versp_start_json = "{}"
-    if instances and isinstance(instances[0], dict):
-        normal_versp_start_json = instances[0].get("versp_start_json") or "{}"
-
-    inst_js_parts = []
-    for idx, inst in enumerate(instances):
-        s_b64 = base64.b64encode(zlib.compress(inst["suche_html"].encode("utf-8"), 9)).decode("ascii")
-        d_b64 = base64.b64encode(zlib.compress(inst["druck_html"].encode("utf-8"), 9)).decode("ascii")
-        s_js  = to_js_array(s_b64)
-        d_js  = to_js_array(d_b64)
-        name_escaped = inst["name"].replace('"', '&quot;').replace("'", "&#39;")
-        # Sonderwochen nutzen ihre eigene CSV. Wenn keine hochgeladen ist,
-        # wird die Normaltouren-CSV als Fallback verwendet.
-        versp_json = inst.get("versp_start_json") or "{}"
-        if idx > 0 and versp_json in ("{}", "", None):
-            versp_json = normal_versp_start_json
-        versp_js = _safe_json_obj(versp_json)
-        woche_obj = inst.get("woche_data") or {}
-        try:
-            woche_js = json.dumps(woche_obj, ensure_ascii=False, separators=(",", ":"))
-        except Exception:
-            woche_js = "{}"
-        inst_js_parts.append(
-            f'{{name:"{name_escaped}",'
-            f's:[{s_js}],'
-            f'd:[{d_js}],'
-            f'versp:{versp_js},'
-            f'woche:{woche_js}}}'
-        )
-    instances_js = ",\n".join(inst_js_parts)
-
-    # Sa-/So-Auswertung ausschließlich aus tatsächlichen TIMEREC-Schichten aufbauen.
-    # Entscheidend ist immer der Anfangstag der Schicht. Touren-Excel ist hierfür
-    # bewusst keine Datenquelle, damit geplante und tatsächlich gefahrene Einsätze
-    # nicht vermischt werden.
-    try:
-        import json as _j
-        import datetime as _dt2
-
-        timerec = _j.loads(timerec_json) if timerec_json and timerec_json != "{}" else {}
-        if not isinstance(timerec, dict):
-            timerec = {}
-
-        def _sam_excluded_driver(name):
-            norm = str(name or "").strip().casefold()
-            if not norm:
-                return True
-            if norm in ("unzugeordnet, planung", "planung, unzugeordnet"):
-                return True
-            return any(str(ex or "").casefold() in norm for ex in EXCLUDED_DRIVER_NAMES)
-
-        def _sam_parse_mins(zeit_str):
-            if not zeit_str or zeit_str == "n.A.":
-                return None
-            try:
-                parts = str(zeit_str).strip().split(":")
-                return int(parts[0]) * 60 + int(parts[1])
-            except Exception:
-                return None
-
-        # Ohne Tachograph-Datei keine vermeintlichen Nullstände aus Planungsdaten
-        # erzeugen. Die Oberfläche zeigt dann einen klaren Upload-Hinweis.
-        if not timerec:
-            sam_json = "[]"
-        else:
-            # Fahrer werden über die eindeutigen Kennungen der Timerecording-Datei
-            # zusammengeführt. Primär gilt die MA-Nummer. Falls sie fehlt, wird die
-            # Fahrerkartennummer verwendet; erst danach dient der bereinigte Name als
-            # Fallback. Damit werden auch Schreibvarianten wie „Vassili“/„Vasilli“
-            # korrekt derselben Person zugeordnet, sofern die MA-Nummer identisch ist.
-            sam_by_name = {}       # person_key -> Fahrerobjekt
-            sam_by_day = {}        # person_key -> {YYYY-MM-DD -> Einsatz}
-            sam_active_years = {}  # person_key -> set(Jahr)
-
-            def _sam_clean_name(value):
-                s = str(value or "").replace("\xa0", " ")
-                # Unsichtbare Unicode-Zeichen entfernen, die optisch gleiche Namen
-                # sonst technisch unterschiedlich machen würden.
-                s = re.sub(r"[\u200b-\u200f\u202a-\u202e\u2060\ufeff]", "", s)
-                s = re.sub(r"\s+", " ", s).strip()
-                s = re.sub(r"\s*,\s*", ", ", s)
-                return s.strip(" ,;-")
-
-            def _sam_id(value):
-                s = str(value or "").strip()
-                if s.casefold() in ("", "nan", "none", "0"):
-                    return ""
-                return re.sub(r"\s+", "", s)
-
-            def _sam_name_key(value):
-                """Reihenfolge-, Groß-/Kleinschreibungs- und Umlaut-unabhängiger Schlüssel."""
-                s = _sam_clean_name(value).casefold()
-                if not s:
-                    return ""
-                s = (s.replace("ä", "ae").replace("ö", "oe")
-                       .replace("ü", "ue").replace("ß", "ss"))
-                s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
-                tokens = [t for t in re.findall(r"[a-z0-9]+", s) if not t.isdigit()]
-                return "|".join(sorted(tokens))
-
-            def _sam_display_score(value):
-                """Bevorzugt die gut lesbare Schreibweise 'Nachname, Vorname'."""
-                s = _sam_clean_name(value)
-                score = 0
-                if "," in s:
-                    score += 100
-                if s and not s.isupper() and not s.islower():
-                    score += 20
-                score += min(len(s), 60) / 100.0
-                return score
-
-            def _sam_update_display(driver, candidate):
-                candidate = _sam_clean_name(candidate)
-                if not candidate:
-                    return
-                current = driver.get("name", "")
-                if not current or _sam_display_score(candidate) > _sam_display_score(current):
-                    driver["name"] = candidate
-                    parts = candidate.split(",", 1)
-                    if len(parts) > 1:
-                        driver["nachname"] = parts[0].strip()
-                        driver["vorname"] = parts[1].strip()
-                    else:
-                        driver["nachname"] = candidate
-                        driver["vorname"] = ""
-
-            # Zuordnungshilfen aus der kompletten Timerecording-Datei bilden.
-            # Eine neue Fahrerkarte derselben Person bleibt über die MA-Nummer verbunden.
-            name_to_ma = {}
-            card_to_ma = {}
-            for raw_name, shifts in timerec.items():
-                if not isinstance(shifts, list):
-                    continue
-                clean_name = _sam_clean_name(raw_name)
-                ma_values = set()
-                for shift in shifts:
-                    if not isinstance(shift, dict):
-                        continue
-                    ma_val = _sam_id(shift.get("ma_nummer", ""))
-                    card_val = _sam_id(shift.get("fahrerschluessel", ""))
-                    if ma_val:
-                        ma_values.add(ma_val)
-                        if card_val:
-                            card_to_ma[card_val] = ma_val
-                if len(ma_values) == 1:
-                    name_to_ma[_sam_name_key(clean_name)] = next(iter(ma_values))
-
-            def _sam_person_key(raw_name, shift):
-                ma_val = _sam_id((shift or {}).get("ma_nummer", ""))
-                card_val = _sam_id((shift or {}).get("fahrerschluessel", ""))
-                name_key = _sam_name_key(raw_name)
-                if ma_val:
-                    return "ma:" + ma_val
-                if card_val and card_val in card_to_ma:
-                    return "ma:" + card_to_ma[card_val]
-                if name_key and name_key in name_to_ma:
-                    return "ma:" + name_to_ma[name_key]
-                if card_val:
-                    return "card:" + card_val
-                return "name:" + name_key if name_key else ""
-
-            def _ensure_sam_driver(raw_name, person_key):
-                display_name = _sam_clean_name(raw_name)
-                if not person_key:
-                    return ""
-                if person_key not in sam_by_name:
-                    sam_by_name[person_key] = {
-                        "person_key": person_key,
-                        "name": display_name,
-                        "nachname": "",
-                        "vorname": "",
-                        "einsaetze": 0,
-                        "daten": [],
-                        "aktive_jahre": [],
-                    }
-                    sam_by_day[person_key] = {}
-                    sam_active_years[person_key] = set()
-                _sam_update_display(sam_by_name[person_key], display_name)
-                return person_key
-
-            # Sa immer, Freitag ab 18:00 als Fr→Sa, Sonntag bis einschließlich 15:00.
-            # Pro Fahrer und Anfangsdatum wird höchstens ein Einsatz gezählt.
-            # Fahrerbasis, aktive Jahre und Einsätze stammen ausschließlich aus
-            # den tatsächlich geladenen Timerecording-Schichten.
-            for driver_name, shifts in timerec.items():
-                if _sam_excluded_driver(driver_name):
-                    continue
-                if not isinstance(shifts, list):
-                    continue
-
-                name = _sam_clean_name(driver_name)
-                for shift in shifts:
-                    if not isinstance(shift, dict):
-                        continue
-                    person_key = _sam_person_key(name, shift)
-                    driver_key = _ensure_sam_driver(name, person_key)
-                    if not driver_key:
-                        continue
-
-                    tag_str = str(shift.get("tag", "") or "").strip()       # Anfangstag DD.MM.YYYY
-                    wd      = str(shift.get("wochentag", "") or "").strip() # Mo ... So
-                    beginn  = str(shift.get("beginn", "") or "").strip()
-                    lkw     = str(shift.get("lkw", "") or "").strip()
-
-                    try:
-                        d_obj = _dt2.datetime.strptime(tag_str, "%d.%m.%Y")
-                    except Exception:
-                        continue
-                    sam_active_years[driver_key].add(d_obj.year)
-
-                    mins = _sam_parse_mins(beginn)
-                    is_sa = wd == "Sa"
-                    is_fr_abend = wd == "Fr" and mins is not None and mins >= 18 * 60
-                    is_so_frueh = wd == "So" and mins is not None and mins <= 15 * 60
-                    if not (is_sa or is_fr_abend or is_so_frueh):
-                        continue
-
-                    day_key = d_obj.strftime("%Y-%m-%d")
-                    kw = d_obj.isocalendar()[1]
-                    tag_label = "So" if is_so_frueh else ("Fr→Sa" if is_fr_abend else "Sa")
-                    day_map = sam_by_day[driver_key]
-                    if day_key not in day_map:
-                        day_map[day_key] = {
-                            "iso": day_key,
-                            "datum": f"{tag_str} (KW{kw})",
-                            "tour": "",
-                            "tag": tag_label,
-                            "beginn": beginn,
-                            "_lkw": set(),
-                            "_starts": set(),
-                        }
-                    if beginn:
-                        day_map[day_key]["_starts"].add(beginn)
-                    if lkw and lkw.lower() not in ("nan", "none", "0"):
-                        day_map[day_key]["_lkw"].add(lkw)
-
-            sam_list = []
-            for driver_key, driver in sam_by_name.items():
-                entries = []
-                for day_key in sorted(sam_by_day.get(driver_key, {})):
-                    entry = sam_by_day[driver_key][day_key]
-                    lkw_values = sorted(entry.pop("_lkw", set()))
-                    start_values = sorted(entry.pop("_starts", set()))
-                    entry["beginn"] = ", ".join(start_values) if start_values else entry.get("beginn", "")
-                    entry["tour"] = ("LKW " + ", ".join(lkw_values)) if lkw_values else ""
-                    entries.append(entry)
-                driver["daten"] = entries
-                driver["einsaetze"] = len(entries)
-                driver["aktive_jahre"] = sorted(sam_active_years.get(driver_key, set()), reverse=True)
-                sam_list.append(driver)
-
-            sam_list.sort(key=lambda x: str(x.get("name", "")).casefold())
-            sam_json = _j.dumps(sam_list, ensure_ascii=False)
-    except Exception:
-        sam_json = "[]"
-
-    sped_js_code = r"""
+_JS_SPED = r"""
 // ── Spediteure (Tourenplan-Auswertung externer Speditionen) ──────────────────
 function spedData() {
   return (typeof SPED_DATA !== "undefined" && SPED_DATA && SPED_DATA.fahrten)
@@ -8631,7 +9019,7 @@ function spedInit() {
 
 """
 
-    fabew_js_code = r"""
+_JS_FABEW = r"""
 // ── Fahrerbewertung (Auswertung d_rohdaten.json) ─────────────────────────────
 // Design-Update 2026-06-12: kompakter Dashboard-Aufbau, Top/Flop statt 101er-Endlosdiagramm
 var _fabewCharts = {};
@@ -9268,7 +9656,7 @@ function faBewExportExcel() {
 }
 """
 
-    bus_js_code = r"""
+_JS_BUS = r"""
 // ── Busfahrplan + Notfallplan (hardcoded, gültig ab KW 23) ────────────────────
 var BUS_FAHRTEN = [
   { stops:[["NFC","00:30"],["Dodow","00:55"],["Kogel","01:10"],["Granzin","01:20"],["Greven","01:25"],["NFC","01:35"]] },
@@ -9436,7 +9824,7 @@ function busPDF(){
 }
 """
 
-    arzt_js_code = r"""
+_JS_ARZT = r"""
 // ── Infos & Aushänge: Dropdown-Menü ───────────────────────────────────────────
 // Zentrale Liste aller statischen Aushänge. Neue Aushänge einfach hier ergänzen
 // (id muss zu einem panel-<id> + showArea-Zweig passen).
@@ -9565,7 +9953,7 @@ function arztPDF(){
 }
 """
 
-    versp_js_code = r"""
+_JS_VERSP = r"""
 // ── Verspätungstabelle (Infos & Aushänge) ─────────────────────────────────────
 // Kunden + Touren je Liefertag aus der Quelldatei. Wochen-/Instanz-Auswahl,
 // hübsche Vorschau und gestylter Excel-Export (Spalten Soll-/Ist-Abfahrt leer).
@@ -9816,7 +10204,7 @@ function verspDownload() {
 }
 """
 
-    wa_js_code = r"""
+_JS_WA = r"""
 // ── Wochenauslastung ──────────────────────────────────────────────────────────
 var waMetricHeat   = "kunden";   // "kunden" | "touren"
 var waMetricGruppe = "kunden";
@@ -10349,48 +10737,486 @@ function waRenderRhythmMD() {
 }
 """
 
-    # Große Zusatzdaten nicht mehr als unkomprimiertes JSON in die HTML schreiben.
-    # Stattdessen werden alle Daten gemeinsam per zlib komprimiert und als Base64
-    # eingebettet. Im Browser erfolgt das Entpacken einmalig beim Start.
-    def _json_or_default(raw_value, default_json):
-        try:
-            value = json.loads(raw_value if raw_value not in (None, "") else default_json)
-        except Exception:
-            value = json.loads(default_json)
-        return value
+def _dashboard_javascript_parts() -> dict:
+    """Liefert die statischen JavaScript-Bausteine für die HTML-Erzeugung."""
+    return {
+        'spesen': _JS_SPESEN,
+        'fa': _JS_FA,
+        'zulage': _JS_ZULAGE,
+        'wash': _JS_WASH,
+        'wash_ranking': _JS_WASH_RANKING,
+        'fw_graph': _JS_FW_GRAPH,
+        'verstoss': _JS_VERSTOSS,
+        'knapp': _JS_KNAPP,
+        'sped': _JS_SPED,
+        'fabew': _JS_FABEW,
+        'bus': _JS_BUS,
+        'arzt': _JS_ARZT,
+        'versp': _JS_VERSP,
+        'wa': _JS_WA,
+    }
 
-    _embedded_data_obj = {
+
+
+# =============================================================================
+# HTML-TEMPLATE DES DASHBOARDS
+# Dieser Bereich enthält ausschließlich das fertige HTML-Grundgerüst. Die
+# Datenaufbereitung und Komprimierung bleibt getrennt in combine_html().
+# =============================================================================
+
+# =============================================================================
+# DATENAUFBEREITUNG FÜR DIE HTML-ERZEUGUNG
+# Kleine, getrennt testbare Helfer ersetzen den früheren monolithischen Block
+# innerhalb von combine_html().
+# =============================================================================
+
+def _to_js_array(b64: str, width: int = 100) -> str:
+    chunks = [b64[i:i + width] for i in range(0, len(b64), width)]
+    return ",\n".join(f'"{chunk}"' for chunk in chunks)
+
+
+_PDF_DOCUMENTS_JS_TEMPLATE = r"""
+// ── Komprimiert eingebettete PDF-Dokumente ──────────────────────────────────
+// Die PDF-Daten stecken in dieser HTML-Datei und werden erst bei Bedarf
+// entpackt. Dadurch ist kein zusaetzlicher Dokumentenordner erforderlich.
+var PDF_DOCUMENTS = __PDF_DOCUMENTS__;
+var PDF_URL_CACHE = {};
+
+async function documentPdfInflate(chunks){
+  var b64 = (chunks || []).join("");
+  if(!b64) return null;
+  var bin = atob(b64);
+  var bytes = new Uint8Array(bin.length);
+  for(var i=0; i<bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  if(typeof DecompressionStream !== "function"){
+    throw new Error("Dieser Browser kann die eingebettete PDF nicht entpacken.");
+  }
+  // Wichtig: Schreiben und Lesen muessen gleichzeitig laufen. Wenn zuerst auf
+  // writer.write() gewartet wird, kann der TransformStream wegen Backpressure
+  // haengen bleiben und die PDF-Vorschau bleibt leer.
+  var inputStream = new Blob([bytes]).stream();
+  var outputStream = inputStream.pipeThrough(new DecompressionStream("deflate"));
+  return new Uint8Array(await new Response(outputStream).arrayBuffer());
+}
+
+async function documentPdfGetUrl(id){
+  if(PDF_URL_CACHE[id]) return PDF_URL_CACHE[id];
+  var doc = PDF_DOCUMENTS[id];
+  if(!doc || !doc.z) return "";
+  try{
+    var pdfBytes = await documentPdfInflate(doc.z);
+    if(!pdfBytes) return "";
+    var url = URL.createObjectURL(new Blob([pdfBytes], {type:"application/pdf"}));
+    PDF_URL_CACHE[id] = url;
+    return url;
+  }catch(err){
+    console.error("PDF konnte nicht entpackt werden:", id, err);
+    return "";
+  }
+}
+
+async function documentPdfInit(id){
+  var frame = document.getElementById(id + "-pdf-frame");
+  var fallback = document.getElementById(id + "-pdf-fallback");
+  var url = await documentPdfGetUrl(id);
+  if(!frame || !url){
+    if(frame) frame.style.display = "none";
+    if(fallback) fallback.style.display = "flex";
+    return;
+  }
+  if(!frame.dataset.loaded){
+    frame.src = url + "#view=FitH&toolbar=1&navpanes=0";
+    frame.dataset.loaded = "1";
+  }
+  frame.style.display = "block";
+  if(fallback) fallback.style.display = "none";
+}
+
+async function documentPdfOpen(id){
+  var url = await documentPdfGetUrl(id);
+  if(!url){ alert("Die PDF konnte nicht geladen werden."); return; }
+  var a = document.createElement("a");
+  a.href = url + "#view=FitH&toolbar=1&navpanes=0";
+  a.target = "_blank";
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+async function documentPdfDownload(id){
+  var doc = PDF_DOCUMENTS[id];
+  var url = await documentPdfGetUrl(id);
+  if(!doc || !url){ alert("Die PDF konnte nicht geladen werden."); return; }
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = doc.filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+// Kompatibilitaetsfunktionen fuer den bereits vorhandenen KNAPP-Bereich.
+function knappGetPdfUrl(){ return documentPdfGetUrl("knapp"); }
+function knappInit(){ documentPdfInit("knapp"); }
+function knappOpenPdf(){ documentPdfOpen("knapp"); }
+function knappDownloadPdf(){ documentPdfDownload("knapp"); }
+"""
+
+
+def _build_pdf_documents_js() -> str:
+    payload = {
+        doc_id: {
+            "z": list(meta["z"]),
+            "filename": meta["filename"],
+            "title": meta["title"],
+        }
+        for doc_id, meta in EMBEDDED_PDF_DOCUMENTS.items()
+    }
+    payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return _PDF_DOCUMENTS_JS_TEMPLATE.replace("__PDF_DOCUMENTS__", payload_json)
+
+
+def _safe_json_object(value: str) -> str:
+    try:
+        obj = json.loads(value or "{}")
+        if not isinstance(obj, dict):
+            obj = {}
+    except Exception:
+        obj = {}
+    return json.dumps(obj, ensure_ascii=False)
+
+
+def _build_instances_js(instances: list) -> str:
+    normal_versp_start_json = "{}"
+    if instances and isinstance(instances[0], dict):
+        normal_versp_start_json = instances[0].get("versp_start_json") or "{}"
+
+    parts = []
+    for idx, inst in enumerate(instances):
+        search_b64 = base64.b64encode(
+            zlib.compress(inst["suche_html"].encode("utf-8"), 9)
+        ).decode("ascii")
+        print_b64 = base64.b64encode(
+            zlib.compress(inst["druck_html"].encode("utf-8"), 9)
+        ).decode("ascii")
+        search_js = _to_js_array(search_b64)
+        print_js = _to_js_array(print_b64)
+        name_escaped = inst["name"].replace('"', "&quot;").replace("'", "&#39;")
+        versp_json = inst.get("versp_start_json") or "{}"
+        if idx > 0 and versp_json in ("{}", "", None):
+            versp_json = normal_versp_start_json
+        versp_js = _safe_json_object(versp_json)
+        week_obj = inst.get("woche_data") or {}
+        try:
+            week_js = json.dumps(week_obj, ensure_ascii=False, separators=(",", ":"))
+        except Exception:
+            week_js = "{}"
+        parts.append(
+            f'{{name:"{name_escaped}",'
+            f's:[{search_js}],'
+            f'd:[{print_js}],'
+            f'versp:{versp_js},'
+            f'woche:{week_js}}}'
+        )
+    return ",\n".join(parts)
+
+
+def _build_saturday_json_from_timerecording(timerec_json: str) -> str:
+    sam_json = "[]"
+    try:
+        import json as _j
+        import datetime as _dt2
+
+        timerec = _j.loads(timerec_json) if timerec_json and timerec_json != "{}" else {}
+        if not isinstance(timerec, dict):
+            timerec = {}
+
+        def _sam_excluded_driver(name):
+            norm = str(name or "").strip().casefold()
+            if not norm:
+                return True
+            if norm in ("unzugeordnet, planung", "planung, unzugeordnet"):
+                return True
+            return any(str(ex or "").casefold() in norm for ex in EXCLUDED_DRIVER_NAMES)
+
+        def _sam_parse_mins(zeit_str):
+            if not zeit_str or zeit_str == "n.A.":
+                return None
+            try:
+                parts = str(zeit_str).strip().split(":")
+                return int(parts[0]) * 60 + int(parts[1])
+            except Exception:
+                return None
+
+        # Ohne Tachograph-Datei keine vermeintlichen Nullstände aus Planungsdaten
+        # erzeugen. Die Oberfläche zeigt dann einen klaren Upload-Hinweis.
+        if not timerec:
+            sam_json = "[]"
+        else:
+            # Fahrer werden über die eindeutigen Kennungen der Timerecording-Datei
+            # zusammengeführt. Primär gilt die MA-Nummer. Falls sie fehlt, wird die
+            # Fahrerkartennummer verwendet; erst danach dient der bereinigte Name als
+            # Fallback. Damit werden auch Schreibvarianten wie „Vassili“/„Vasilli“
+            # korrekt derselben Person zugeordnet, sofern die MA-Nummer identisch ist.
+            sam_by_name = {}       # person_key -> Fahrerobjekt
+            sam_by_day = {}        # person_key -> {YYYY-MM-DD -> Einsatz}
+            sam_active_years = {}  # person_key -> set(Jahr)
+
+            def _sam_clean_name(value):
+                s = str(value or "").replace("\xa0", " ")
+                # Unsichtbare Unicode-Zeichen entfernen, die optisch gleiche Namen
+                # sonst technisch unterschiedlich machen würden.
+                s = re.sub(r"[\u200b-\u200f\u202a-\u202e\u2060\ufeff]", "", s)
+                s = re.sub(r"\s+", " ", s).strip()
+                s = re.sub(r"\s*,\s*", ", ", s)
+                return s.strip(" ,;-")
+
+            def _sam_id(value):
+                s = str(value or "").strip()
+                if s.casefold() in ("", "nan", "none", "0"):
+                    return ""
+                return re.sub(r"\s+", "", s)
+
+            def _sam_name_key(value):
+                """Reihenfolge-, Groß-/Kleinschreibungs- und Umlaut-unabhängiger Schlüssel."""
+                s = _sam_clean_name(value).casefold()
+                if not s:
+                    return ""
+                s = (s.replace("ä", "ae").replace("ö", "oe")
+                       .replace("ü", "ue").replace("ß", "ss"))
+                s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+                tokens = [t for t in re.findall(r"[a-z0-9]+", s) if not t.isdigit()]
+                return "|".join(sorted(tokens))
+
+            def _sam_display_score(value):
+                """Bevorzugt die gut lesbare Schreibweise 'Nachname, Vorname'."""
+                s = _sam_clean_name(value)
+                score = 0
+                if "," in s:
+                    score += 100
+                if s and not s.isupper() and not s.islower():
+                    score += 20
+                score += min(len(s), 60) / 100.0
+                return score
+
+            def _sam_update_display(driver, candidate):
+                candidate = _sam_clean_name(candidate)
+                if not candidate:
+                    return
+                current = driver.get("name", "")
+                if not current or _sam_display_score(candidate) > _sam_display_score(current):
+                    driver["name"] = candidate
+                    parts = candidate.split(",", 1)
+                    if len(parts) > 1:
+                        driver["nachname"] = parts[0].strip()
+                        driver["vorname"] = parts[1].strip()
+                    else:
+                        driver["nachname"] = candidate
+                        driver["vorname"] = ""
+
+            # Zuordnungshilfen aus der kompletten Timerecording-Datei bilden.
+            # Eine neue Fahrerkarte derselben Person bleibt über die MA-Nummer verbunden.
+            name_to_ma = {}
+            card_to_ma = {}
+            for raw_name, shifts in timerec.items():
+                if not isinstance(shifts, list):
+                    continue
+                clean_name = _sam_clean_name(raw_name)
+                ma_values = set()
+                for shift in shifts:
+                    if not isinstance(shift, dict):
+                        continue
+                    ma_val = _sam_id(shift.get("ma_nummer", ""))
+                    card_val = _sam_id(shift.get("fahrerschluessel", ""))
+                    if ma_val:
+                        ma_values.add(ma_val)
+                        if card_val:
+                            card_to_ma[card_val] = ma_val
+                if len(ma_values) == 1:
+                    name_to_ma[_sam_name_key(clean_name)] = next(iter(ma_values))
+
+            def _sam_person_key(raw_name, shift):
+                ma_val = _sam_id((shift or {}).get("ma_nummer", ""))
+                card_val = _sam_id((shift or {}).get("fahrerschluessel", ""))
+                name_key = _sam_name_key(raw_name)
+                if ma_val:
+                    return "ma:" + ma_val
+                if card_val and card_val in card_to_ma:
+                    return "ma:" + card_to_ma[card_val]
+                if name_key and name_key in name_to_ma:
+                    return "ma:" + name_to_ma[name_key]
+                if card_val:
+                    return "card:" + card_val
+                return "name:" + name_key if name_key else ""
+
+            def _ensure_sam_driver(raw_name, person_key):
+                display_name = _sam_clean_name(raw_name)
+                if not person_key:
+                    return ""
+                if person_key not in sam_by_name:
+                    sam_by_name[person_key] = {
+                        "person_key": person_key,
+                        "name": display_name,
+                        "nachname": "",
+                        "vorname": "",
+                        "einsaetze": 0,
+                        "daten": [],
+                        "aktive_jahre": [],
+                    }
+                    sam_by_day[person_key] = {}
+                    sam_active_years[person_key] = set()
+                _sam_update_display(sam_by_name[person_key], display_name)
+                return person_key
+
+            # Sa immer, Freitag ab 18:00 als Fr→Sa, Sonntag bis einschließlich 15:00.
+            # Pro Fahrer und Anfangsdatum wird höchstens ein Einsatz gezählt.
+            # Fahrerbasis, aktive Jahre und Einsätze stammen ausschließlich aus
+            # den tatsächlich geladenen Timerecording-Schichten.
+            for driver_name, shifts in timerec.items():
+                if _sam_excluded_driver(driver_name):
+                    continue
+                if not isinstance(shifts, list):
+                    continue
+
+                name = _sam_clean_name(driver_name)
+                for shift in shifts:
+                    if not isinstance(shift, dict):
+                        continue
+                    person_key = _sam_person_key(name, shift)
+                    driver_key = _ensure_sam_driver(name, person_key)
+                    if not driver_key:
+                        continue
+
+                    tag_str = str(shift.get("tag", "") or "").strip()       # Anfangstag DD.MM.YYYY
+                    wd      = str(shift.get("wochentag", "") or "").strip() # Mo ... So
+                    beginn  = str(shift.get("beginn", "") or "").strip()
+                    lkw     = str(shift.get("lkw", "") or "").strip()
+
+                    try:
+                        d_obj = _dt2.datetime.strptime(tag_str, "%d.%m.%Y")
+                    except Exception:
+                        continue
+                    sam_active_years[driver_key].add(d_obj.year)
+
+                    mins = _sam_parse_mins(beginn)
+                    is_sa = wd == "Sa"
+                    is_fr_abend = wd == "Fr" and mins is not None and mins >= 18 * 60
+                    is_so_frueh = wd == "So" and mins is not None and mins <= 15 * 60
+                    if not (is_sa or is_fr_abend or is_so_frueh):
+                        continue
+
+                    day_key = d_obj.strftime("%Y-%m-%d")
+                    kw = d_obj.isocalendar()[1]
+                    tag_label = "So" if is_so_frueh else ("Fr→Sa" if is_fr_abend else "Sa")
+                    day_map = sam_by_day[driver_key]
+                    if day_key not in day_map:
+                        day_map[day_key] = {
+                            "iso": day_key,
+                            "datum": f"{tag_str} (KW{kw})",
+                            "tour": "",
+                            "tag": tag_label,
+                            "beginn": beginn,
+                            "_lkw": set(),
+                            "_starts": set(),
+                        }
+                    if beginn:
+                        day_map[day_key]["_starts"].add(beginn)
+                    if lkw and lkw.lower() not in ("nan", "none", "0"):
+                        day_map[day_key]["_lkw"].add(lkw)
+
+            sam_list = []
+            for driver_key, driver in sam_by_name.items():
+                entries = []
+                for day_key in sorted(sam_by_day.get(driver_key, {})):
+                    entry = sam_by_day[driver_key][day_key]
+                    lkw_values = sorted(entry.pop("_lkw", set()))
+                    start_values = sorted(entry.pop("_starts", set()))
+                    entry["beginn"] = ", ".join(start_values) if start_values else entry.get("beginn", "")
+                    entry["tour"] = ("LKW " + ", ".join(lkw_values)) if lkw_values else ""
+                    entries.append(entry)
+                driver["daten"] = entries
+                driver["einsaetze"] = len(entries)
+                driver["aktive_jahre"] = sorted(sam_active_years.get(driver_key, set()), reverse=True)
+                sam_list.append(driver)
+
+            sam_list.sort(key=lambda x: str(x.get("name", "")).casefold())
+            sam_json = _j.dumps(sam_list, ensure_ascii=False)
+    except Exception:
+        sam_json = "[]"
+    return sam_json
+
+
+def _json_or_default(raw_value: str, default_json: str):
+    try:
+        return json.loads(raw_value if raw_value not in (None, "") else default_json)
+    except Exception:
+        return json.loads(default_json)
+
+
+def _build_embedded_data_js(
+    *,
+    fahrzeugwaesche_json: str,
+    tel_json: str,
+    sam_json: str,
+    fa_json: str,
+    fahrerbewertung_json: str,
+    zulage_json: str,
+    drittkunden_json: str,
+    verstoss_json: str,
+    spesen_json: str,
+    grosskunden_json: str,
+    timerec_json: str,
+    spediteure_json: str,
+    versp_abfahrt_json: str,
+) -> str:
+    data = {
         "fahrzeugwaesche": _json_or_default(fahrzeugwaesche_json, "[]"),
         "telefon": _json_or_default(tel_json, "[]"),
         "samstag": _json_or_default(sam_json, "[]"),
         "fahrer": _json_or_default(fa_json, "[]"),
-        "fahrerbewertung": _json_or_default(
-            fahrerbewertung_json,
-            '{"profile":"","event_types":[],"g_months":{},"g_ev":{},"drivers":[]}'
-        ),
+        "fahrerbewertung": _json_or_default(fahrerbewertung_json, '{"profile":"","event_types":[],"g_months":{},"g_ev":{},"drivers":[]}'),
         "zulagen": _json_or_default(zulage_json, "{}"),
         "drittkunden": _json_or_default(drittkunden_json, "[]"),
-        "verstoesse": _json_or_default(
-            verstoss_json, '{"drivers":[],"total_violations":0}'
-        ),
-        "spesen": _json_or_default(
-            spesen_json, '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}'
-        ),
+        "verstoesse": _json_or_default(verstoss_json, '{"drivers":[],"total_violations":0}'),
+        "spesen": _json_or_default(spesen_json, '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}'),
         "grosskunden": _json_or_default(grosskunden_json, "[]"),
         "timerecording": _json_or_default(timerec_json, "{}"),
-        "spediteure": _json_or_default(
-            spediteure_json, '{"katalog":[],"fahrten":[]}'
-        ),
+        "spediteure": _json_or_default(spediteure_json, '{"katalog":[],"fahrten":[]}'),
         "verspaetung_abfahrt": _json_or_default(versp_abfahrt_json, "{}"),
     }
-    _embedded_data_raw = json.dumps(
-        _embedded_data_obj, ensure_ascii=False, separators=(",", ":")
-    ).encode("utf-8")
-    _embedded_data_b64 = base64.b64encode(
-        zlib.compress(_embedded_data_raw, 9)
-    ).decode("ascii")
-    embedded_data_js = to_js_array(_embedded_data_b64)
+    raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    compressed_b64 = base64.b64encode(zlib.compress(raw, 9)).decode("ascii")
+    return _to_js_array(compressed_b64)
 
+
+def _render_dashboard_html(
+    *,
+    logo_data_url: str,
+    last_updated: str,
+    generation_meta_json: str,
+    instances_js: str,
+    embedded_data_js: str,
+    documents_js_code: str,
+    knapp_js_code: str,
+    spesen_js_code: str,
+    fa_js_code: str,
+    zulage_js_code: str,
+    wash_js_code: str,
+    wash_ranking_js_code: str,
+    fw_graph_js_code: str,
+    verstoss_js_code: str,
+    sped_js_code: str,
+    fabew_js_code: str,
+    bus_js_code: str,
+    arzt_js_code: str,
+    versp_js_code: str,
+    wa_js_code: str,
+    zulage_xlsx_sonder: str,
+    zulage_xlsx_fuengers: str,
+    zulage_xlsx_drittkunden: str,
+) -> str:
+    """Setzt die vorbereiteten Daten und Skriptbausteine in das HTML ein."""
     return f"""<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -10479,13 +11305,42 @@ html,body{{height:100%;font-family:'Segoe UI',Arial,sans-serif}}
 .dd-item:last-child{{border-bottom:none}}
 .dd-item:hover{{background:#eaf3fb}}
 .dd-item.active{{background:linear-gradient(180deg,#2f80b7 0%,#1e6091 100%);color:#fff}}
-.topnav-stamp{{
-  margin-left:auto;font-size:11px;font-weight:800;
-  color:#5b6b80;white-space:nowrap;
-  position:sticky;right:0;flex-shrink:0;
-  padding:0 2px 0 14px;
-  background:linear-gradient(90deg,rgba(228,233,239,0) 0%,#e4e9ef 14px,#e4e9ef 100%);
+.topnav-meta-btn{{
+  margin-left:auto;flex-shrink:0;white-space:nowrap;
+  padding:5px 8px;border-radius:7px;border:1px solid #b9c5d2;
+  background:linear-gradient(180deg,#ffffff 0%,#edf2f7 100%);
+  color:#415269;font-size:10px;font-weight:900;cursor:pointer;
+  box-shadow:0 1px 2px rgba(15,23,42,.05);
 }}
+.topnav-meta-btn:hover{{background:#fff;border-color:#8fa1b4}}
+.topnav-stamp{{
+  font-size:10px;font-weight:800;color:#5b6b80;white-space:nowrap;
+  position:sticky;right:0;flex-shrink:0;padding:0 2px 0 4px;background:#e4e9ef;
+}}
+.build-info-overlay{{display:none;position:fixed;inset:0;z-index:200000;background:rgba(15,23,42,.55);padding:24px;align-items:center;justify-content:center}}
+.build-info-overlay.open{{display:flex}}
+.build-info-dialog{{width:min(920px,96vw);max-height:88vh;overflow:auto;background:#f8fafc;border:1px solid #b9c6d5;border-radius:14px;box-shadow:0 24px 70px rgba(15,23,42,.30)}}
+.build-info-head{{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;background:linear-gradient(180deg,#ffffff 0%,#eef3f8 100%);border-bottom:1px solid #d5dde7}}
+.build-info-title{{font-size:17px;font-weight:950;color:#0f172a}}
+.build-info-sub{{font-size:11px;color:#64748b;font-weight:700;margin-top:2px}}
+.build-info-close{{width:34px;height:34px;border-radius:8px;border:1px solid #c4ceda;background:#fff;color:#334155;font-size:19px;font-weight:900;cursor:pointer}}
+.build-info-body{{padding:16px 18px 20px}}
+.build-info-cards{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-bottom:16px}}
+.build-info-card{{background:#fff;border:1px solid #d7e0ea;border-radius:10px;padding:11px 12px}}
+.build-info-card-label{{font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.45px;color:#64748b}}
+.build-info-card-value{{font-size:16px;font-weight:950;color:#0f172a;margin-top:4px;overflow-wrap:anywhere}}
+.build-info-section{{background:#fff;border:1px solid #d7e0ea;border-radius:10px;overflow:hidden;margin-top:10px}}
+.build-info-section h3{{font-size:11px;text-transform:uppercase;letter-spacing:.45px;color:#475569;padding:10px 12px;background:#f1f5f9;border-bottom:1px solid #dde5ee}}
+.build-info-table{{width:100%;border-collapse:collapse;font-size:11px}}
+.build-info-table th,.build-info-table td{{padding:8px 10px;text-align:left;border-bottom:1px solid #edf1f5;vertical-align:top}}
+.build-info-table th{{font-size:9px;text-transform:uppercase;letter-spacing:.35px;color:#64748b;background:#fbfcfe}}
+.build-info-table tr:last-child td{{border-bottom:none}}
+.build-info-pill{{display:inline-flex;padding:2px 6px;border-radius:999px;font-size:9px;font-weight:900;white-space:nowrap}}
+.build-info-pill.ok{{background:#dcfce7;color:#166534}}
+.build-info-pill.warning{{background:#fef3c7;color:#92400e}}
+.build-info-pill.error{{background:#fee2e2;color:#991b1b}}
+.build-info-pill.info{{background:#e2e8f0;color:#475569}}
+@media(max-width:720px){{.build-info-cards{{grid-template-columns:repeat(2,minmax(0,1fr))}}.topnav-stamp{{display:none}}}}
 .frame-wrap{{height:calc(100vh - 56px);display:flex;flex-direction:column}}
 iframe{{flex:1;width:100%;border:none;display:none}}
 iframe.active{{display:block}}
@@ -10553,8 +11408,40 @@ iframe.active{{display:block}}
     <div class="dd-menu" id="ddmenu-infos"></div>
   </div>
   </div>
-  <span class="topnav-stamp">{last_updated}</span>
+  <button class="topnav-meta-btn" type="button" onclick="openBuildInfo()">&#9432; Datenstand</button>
+  <span class="topnav-stamp">v{APP_DISPLAY_VERSION} &middot; {last_updated}</span>
 </nav>
+
+<div class="build-info-overlay" id="buildInfoOverlay" onclick="buildInfoBackdrop(event)">
+  <div class="build-info-dialog" role="dialog" aria-modal="true" aria-labelledby="buildInfoTitle">
+    <div class="build-info-head">
+      <div><div class="build-info-title" id="buildInfoTitle">Datenstand und Version</div><div class="build-info-sub">Technische Informationen zur aktuell geöffneten Einzeldatei</div></div>
+      <button class="build-info-close" type="button" onclick="closeBuildInfo()" aria-label="Schliessen">&times;</button>
+    </div>
+    <div class="build-info-body" id="buildInfoContent"></div>
+  </div>
+</div>
+<script>
+const APP_GENERATION_META = {generation_meta_json};
+function buildInfoEsc(value){{return String(value==null?"":value).replace(/[&<>"']/g,function(ch){{return {{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}}[ch];}});}}
+function buildInfoBytes(value){{var n=Number(String(value||"0").replace(/^H/,""))||0;if(n<1024)return n+" B";if(n<1048576)return(n/1024).toFixed(1)+" KB";return(n/1048576).toFixed(1)+" MB";}}
+function buildInfoDuration(value){{var n=Number(value)||0;return n<1000?n+" ms":(n/1000).toFixed(2)+" s";}}
+function renderBuildInfo(){{
+  var m=APP_GENERATION_META||{{}},stats=m.stats||{{}};
+  var cards=[["Version","v"+(m.version||"-")],["Erstellt",m.created_at||"-"],["HTML-Datei",buildInfoBytes(m.html_bytes)],["Erzeugung",buildInfoDuration(m.generation_ms)]];
+  var html='<div class="build-info-cards">'+cards.map(function(c){{return '<div class="build-info-card"><div class="build-info-card-label">'+buildInfoEsc(c[0])+'</div><div class="build-info-card-value">'+buildInfoEsc(c[1])+'</div></div>';}}).join('')+'</div>';
+  var datasets=Array.isArray(m.datasets)?m.datasets:[];
+  if(datasets.length)html+='<div class="build-info-section"><h3>Datenumfang</h3><table class="build-info-table"><thead><tr><th>Bereich</th><th>Umfang</th><th>Hinweis</th></tr></thead><tbody>'+datasets.map(function(d){{return '<tr><td><b>'+buildInfoEsc(d.label)+'</b></td><td>'+buildInfoEsc(d.value)+'</td><td>'+buildInfoEsc(d.detail||'')+'</td></tr>';}}).join('')+'</tbody></table></div>';
+  var sources=Array.isArray(m.sources)?m.sources:[];
+  if(sources.length)html+='<div class="build-info-section"><h3>Verarbeitete Quellen</h3><table class="build-info-table"><thead><tr><th>Status</th><th>Bereich</th><th>Datei</th><th>Details</th><th>Zeit</th></tr></thead><tbody>'+sources.map(function(r){{var st=r.status||'info';var label=st==='ok'?'OK':st==='warning'?'Hinweis':st==='error'?'Fehler':'Info';return '<tr><td><span class="build-info-pill '+buildInfoEsc(st)+'">'+buildInfoEsc(label)+'</span></td><td><b>'+buildInfoEsc(r.area||'')+'</b></td><td>'+buildInfoEsc(r.file||'')+'</td><td>'+buildInfoEsc(r.detail||'')+'</td><td>'+buildInfoEsc(r.time||'')+'</td></tr>';}}).join('')+'</tbody></table></div>';
+  html+='<div class="build-info-section"><h3>Zusammenfassung</h3><table class="build-info-table"><tbody><tr><td><b>Wochen</b></td><td>'+buildInfoEsc((m.weeks||[]).join(', ')||'Keine')+'</td></tr><tr><td><b>Eingebettete PDFs</b></td><td>'+buildInfoEsc(stats.pdf_count||0)+' Dokumente, '+buildInfoEsc(buildInfoBytes(stats.pdf_compressed_bytes||0))+' komprimiert</td></tr><tr><td><b>Quellenstatus</b></td><td>'+buildInfoEsc(stats.ok||0)+' erfolgreich, '+buildInfoEsc(stats.warning||0)+' Hinweise, '+buildInfoEsc(stats.error||0)+' Fehler</td></tr></tbody></table></div>';
+  var target=document.getElementById('buildInfoContent');if(target)target.innerHTML=html;
+}}
+function openBuildInfo(){{renderBuildInfo();var el=document.getElementById('buildInfoOverlay');if(el)el.classList.add('open');}}
+function closeBuildInfo(){{var el=document.getElementById('buildInfoOverlay');if(el)el.classList.remove('open');}}
+function buildInfoBackdrop(event){{if(event&&event.target&&event.target.id==='buildInfoOverlay')closeBuildInfo();}}
+document.addEventListener('keydown',function(e){{if(e.key==='Escape')closeBuildInfo();}});
+</script>
 
 <div class="frame-wrap">
   <iframe id="frame-suche" class="active" title="Kunden-Suche"></iframe>
@@ -15130,6 +16017,129 @@ function samToggle(el) {{
 </html>"""
 
 
+def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', spesen_json: str = '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}', grosskunden_json: str = "[]", timerec_json: str = "{}", spediteure_json: str = '{"katalog":[],"fahrten":[]}', fahrerbewertung_json: str = '{"profile":"","event_types":[],"g_months":{},"g_ev":{},"drivers":[]}', versp_abfahrt_json: str = "{}", last_updated: str = "", generation_meta: dict | None = None) -> str:
+    _combine_started = time.perf_counter()
+    try:
+        _logo_up = st.session_state.get("g_logo")
+    except Exception:
+        _logo_up = None
+    logo_data_url = logo_file_to_data_uri(_logo_up) or load_logo_data_uri()
+
+    """
+    Bettet beliebig viele Suche+Druck-Paare (Instanzen) in eine HTML ein.
+    Instanz-Wechsler im Topnav. BLP Druck ist intern (hidden iframe für FW-Daten).
+    """
+    js_parts = _dashboard_javascript_parts()
+    spesen_js_code = js_parts['spesen']
+    fa_js_code = js_parts['fa']
+    zulage_js_code = js_parts['zulage']
+    wash_js_code = js_parts['wash']
+    wash_ranking_js_code = js_parts['wash_ranking']
+    fw_graph_js_code = js_parts['fw_graph']
+    verstoss_js_code = js_parts['verstoss']
+    knapp_js_code = js_parts['knapp']
+    sped_js_code = js_parts['sped']
+    fabew_js_code = js_parts['fabew']
+    bus_js_code = js_parts['bus']
+    arzt_js_code = js_parts['arzt']
+    versp_js_code = js_parts['versp']
+    wa_js_code = js_parts['wa']
+
+
+
+
+    # Rangliste + PDF pro Fahrer (separate Variable, Triple-Quote → keine Escape-Hölle)
+
+    # ── Fahrzeugwäsche Graph (eigener raw-string, analog zur Verstoßauswertung) ─
+
+    # ── Verstoßauswertung (eigener raw-string, damit keine Escape-Hölle) ─────
+
+    documents_js_code = _build_pdf_documents_js()
+
+
+
+    # Alle Instanzen als JS-Array vorbereiten
+    instances_js = _build_instances_js(instances)
+
+
+    # Sa-/So-Auswertung ausschließlich aus tatsächlichen TIMEREC-Schichten aufbauen.
+    # Entscheidend ist immer der Anfangstag der Schicht. Touren-Excel ist hierfür
+    # bewusst keine Datenquelle, damit geplante und tatsächlich gefahrene Einsätze
+    # nicht vermischt werden.
+    sam_json = _build_saturday_json_from_timerecording(timerec_json)
+
+
+
+
+
+
+
+
+    # Große Zusatzdaten nicht mehr als unkomprimiertes JSON in die HTML schreiben.
+    # Stattdessen werden alle Daten gemeinsam per zlib komprimiert und als Base64
+    # eingebettet. Im Browser erfolgt das Entpacken einmalig beim Start.
+    embedded_data_js = _build_embedded_data_js(
+        fahrzeugwaesche_json=fahrzeugwaesche_json,
+        tel_json=tel_json,
+        sam_json=sam_json,
+        fa_json=fa_json,
+        fahrerbewertung_json=fahrerbewertung_json,
+        zulage_json=zulage_json,
+        drittkunden_json=drittkunden_json,
+        verstoss_json=verstoss_json,
+        spesen_json=spesen_json,
+        grosskunden_json=grosskunden_json,
+        timerec_json=timerec_json,
+        spediteure_json=spediteure_json,
+        versp_abfahrt_json=versp_abfahrt_json,
+    )
+
+
+    _meta = dict(generation_meta or {})
+    _meta.setdefault("version", APP_DISPLAY_VERSION)
+    _meta.setdefault("created_at", datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S"))
+    _meta["html_bytes"] = "00000000000000000"
+    _meta["generation_ms"] = "0000000000"
+    generation_meta_json = json.dumps(_meta, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+
+    _html = _render_dashboard_html(
+        logo_data_url=logo_data_url,
+        last_updated=last_updated,
+        generation_meta_json=generation_meta_json,
+        instances_js=instances_js,
+        embedded_data_js=embedded_data_js,
+        documents_js_code=documents_js_code,
+        knapp_js_code=knapp_js_code,
+        spesen_js_code=spesen_js_code,
+        fa_js_code=fa_js_code,
+        zulage_js_code=zulage_js_code,
+        wash_js_code=wash_js_code,
+        wash_ranking_js_code=wash_ranking_js_code,
+        fw_graph_js_code=fw_graph_js_code,
+        verstoss_js_code=verstoss_js_code,
+        sped_js_code=sped_js_code,
+        fabew_js_code=fabew_js_code,
+        bus_js_code=bus_js_code,
+        arzt_js_code=arzt_js_code,
+        versp_js_code=versp_js_code,
+        wa_js_code=wa_js_code,
+        zulage_xlsx_sonder=zulage_xlsx_sonder,
+        zulage_xlsx_fuengers=zulage_xlsx_fuengers,
+        zulage_xlsx_drittkunden=zulage_xlsx_drittkunden,
+    )
+    _generation_ms = max(0, int(round((time.perf_counter() - _combine_started) * 1000)))
+    _html_size = len(_html.encode("utf-8"))
+    _html = _html.replace(
+        '"html_bytes":"00000000000000000"',
+        f'"html_bytes":"{_html_size:017d}"',
+        1,
+    ).replace(
+        '"generation_ms":"0000000000"',
+        f'"generation_ms":"{_generation_ms:010d}"',
+        1,
+    )
+    return _html
+
 
 def build_plane_zulagen_json(zulage_json_str: str, drittkunden_json_str: str, generated_at: str = "") -> bytes:
     """Erzeugt eine flache JSON-Datei fuer plane.php aus den bereits berechneten Zulagen.
@@ -16706,6 +17716,178 @@ def _empty_inst(name="Normalwochen"):
 st.session_state.setdefault("instances", [_empty_inst("Normalwochen")])
 
 
+# Zentrale Verarbeitungsanzeige. Die Eintraege bleiben waehrend der Session
+# erhalten und werden bei einem neuen erfolgreichen Lauf desselben Bereichs
+# aktualisiert. Fehler werden zusaetzlich in einer kompakten Historie bewahrt.
+st.session_state.setdefault("_processing_status", {})
+st.session_state.setdefault("_processing_errors", [])
+
+
+def _status_now() -> str:
+    return datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+
+
+def _uploaded_name(uploaded) -> str:
+    return str(getattr(uploaded, "name", "") or "")
+
+
+def _set_processing_status(key: str, area: str, status: str,
+                           detail: str = "", filename: str = "") -> None:
+    """Aktualisiert genau einen sichtbaren Status-Eintrag."""
+    status = status if status in {"ok", "warning", "error", "info"} else "info"
+    st.session_state.setdefault("_processing_status", {})[key] = {
+        "bereich": area,
+        "status": status,
+        "datei": filename,
+        "detail": str(detail or ""),
+        "zeit": _status_now(),
+    }
+
+
+def _clear_errors_for_key(key: str) -> None:
+    errors = st.session_state.setdefault("_processing_errors", [])
+    st.session_state["_processing_errors"] = [e for e in errors if e.get("key") != key]
+
+
+def _record_processing_error(key: str, area: str, error: Exception,
+                             filename: str = "", detail: str = "") -> None:
+    """Zeigt einen Fehler im Status und legt eine deduplizierte Historie an."""
+    err_type = type(error).__name__
+    err_text = str(error) or repr(error)
+    visible_detail = detail or f"{err_type}: {err_text}"
+    _set_processing_status(key, area, "error", visible_detail, filename)
+
+    errors = st.session_state.setdefault("_processing_errors", [])
+    signature = f"{key}|{filename}|{err_type}|{err_text}"
+    errors[:] = [e for e in errors if e.get("signature") != signature]
+    errors.append({
+        "key": key,
+        "bereich": area,
+        "datei": filename,
+        "fehlertyp": err_type,
+        "fehler": err_text,
+        "zeit": _status_now(),
+        "signature": signature,
+    })
+    del errors[:-50]
+
+
+def _record_processing_success(key: str, area: str, detail: str = "",
+                               filename: str = "") -> None:
+    _clear_errors_for_key(key)
+    _set_processing_status(key, area, "ok", detail, filename)
+
+
+def _human_size(num_bytes: int) -> str:
+    try:
+        value = max(0, int(num_bytes))
+    except Exception:
+        value = 0
+    if value < 1024:
+        return f"{value} B"
+    if value < 1024 * 1024:
+        return f"{value / 1024:.1f} KB"
+    return f"{value / 1024 / 1024:.1f} MB"
+
+
+def _safe_state_json(key: str, fallback):
+    try:
+        value = json.loads(st.session_state.get(key, "") or "")
+        return value
+    except Exception:
+        return fallback
+
+
+def _embedded_pdf_stats() -> tuple[int, int]:
+    """Anzahl und komprimierte Bytegroesse der eingebetteten PDFs."""
+    total = 0
+    documents = globals().get("EMBEDDED_PDF_DOCUMENTS", {}) or {}
+    for meta in documents.values():
+        b64 = "".join(meta.get("z", []) or [])
+        if not b64:
+            continue
+        padding = len(b64) - len(b64.rstrip("="))
+        total += max(0, (len(b64) * 3) // 4 - padding)
+    return len(documents), total
+
+
+def _build_generation_metadata(ready_instances: list, generated_at: datetime.datetime) -> dict:
+    """Erstellt eine kompakte, browserfreundliche Datenstandsuebersicht."""
+    status_map = st.session_state.get("_processing_status", {}) or {}
+    source_rows = []
+    status_counts = {"ok": 0, "warning": 0, "error": 0, "info": 0}
+    for key, row in sorted(status_map.items(), key=lambda item: str(item[1].get("bereich", "")).lower()):
+        status = str(row.get("status", "info") or "info")
+        if key.startswith("export_") or key == "download_html":
+            continue
+        status_counts[status] = status_counts.get(status, 0) + 1
+        source_rows.append({
+            "status": status,
+            "area": str(row.get("bereich", "") or ""),
+            "file": str(row.get("datei", "") or ""),
+            "detail": str(row.get("detail", "") or ""),
+            "time": str(row.get("zeit", "") or ""),
+        })
+
+    tel = _safe_state_json("tel_json", [])
+    wash = _safe_state_json("fahrzeugwaesche_json", [])
+    timerec = _safe_state_json("timerec_json", {})
+    violations = _safe_state_json("verstoss_json", {})
+    expenses = _safe_state_json("spesen_json", {})
+    big_customers = _safe_state_json("grosskunden_json", [])
+    carriers = _safe_state_json("spediteure_json", {})
+    driver_rating = _safe_state_json("fahrerbewertung_json", {})
+
+    shift_count = sum(len(v) for v in timerec.values() if isinstance(v, list)) if isinstance(timerec, dict) else 0
+    pdf_count, pdf_bytes = _embedded_pdf_stats()
+    weeks = [str(inst.get("name", "Woche")) for inst in ready_instances]
+
+    datasets = [
+        {"label": "Wochen / Suche", "value": str(len(weeks)), "detail": ", ".join(weeks)},
+        {"label": "Telefon / Fachberater", "value": str(len(tel) if isinstance(tel, list) else 0), "detail": "Einträge"},
+        {"label": "Fahrzeugwaesche", "value": str(len(wash) if isinstance(wash, list) else 0), "detail": "Datensaetze"},
+        {"label": "Schichten / Tachograph", "value": str(shift_count), "detail": f"{len(timerec) if isinstance(timerec, dict) else 0} Fahrer"},
+        {"label": "Verstöße", "value": str(violations.get("total_violations", 0) if isinstance(violations, dict) else 0), "detail": f"{len(violations.get('drivers', [])) if isinstance(violations, dict) else 0} Fahrer"},
+        {"label": "Spesen", "value": str(expenses.get("total_rows", 0) if isinstance(expenses, dict) else 0), "detail": f"{len(expenses.get('drivers', [])) if isinstance(expenses, dict) else 0} Fahrer"},
+        {"label": "Großkunden", "value": str(len(big_customers) if isinstance(big_customers, list) else 0), "detail": "Kunden"},
+        {"label": "Spediteure", "value": str(len(carriers.get("fahrten", [])) if isinstance(carriers, dict) else 0), "detail": "Fahrten"},
+        {"label": "Fahrerbewertung", "value": str(len(driver_rating.get("drivers", [])) if isinstance(driver_rating, dict) else 0), "detail": "Fahrer"},
+        {"label": "PDF-Dokumente", "value": str(pdf_count), "detail": f"{_human_size(pdf_bytes)} komprimiert"},
+    ]
+
+    return {
+        "version": APP_DISPLAY_VERSION,
+        "created_at": generated_at.strftime("%d.%m.%Y %H:%M:%S"),
+        "weeks": weeks,
+        "datasets": datasets,
+        "sources": source_rows[-40:],
+        "stats": {
+            "ok": status_counts.get("ok", 0),
+            "warning": status_counts.get("warning", 0),
+            "error": status_counts.get("error", 0),
+            "info": status_counts.get("info", 0),
+            "pdf_count": pdf_count,
+            "pdf_compressed_bytes": pdf_bytes,
+        },
+    }
+
+
+def _safe_cached_export_b64(cache_key: str, source_value: str, builder,
+                            area: str) -> str:
+    """Erzeugt einen Export, ohne dass ein Fehler den gesamten Download-Tab stoppt."""
+    status_key = f"export_{cache_key}"
+    try:
+        result = get_cached_export_b64(cache_key, source_value, builder)
+        _record_processing_success(
+            status_key, area,
+            "Export vorbereitet" if result else "Keine Exportdaten vorhanden",
+        )
+        return result
+    except Exception as exc:
+        _record_processing_error(status_key, area, exc)
+        return ""
+
+
 # -----------------------------------------------------------------------------
 # UI-Helpers
 # -----------------------------------------------------------------------------
@@ -16714,57 +17896,128 @@ def _global_uploader(label, types, ss_key, widget_key):
     up = st.file_uploader(label, type=types, key=widget_key)
     if up:
         st.session_state[ss_key] = up
+        _record_processing_success(
+            f"upload_{ss_key}", label, "Datei ausgewaehlt", _uploaded_name(up)
+        )
+    elif st.session_state.get(ss_key):
+        stored = st.session_state.get(ss_key)
+        _set_processing_status(
+            f"upload_{ss_key}", label, "info", "In der Session vorhanden", _uploaded_name(stored)
+        )
 
 
 def _extra_single_upload(label, types, key_prefix, parser, summary_fn=None,
                          spinner_text="Verarbeite ..."):
-    """Generische Zusatzdatei (Single-Upload). Hashbasierte Cache-Invalidierung,
-    Parser laeuft nur bei Aenderung."""
+    """Generische Zusatzdatei mit Fehler- und Statusanzeige."""
     up = st.file_uploader(label, type=types, key=f"{key_prefix}_widget")
     json_key = f"{key_prefix}_json"
     sig_key  = f"{key_prefix}_sig"
+    status_key = f"extra_{key_prefix}"
     if up:
-        # Parser-Version in die Signatur aufnehmen. Dadurch werden bereits
-        # hochgeladene Dateien nach einer Parser-Aenderung sicher neu eingelesen.
+        filename = _uploaded_name(up)
         sig = combine_signatures(EXTRA_CACHE_VERSION, key_prefix, upload_signature(up))
         if st.session_state.get(sig_key) != sig:
-            with st.spinner(spinner_text):
-                st.session_state[json_key] = parser(up)
-                st.session_state[sig_key]  = sig
-        if summary_fn:
             try:
-                st.caption(summary_fn(st.session_state[json_key]))
-            except Exception:
+                with st.spinner(spinner_text):
+                    parsed = parser(up)
+                st.session_state[json_key] = parsed
+                st.session_state[sig_key] = sig
+                _record_processing_success(status_key, label, "Erfolgreich verarbeitet", filename)
+            except Exception as exc:
+                _record_processing_error(status_key, label, exc, filename)
+                st.error(f"{label}: {type(exc).__name__}: {exc}")
+        elif st.session_state.get(json_key):
+            _set_processing_status(status_key, label, "ok", "Bereits verarbeitet", filename)
+
+        if st.session_state.get(json_key):
+            if summary_fn:
+                try:
+                    summary = summary_fn(st.session_state[json_key])
+                    st.caption(summary)
+                    if st.session_state.get(sig_key) == sig:
+                        _record_processing_success(status_key, label, summary, filename)
+                except Exception as exc:
+                    st.caption(f"{label}: geladen")
+                    _set_processing_status(
+                        status_key, label, "warning",
+                        f"Datei verarbeitet, Zusammenfassung nicht moeglich: {type(exc).__name__}",
+                        filename,
+                    )
+            else:
                 st.caption(f"{label}: geladen")
-        else:
-            st.caption(f"{label}: geladen")
     elif st.session_state.get(json_key):
         st.caption(f"{label}: geladen")
+        current = st.session_state.get("_processing_status", {}).get(status_key)
+        if not current:
+            _set_processing_status(status_key, label, "info", "Daten in der Session vorhanden")
 
 
 def _extra_multi_upload(label, types, key_prefix, parsers, summary_fn=None,
                         spinner_text="Verarbeite ..."):
-    """Multi-Upload, der mehrere Parser gleichzeitig laufen laesst.
-    `parsers` ist {state_key: parser_fn}."""
+    """Multi-Upload mit getrenntem Status je Parser und Gesamtstatus."""
     ups = st.file_uploader(label, type=types, accept_multiple_files=True,
                            key=f"{key_prefix}_widget")
     sig_key = f"{key_prefix}_sig"
+    group_status_key = f"extra_{key_prefix}"
     if ups:
+        filenames = ", ".join(_uploaded_name(up) for up in ups)
         sig = combine_signatures(EXTRA_CACHE_VERSION, key_prefix, uploads_signature(ups))
         if st.session_state.get(sig_key) != sig:
+            failed = []
             with st.spinner(spinner_text):
                 for state_key, parser in parsers.items():
-                    st.session_state[state_key] = parser(ups)
+                    parser_status_key = f"extra_{key_prefix}_{state_key}"
+                    try:
+                        parsed = parser(ups)
+                        st.session_state[state_key] = parsed
+                        _record_processing_success(
+                            parser_status_key, f"{label} / {state_key}",
+                            "Erfolgreich verarbeitet", filenames,
+                        )
+                    except Exception as exc:
+                        failed.append(state_key)
+                        _record_processing_error(
+                            parser_status_key, f"{label} / {state_key}", exc, filenames
+                        )
+            if failed:
+                _set_processing_status(
+                    group_status_key, label, "error",
+                    "Fehler in: " + ", ".join(failed), filenames,
+                )
+                st.error(f"{label}: Fehler in {', '.join(failed)}")
+            else:
                 st.session_state[sig_key] = sig
-        if summary_fn:
-            try:
-                st.caption(summary_fn(ups))
-            except Exception:
-                st.caption(f"{len(ups)} Dateien geladen")
+                _record_processing_success(
+                    group_status_key, label,
+                    f"{len(ups)} Datei(en) vollstaendig verarbeitet", filenames,
+                )
         else:
-            st.caption(f"{len(ups)} Dateien geladen")
+            _set_processing_status(
+                group_status_key, label, "ok",
+                f"{len(ups)} Datei(en) bereits verarbeitet", filenames,
+            )
+
+        if any(st.session_state.get(k) for k in parsers):
+            if summary_fn:
+                try:
+                    summary = summary_fn(ups)
+                    st.caption(summary)
+                    if st.session_state.get(sig_key) == sig:
+                        _record_processing_success(group_status_key, label, summary, filenames)
+                except Exception as exc:
+                    st.caption(f"{len(ups)} Dateien geladen")
+                    if st.session_state.get(sig_key) == sig:
+                        _set_processing_status(
+                            group_status_key, label, "warning",
+                            f"Dateien verarbeitet, Zusammenfassung nicht moeglich: {type(exc).__name__}",
+                            filenames,
+                        )
+            else:
+                st.caption(f"{len(ups)} Dateien geladen")
     elif any(st.session_state.get(k) for k in parsers):
         st.caption(f"{label}: geladen")
+        if not st.session_state.get("_processing_status", {}).get(group_status_key):
+            _set_processing_status(group_status_key, label, "info", "Daten in der Session vorhanden")
 
 
 def _format_eur(value: float) -> str:
@@ -67867,7 +69120,8 @@ EMBEDDED_PDF_DOCUMENTS = {
 }
 # endregion
 
-st.title("NFC Generator")
+st.title(f"{APP_DISPLAY_NAME} · Version {APP_DISPLAY_VERSION}")
+st.caption("Modularer Einzeldatei-Generator mit Datenstand und Generierungsstatistik")
 
 tab_stamm, tab_wochen, tab_extra, tab_dl = st.tabs(
     ["Stammdaten", "Wochen", "Zusatzdateien", "Download"]
@@ -67921,9 +69175,21 @@ with tab_wochen:
             if start_csv:
                 _start_sig = combine_signatures(EXTRA_CACHE_VERSION, "versp_start_csv", upload_signature(start_csv))
                 if st.session_state["instances"][i].get("versp_start_sig") != _start_sig:
-                    with st.spinner("Lese Tourenstart-CSV ..."):
-                        st.session_state["instances"][i]["versp_start_json"] = parse_versp_abfahrt_csv(start_csv)
+                    _status_key = f"week_{i}_tourstart"
+                    try:
+                        with st.spinner("Lese Tourenstart-CSV ..."):
+                            _parsed_start = parse_versp_abfahrt_csv(start_csv)
+                        st.session_state["instances"][i]["versp_start_json"] = _parsed_start
                         st.session_state["instances"][i]["versp_start_sig"] = _start_sig
+                        _record_processing_success(
+                            _status_key, f"{_label} / Tourenstart",
+                            "Erfolgreich verarbeitet", _uploaded_name(start_csv),
+                        )
+                    except Exception as exc:
+                        _record_processing_error(
+                            _status_key, f"{_label} / Tourenstart", exc, _uploaded_name(start_csv)
+                        )
+                        st.error(f"Tourenstart-CSV: {type(exc).__name__}: {exc}")
                 try:
                     _vsp_obj = json.loads(st.session_state["instances"][i].get("versp_start_json") or "{}")
                     _vsp_n = len((_vsp_obj.get("__by_tour") or {})) if isinstance(_vsp_obj, dict) else 0
@@ -67971,13 +69237,29 @@ with tab_wochen:
                             )
                             try:
                                 st.session_state["instances"][i]["woche_data"] = compute_woche_data(excel)
-                            except Exception:
+                            except Exception as exc:
                                 st.session_state["instances"][i]["woche_data"] = {}
+                                _record_processing_error(
+                                    f"week_{i}_data", f"{_label} / Wochendaten",
+                                    exc, _uploaded_name(excel),
+                                )
+                            else:
+                                _record_processing_success(
+                                    f"week_{i}_data", f"{_label} / Wochendaten",
+                                    "Wochendaten berechnet", _uploaded_name(excel),
+                                )
                             st.session_state["instances"][i]["source_sig"] = current_source_sig
                         kb_s = len(st.session_state["instances"][i]["suche_html"]) // 1024
                         kb_d = len(st.session_state["instances"][i]["druck_html"]) // 1024
+                        _record_processing_success(
+                            f"week_{i}_html", f"{_label} / HTML",
+                            f"Suche {kb_s} KB, Druck {kb_d} KB", _uploaded_name(excel),
+                        )
                         st.success(f"Fertig: Suche {kb_s} KB, Druck {kb_d} KB")
                     except Exception as e:
+                        _record_processing_error(
+                            f"week_{i}_html", f"{_label} / HTML", e, _uploaded_name(excel)
+                        )
                         st.error(f"Fehler: {e}")
                 else:
                     kb_s = len(inst["suche_html"]) // 1024
@@ -68119,21 +69401,36 @@ with tab_dl:
         zulage_json_state      = st.session_state.get("zulage_json", "{}")
         drittkunden_json_state = st.session_state.get("drittkunden_json", "[]")
         zulage_xlsx_sonder = (
-            get_cached_export_b64("zulage_sonder", zulage_json_state,
-                                  lambda v: generate_zulage_excel(v, tab="sonder"))
+            _safe_cached_export_b64(
+                "zulage_sonder", zulage_json_state,
+                lambda v: generate_zulage_excel(v, tab="sonder"),
+                "Excel-Export Sonderzulagen",
+            )
             if zulage_json_state not in ("{}", "") else ""
         )
         zulage_xlsx_fuengers = (
-            get_cached_export_b64("zulage_fuengers", zulage_json_state,
-                                  lambda v: generate_zulage_excel(v, tab="fuengers"))
+            _safe_cached_export_b64(
+                "zulage_fuengers", zulage_json_state,
+                lambda v: generate_zulage_excel(v, tab="fuengers"),
+                "Excel-Export Fuengers",
+            )
             if zulage_json_state not in ("{}", "") else ""
         )
         zulage_xlsx_drittkunden = (
-            get_cached_export_b64("drittkunden", drittkunden_json_state, generate_drittkunden_excel)
+            _safe_cached_export_b64(
+                "drittkunden", drittkunden_json_state, generate_drittkunden_excel,
+                "Excel-Export Drittkunden",
+            )
             if drittkunden_json_state not in ("[]", "") else ""
         )
-        with st.spinner("Kombiniere ..."):
-            app_html = combine_html(
+        app_html = ""
+        generation_seconds = 0.0
+        generated_at = datetime.datetime.now()
+        generation_meta = _build_generation_metadata(ready, generated_at)
+        try:
+            _generation_started = time.perf_counter()
+            with st.spinner("Kombiniere ..."):
+                app_html = combine_html(
                 instances=ready,
                 tel_json=st.session_state.get("tel_json", "[]"),
                 sam_json=st.session_state.get("sam_json", "[]"),
@@ -68151,21 +69448,43 @@ with tab_dl:
                 spediteure_json=st.session_state.get("spediteure_json", '{"katalog":[],"fahrten":[]}'),
                 fahrerbewertung_json=st.session_state.get("fahrerbewertung_json", '{"profile":"","event_types":[],"g_months":{},"g_ev":{},"drivers":[]}'),
                 versp_abfahrt_json="{}",
-                last_updated=datetime.datetime.now().strftime("Stand: %d.%m.%Y %H:%M"),
+                last_updated=generated_at.strftime("Stand: %d.%m.%Y %H:%M"),
+                generation_meta=generation_meta,
+                )
+            generation_seconds = time.perf_counter() - _generation_started
+            _record_processing_success(
+                "download_html", "Gesamtdatei suche.html",
+                f"{_human_size(len(app_html.encode('utf-8')))}, {len(ready)} Woche(n), {generation_seconds:.2f} s",
             )
-        st.download_button(
-            label="suche.html herunterladen",
-            data=app_html.encode("utf-8"),
-            file_name="suche.html",
-            mime="text/html",
-            type="primary",
-            use_container_width=True,
-        )
+        except Exception as exc:
+            _record_processing_error("download_html", "Gesamtdatei suche.html", exc)
+            st.error(f"suche.html konnte nicht erzeugt werden: {type(exc).__name__}: {exc}")
+        if app_html:
+            st.download_button(
+                label="suche.html herunterladen",
+                data=app_html.encode("utf-8"),
+                file_name="suche.html",
+                mime="text/html",
+                type="primary",
+                use_container_width=True,
+            )
 
-        st.caption(
-            "Eigenständige Einzeldatei: Alle PDFs sind komprimiert in suche.html enthalten. "
-            "Es wird kein zusätzlicher Ordner benötigt."
-        )
+            st.caption(
+                "Eigenständige Einzeldatei: Alle PDFs sind komprimiert in suche.html enthalten. "
+                "Es wird kein zusätzlicher Ordner benötigt."
+            )
+
+            _pdf_count, _pdf_bytes = _embedded_pdf_stats()
+            st.markdown("##### Generierungsstatistik")
+            _g1, _g2, _g3, _g4 = st.columns(4)
+            _g1.metric("Version", f"v{APP_DISPLAY_VERSION}")
+            _g2.metric("HTML-Datei", _human_size(len(app_html.encode("utf-8"))))
+            _g3.metric("Erzeugungszeit", f"{generation_seconds:.2f} s")
+            _g4.metric("Eingebettete PDFs", f"{_pdf_count} · {_human_size(_pdf_bytes)}")
+            st.caption(
+                f"Datenstand: {generated_at.strftime('%d.%m.%Y %H:%M:%S')} · "
+                f"{len(ready)} Woche(n): {', '.join(i['name'] for i in ready)}"
+            )
 
         plane_zulagen_json = build_plane_zulagen_json(
             zulage_json_state,
@@ -68179,8 +69498,8 @@ with tab_dl:
             mime="application/json",
             use_container_width=True,
         )
-        st.caption(f"HTML: {len(app_html)//1024} KB (PDFs enthalten), {len(ready)} Woche(n): "
-                   f"{', '.join(i['name'] for i in ready)}")
+        if app_html:
+            st.caption("In der fertigen HTML ist der Datenstand oben rechts über den Button „Datenstand“ abrufbar.")
     else:
         st.info("Mindestens Logo, Schluesseldatei und eine Wochen-Excel hochladen.")
         zulage_json_state      = st.session_state.get("zulage_json", "{}")
@@ -68198,3 +69517,71 @@ with tab_dl:
                 mime="application/json",
                 use_container_width=True,
             )
+
+# === Zentrale Verarbeitungsanzeige ===========================================
+st.divider()
+_status_entries = list(st.session_state.get("_processing_status", {}).values())
+_error_entries = list(st.session_state.get("_processing_errors", []))
+_error_count = sum(1 for row in _status_entries if row.get("status") == "error")
+_warning_count = sum(1 for row in _status_entries if row.get("status") == "warning")
+_ok_count = sum(1 for row in _status_entries if row.get("status") == "ok")
+
+with st.expander(
+    f"Verarbeitungsstatus: {_ok_count} erfolgreich, {_warning_count} Hinweise, {_error_count} Fehler",
+    expanded=bool(_error_count),
+):
+    if not _status_entries:
+        st.info("Noch keine Dateien verarbeitet.")
+    else:
+        _status_label = {
+            "ok": "✓ Erfolgreich",
+            "warning": "⚠ Hinweis",
+            "error": "✗ Fehler",
+            "info": "• Vorhanden",
+        }
+        _rows = []
+        for row in sorted(_status_entries, key=lambda x: (x.get("bereich", "").lower(), x.get("zeit", ""))):
+            _rows.append({
+                "Status": _status_label.get(row.get("status"), row.get("status", "")),
+                "Bereich": row.get("bereich", ""),
+                "Datei": row.get("datei", ""),
+                "Details": row.get("detail", ""),
+                "Zeit": row.get("zeit", ""),
+            })
+        st.dataframe(_rows, use_container_width=True, hide_index=True)
+
+    if _error_entries:
+        with st.expander("Technische Fehlerdetails", expanded=False):
+            for err in reversed(_error_entries[-20:]):
+                st.markdown(f"**{err.get('bereich', 'Unbekannter Bereich')}** — {err.get('zeit', '')}")
+                if err.get("datei"):
+                    st.caption(f"Datei: {err['datei']}")
+                st.code(f"{err.get('fehlertyp', 'Fehler')}: {err.get('fehler', '')}")
+
+        _error_export = json.dumps(
+            [
+                {k: v for k, v in err.items() if k != "signature"}
+                for err in _error_entries
+            ],
+            ensure_ascii=False,
+            indent=2,
+        )
+        st.download_button(
+            "Fehlerprotokoll herunterladen",
+            data=_error_export.encode("utf-8"),
+            file_name="nfc_generator_fehlerprotokoll.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+
+    _status_col1, _status_col2 = st.columns(2)
+    with _status_col1:
+        if st.button("Fehlerhistorie leeren", use_container_width=True):
+            st.session_state["_processing_errors"] = []
+            st.rerun()
+    with _status_col2:
+        if st.button("Statusanzeige zuruecksetzen", use_container_width=True):
+            st.session_state["_processing_status"] = {}
+            st.session_state["_processing_errors"] = []
+            st.rerun()
+
