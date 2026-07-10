@@ -20,11 +20,11 @@ import zlib
 from pathlib import Path
 from typing import List
 
-st.set_page_config(page_title="NFC Generator v33", layout="wide")
+st.set_page_config(page_title="NFC Generator v34", layout="wide")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-10-v33-startpruefung-fortschritt-reset"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-10-v33-startpruefung-fortschritt-reset"
-APP_DISPLAY_VERSION = "33"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-10-v34-dateipruefung-duplikate"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-10-v34-dateipruefung-duplikate"
+APP_DISPLAY_VERSION = "34"
 APP_DISPLAY_NAME = "NFC Generator"
 
 
@@ -17708,7 +17708,18 @@ def parse_grosskunden_excel(uploaded_file) -> str:
 # =============================================================================
 
 def _empty_inst(name="Normalwochen"):
-    return {"name": name, "suche_html": None, "druck_html": None, "source_sig": None, "versp_start_json": "{}", "versp_start_sig": None, "woche_data": {}}
+    return {
+        "name": name,
+        "suche_html": None,
+        "druck_html": None,
+        "source_sig": None,
+        "versp_start_json": "{}",
+        "versp_start_sig": None,
+        "woche_data": {},
+        "excel_content_hash": "",
+        "excel_filename": "",
+        "quality_blocked": False,
+    }
 
 # Session-State robust initialisieren.
 # Wichtig: nicht per Attributzugriff lesen, bevor der Key sicher existiert.
@@ -17720,6 +17731,7 @@ st.session_state.setdefault("instances", [_empty_inst("Normalwochen")])
 # aktualisiert. Fehler werden zusaetzlich in einer kompakten Historie bewahrt.
 st.session_state.setdefault("_processing_status", {})
 st.session_state.setdefault("_processing_errors", [])
+st.session_state.setdefault("_quality_checks", {})
 
 
 def _status_now() -> str:
@@ -17775,6 +17787,289 @@ def _record_processing_success(key: str, area: str, detail: str = "",
                                filename: str = "") -> None:
     _clear_errors_for_key(key)
     _set_processing_status(key, area, "ok", detail, filename)
+
+
+def _peek_upload_bytes(uploaded_file) -> bytes:
+    """Liest einen Upload, ohne dessen aktuelle Dateiposition zu veraendern."""
+    if uploaded_file is None:
+        return b""
+    old_pos = None
+    try:
+        old_pos = uploaded_file.tell()
+    except Exception:
+        pass
+    try:
+        if hasattr(uploaded_file, "getvalue"):
+            data = uploaded_file.getvalue()
+        else:
+            uploaded_file.seek(0)
+            data = uploaded_file.read()
+    finally:
+        if old_pos is not None:
+            try:
+                uploaded_file.seek(old_pos)
+            except Exception:
+                pass
+        else:
+            try:
+                uploaded_file.seek(0)
+            except Exception:
+                pass
+    if data is None:
+        return b""
+    if isinstance(data, str):
+        return data.encode("utf-8")
+    return bytes(data)
+
+
+def _quality_result(status: str, area: str, filename: str, size: int,
+                    summary: str, details=None, warnings=None, errors=None,
+                    content_hash: str = "", required: bool = False,
+                    source_signature: str = "") -> dict:
+    return {
+        "status": status,
+        "area": area,
+        "filename": filename,
+        "size": int(size or 0),
+        "summary": str(summary or ""),
+        "details": [str(x) for x in (details or []) if str(x)],
+        "warnings": [str(x) for x in (warnings or []) if str(x)],
+        "errors": [str(x) for x in (errors or []) if str(x)],
+        "content_hash": str(content_hash or ""),
+        "required": bool(required),
+        "source_signature": str(source_signature or ""),
+        "checked_at": _status_now(),
+    }
+
+
+def _decode_text_sample(payload: bytes) -> tuple[str, str]:
+    for enc in ("utf-8-sig", "utf-8", "cp1252", "latin1"):
+        try:
+            return payload.decode(enc), enc
+        except UnicodeDecodeError:
+            continue
+    return payload.decode("utf-8", errors="replace"), "utf-8 (Ersatzzeichen)"
+
+
+def _inspect_week_workbook(payload: bytes) -> tuple[list[str], list[str], list[str]]:
+    """Prueft Wochen-Excel leichtgewichtig auf Blaetter, Kernspalten und Datum."""
+    details: list[str] = []
+    warnings: list[str] = []
+    errors: list[str] = []
+    try:
+        book = pd.ExcelFile(io.BytesIO(payload), engine=EXCEL_READ_ENGINE)
+    except Exception as exc:
+        return details, warnings, [f"Excel kann nicht geoeffnet werden: {type(exc).__name__}: {exc}"]
+
+    sheets = list(book.sheet_names)
+    details.append(f"{len(sheets)} Tabellenblaetter")
+    recognised = []
+    column_issues = []
+    for target, aliases in BLATT_ALIASE.items():
+        real = find_existing_sheet_name(sheets, *aliases)
+        if not real:
+            continue
+        recognised.append(real)
+        try:
+            header = pd.read_excel(book, sheet_name=real, nrows=0)
+            cols = list(header.columns)
+        except Exception as exc:
+            column_issues.append(f"{real}: Kopfzeile nicht lesbar ({type(exc).__name__})")
+            continue
+        identity_ok = any(find_column_index(cols, SPALTEN_ALIASE[k]) is not None for k in ("csb_nummer", "sap_nummer", "name"))
+        day_ok = any(first_existing_column(cols, [short, long]) for long, short in LIEFERTAGE_MAPPING.items())
+        if not identity_ok:
+            column_issues.append(f"{real}: keine CSB-/SAP-/Namensspalte erkannt")
+        if not day_ok:
+            column_issues.append(f"{real}: keine Liefertagsspalte erkannt")
+
+    if not recognised:
+        errors.append("Keines der erwarteten Wochenblaetter DIREKT, MK, HUPA_NMS oder HUPA_MALCHOW erkannt")
+    else:
+        details.append("Erkannte Bereiche: " + ", ".join(recognised))
+        if len(recognised) < len(BLATT_ALIASE):
+            missing = [target for target, aliases in BLATT_ALIASE.items() if not find_existing_sheet_name(sheets, *aliases)]
+            warnings.append("Nicht gefundene Bereiche: " + ", ".join(missing))
+    warnings.extend(column_issues)
+
+    # Datumsbereich aus der Druckquelle, sofern vorhanden. Dies ist ein Hinweis,
+    # kein harter Fehler, weil manche Quelldateien dort kein Datum fuehren.
+    date_sheet = find_existing_sheet_name(
+        sheets, "T-B-Druck Quelle", "T-B Druck Quelle", "T B Druck Quelle",
+        "T_B_Druck_Quelle", "TBDruckQuelle",
+    )
+    if date_sheet:
+        try:
+            date_df = pd.read_excel(book, sheet_name=date_sheet, nrows=5000)
+            date_col = first_existing_column(list(date_df.columns), ["Datum", "Date", "Liefertag Datum"])
+            if date_col:
+                dates = pd.to_datetime(date_df[date_col], errors="coerce", dayfirst=True).dropna()
+                if not dates.empty:
+                    dmin = dates.min().date()
+                    dmax = dates.max().date()
+                    details.append(f"Datumsbereich {dmin:%d.%m.%Y} bis {dmax:%d.%m.%Y}")
+                    today = datetime.date.today()
+                    if dmax < today - datetime.timedelta(days=45):
+                        warnings.append(f"Neuester Datensatz ist aelter als 45 Tage ({dmax:%d.%m.%Y})")
+                    if dmax > today + datetime.timedelta(days=90):
+                        warnings.append(f"Datumswerte liegen auffaellig weit in der Zukunft ({dmax:%d.%m.%Y})")
+        except Exception:
+            pass
+    return details, warnings, errors
+
+
+def _validate_uploaded_file(uploaded_file, expected_types, quality_key: str,
+                            *, area: str = "Datei", kind: str = "auto",
+                            required: bool = False) -> dict:
+    """Fuehrt eine gecachte, inhaltliche Vorpruefung eines Uploads durch."""
+    checks = st.session_state.setdefault("_quality_checks", {})
+    filename = _uploaded_name(uploaded_file)
+    source_sig = upload_signature(uploaded_file)
+    cached = checks.get(quality_key)
+    if cached and cached.get("source_signature") == source_sig and cached.get("kind") == kind:
+        return cached
+
+    payload = _peek_upload_bytes(uploaded_file)
+    size = len(payload)
+    ext = Path(filename).suffix.lower().lstrip(".")
+    allowed = {str(x).lower().lstrip(".") for x in (expected_types or [])}
+    details: list[str] = []
+    warnings: list[str] = []
+    errors: list[str] = []
+    content_hash = hashlib.sha256(payload).hexdigest() if payload else ""
+
+    if not filename:
+        errors.append("Dateiname fehlt")
+    if allowed and ext not in allowed:
+        errors.append(f"Falscher Dateityp .{ext or '?'}; erwartet: " + ", ".join(sorted(allowed)))
+    if size == 0:
+        errors.append("Datei ist leer")
+    else:
+        details.append(_human_size(size))
+        if size > 75 * 1024 * 1024:
+            warnings.append("Sehr grosse Datei; die Verarbeitung kann auf Streamlit Cloud viel Speicher benoetigen")
+
+    actual_kind = kind
+    if actual_kind == "auto":
+        if ext == "xlsx": actual_kind = "xlsx"
+        elif ext == "csv": actual_kind = "csv"
+        elif ext == "json": actual_kind = "json"
+        elif ext in {"png", "jpg", "jpeg", "svg"}: actual_kind = "logo"
+
+    if payload and not errors:
+        if actual_kind in {"xlsx", "week_excel", "key_excel"}:
+            if not payload.startswith(b"PK"):
+                errors.append("Datei besitzt keine gueltige XLSX-Signatur")
+            else:
+                try:
+                    book = pd.ExcelFile(io.BytesIO(payload), engine=EXCEL_READ_ENGINE)
+                    details.append(f"Excel lesbar · {len(book.sheet_names)} Blatt/Blaetter")
+                except Exception as exc:
+                    errors.append(f"Excel kann nicht geoeffnet werden: {type(exc).__name__}: {exc}")
+            if not errors and actual_kind == "week_excel":
+                d, w, e = _inspect_week_workbook(payload)
+                details.extend(d); warnings.extend(w); errors.extend(e)
+            elif not errors and actual_kind == "key_excel":
+                try:
+                    key_map = cached_key_map(payload)
+                    if key_map:
+                        details.append(f"{len(key_map)} Schluesselzuordnungen erkannt")
+                    else:
+                        errors.append("Keine Schluesselzuordnungen erkannt")
+                except Exception as exc:
+                    errors.append(f"Schluesseldatei nicht verwertbar: {type(exc).__name__}: {exc}")
+        elif actual_kind == "csv":
+            text, encoding = _decode_text_sample(payload)
+            lines = [line for line in text.splitlines() if line.strip()]
+            if not lines:
+                errors.append("CSV enthaelt keine Datenzeilen")
+            else:
+                sample = lines[:20]
+                delimiters = {sep: sum(line.count(sep) for line in sample) for sep in (";", ",", "\t", "|")}
+                delimiter = max(delimiters, key=delimiters.get)
+                col_count = max(1, sample[0].count(delimiter) + 1) if delimiters[delimiter] else 1
+                details.append(f"{len(lines)} nichtleere Zeilen · ca. {col_count} Spalten · {encoding}")
+                if col_count == 1:
+                    warnings.append("Kein eindeutiges CSV-Trennzeichen erkannt")
+        elif actual_kind == "json":
+            try:
+                text, encoding = _decode_text_sample(payload)
+                obj = json.loads(text)
+                count = len(obj) if isinstance(obj, (list, dict)) else 1
+                details.append(f"Gueltiges JSON · {type(obj).__name__} · {count} Eintraege · {encoding}")
+            except Exception as exc:
+                errors.append(f"Ungueltiges JSON: {type(exc).__name__}: {exc}")
+        elif actual_kind == "logo":
+            lower = payload[:500].lstrip().lower()
+            valid = (
+                payload.startswith(b"\x89PNG\r\n\x1a\n")
+                or payload.startswith(b"\xff\xd8\xff")
+                or (ext == "svg" and (lower.startswith(b"<svg") or b"<svg" in lower))
+            )
+            if not valid:
+                errors.append("Bildinhalt passt nicht zum ausgewaehlten PNG/JPG/SVG-Format")
+            else:
+                details.append("Bildsignatur gueltig")
+
+    status = "error" if errors else ("warning" if warnings else "ok")
+    if status == "ok":
+        summary = "Datei lesbar"
+    elif status == "warning":
+        summary = f"Datei lesbar · {len(warnings)} Hinweis(e)"
+    else:
+        summary = f"Dateipruefung fehlgeschlagen · {len(errors)} Fehler"
+    result = _quality_result(
+        status, area, filename, size, summary, details, warnings, errors,
+        content_hash=content_hash, required=required, source_signature=source_sig,
+    )
+    result["kind"] = kind
+    checks[quality_key] = result
+    return result
+
+
+def _render_quality_result(result: dict, *, compact: bool = True) -> None:
+    if not result:
+        return
+    detail_text = " · ".join(result.get("details", [])[:3])
+    prefix = {"ok": "✓", "warning": "⚠", "error": "✗"}.get(result.get("status"), "•")
+    line = f"{prefix} Dateipruefung: {result.get('summary', '')}"
+    if detail_text:
+        line += f" · {detail_text}"
+    if result.get("status") == "error":
+        st.error(line + (" · " + " | ".join(result.get("errors", [])[:3]) if result.get("errors") else ""))
+    elif result.get("status") == "warning":
+        st.warning(line + (" · " + " | ".join(result.get("warnings", [])[:3]) if result.get("warnings") else ""))
+    else:
+        st.caption(line)
+
+
+def _quality_table_rows() -> list[dict]:
+    rows = []
+    for key, result in sorted((st.session_state.get("_quality_checks", {}) or {}).items(), key=lambda item: str(item[1].get("area", "")).lower()):
+        status = result.get("status", "info")
+        rows.append({
+            "Status": {"ok": "✓ OK", "warning": "⚠ Hinweis", "error": "✗ Fehler"}.get(status, "• Info"),
+            "Bereich": result.get("area", key),
+            "Datei": result.get("filename", ""),
+            "Groesse": _human_size(result.get("size", 0)),
+            "Ergebnis": result.get("summary", ""),
+            "Details": " | ".join((result.get("errors") or result.get("warnings") or result.get("details") or [])[:3]),
+        })
+    return rows
+
+
+def _duplicate_week_groups() -> list[list[dict]]:
+    by_hash: dict[str, list[dict]] = {}
+    for idx, inst in enumerate(st.session_state.get("instances", []) or []):
+        digest = str(inst.get("excel_content_hash", "") or "")
+        if not digest:
+            continue
+        by_hash.setdefault(digest, []).append({
+            "index": idx,
+            "name": str(inst.get("name", f"Woche {idx + 1}") or f"Woche {idx + 1}"),
+            "filename": str(inst.get("excel_filename", "") or ""),
+        })
+    return [group for group in by_hash.values() if len(group) > 1]
 
 
 def _clear_generated_html_file() -> None:
@@ -18037,6 +18332,48 @@ def _build_export_preflight(ready_instances: list) -> tuple[list[dict], list[str
         warning=(error_count > 0),
     )
 
+    quality_checks = list((st.session_state.get("_quality_checks", {}) or {}).values())
+    required_quality_errors = [q for q in quality_checks if q.get("required") and q.get("status") == "error"]
+    optional_quality_errors = [q for q in quality_checks if not q.get("required") and q.get("status") == "error"]
+    quality_warnings = [q for q in quality_checks if q.get("status") == "warning"]
+    quality_detail = (
+        f"{len(quality_checks)} Dateien geprueft · {len(quality_warnings)} Hinweis(e)"
+        if quality_checks else "Noch keine Dateien geprueft"
+    ) + (f" · {len(optional_quality_errors)} optionale Fehler" if optional_quality_errors else "")
+    if required_quality_errors:
+        rows.append({
+            "Status": "✗ Fehler",
+            "Prüfung": "Dateiqualitaet",
+            "Details": quality_detail + f" · {len(required_quality_errors)} Pflichtdatei(en) fehlerhaft",
+            "Pflicht": "Ja",
+        })
+        blockers.append("Dateiqualitaet")
+    elif quality_warnings or optional_quality_errors:
+        rows.append({
+            "Status": "⚠ Hinweis",
+            "Prüfung": "Dateiqualitaet",
+            "Details": quality_detail,
+            "Pflicht": "Nein",
+        })
+    else:
+        rows.append({
+            "Status": "✓ Bereit",
+            "Prüfung": "Dateiqualitaet",
+            "Details": quality_detail,
+            "Pflicht": "Nein",
+        })
+
+    duplicate_groups = _duplicate_week_groups()
+    duplicate_detail = "; ".join(
+        " = ".join(f"{x['name']} ({x['filename'] or 'Datei'})" for x in group)
+        for group in duplicate_groups
+    )
+    add(
+        "Doppelte Wochen", not duplicate_groups,
+        "Keine identischen Wochen-Dateien erkannt" if not duplicate_groups else duplicate_detail,
+        required=True,
+    )
+
     estimate = _estimate_export_size(ready_instances)
     rows.append({
         "Status": "• Prognose",
@@ -18085,13 +18422,24 @@ def _safe_cached_export_b64(cache_key: str, source_value: str, builder,
 # UI-Helpers
 # -----------------------------------------------------------------------------
 def _global_uploader(label, types, ss_key, widget_key):
-    """Stammdaten-Uploader: legt Datei direkt in st.session_state ab."""
+    """Stammdaten-Uploader mit echter Inhaltspruefung."""
     up = st.file_uploader(label, type=types, key=widget_key)
+    required = ss_key in {"g_logo", "g_key"}
+    kind = "logo" if ss_key == "g_logo" else ("key_excel" if ss_key == "g_key" else "auto")
     if up:
-        st.session_state[ss_key] = up
-        _record_processing_success(
-            f"upload_{ss_key}", label, "Datei ausgewaehlt", _uploaded_name(up)
+        quality = _validate_uploaded_file(
+            up, types, f"quality_global_{ss_key}", area=label, kind=kind, required=required
         )
+        _render_quality_result(quality)
+        if quality.get("status") != "error":
+            st.session_state[ss_key] = up
+            _record_processing_success(
+                f"upload_{ss_key}", label, quality.get("summary", "Datei ausgewaehlt"), _uploaded_name(up)
+            )
+        else:
+            _set_processing_status(
+                f"upload_{ss_key}", label, "error", quality.get("summary", "Dateipruefung fehlgeschlagen"), _uploaded_name(up)
+            )
     elif st.session_state.get(ss_key):
         stored = st.session_state.get(ss_key)
         _set_processing_status(
@@ -18108,6 +18456,13 @@ def _extra_single_upload(label, types, key_prefix, parser, summary_fn=None,
     status_key = f"extra_{key_prefix}"
     if up:
         filename = _uploaded_name(up)
+        quality = _validate_uploaded_file(
+            up, types, f"quality_extra_{key_prefix}", area=label, kind="auto", required=False
+        )
+        _render_quality_result(quality)
+        if quality.get("status") == "error":
+            _set_processing_status(status_key, label, "error", quality.get("summary", "Dateipruefung fehlgeschlagen"), filename)
+            return
         sig = combine_signatures(EXTRA_CACHE_VERSION, key_prefix, upload_signature(up))
         if st.session_state.get(sig_key) != sig:
             try:
@@ -18154,6 +18509,22 @@ def _extra_multi_upload(label, types, key_prefix, parsers, summary_fn=None,
     group_status_key = f"extra_{key_prefix}"
     if ups:
         filenames = ", ".join(_uploaded_name(up) for up in ups)
+        quality_results = [
+            _validate_uploaded_file(
+                up, types, f"quality_extra_{key_prefix}_{idx}",
+                area=f"{label} / {_uploaded_name(up)}", kind="auto", required=False,
+            )
+            for idx, up in enumerate(ups)
+        ]
+        for quality in quality_results:
+            _render_quality_result(quality)
+        content_hashes = [q.get("content_hash") for q in quality_results if q.get("content_hash")]
+        duplicate_count = len(content_hashes) - len(set(content_hashes))
+        if duplicate_count:
+            st.warning(f"{duplicate_count} doppelte Datei(en) im Mehrfach-Upload erkannt; bitte entfernen.")
+        if any(q.get("status") == "error" for q in quality_results) or duplicate_count:
+            _set_processing_status(group_status_key, label, "error", "Dateipruefung oder Duplikatpruefung fehlgeschlagen", filenames)
+            return
         sig = combine_signatures(EXTRA_CACHE_VERSION, key_prefix, uploads_signature(ups))
         if st.session_state.get(sig_key) != sig:
             failed = []
@@ -69314,7 +69685,7 @@ EMBEDDED_PDF_DOCUMENTS = {
 # endregion
 
 st.title(f"{APP_DISPLAY_NAME} · Version {APP_DISPLAY_VERSION}")
-st.caption("Modularer Einzeldatei-Generator mit Startprüfung, Fortschritt und sicherem Reset")
+st.caption("Modularer Einzeldatei-Generator mit Dateipruefung, Duplikaterkennung und sicherem Export")
 
 tab_stamm, tab_wochen, tab_extra, tab_dl = st.tabs(
     ["Stammdaten", "Wochen", "Zusatzdateien", "Download"]
@@ -69362,9 +69733,31 @@ with tab_wochen:
 
             _excel_label = "Normalwochen-Excel (Pflicht)" if _is_normal else "Wochen-Excel (Pflicht)"
             excel = st.file_uploader(_excel_label, type=["xlsx"], key=f"excel_{i}")
+            _week_quality = None
+            if excel:
+                _week_quality = _validate_uploaded_file(
+                    excel, ["xlsx"], f"quality_week_{i}",
+                    area=f"{_label} / Wochen-Excel", kind="week_excel", required=True,
+                )
+                _render_quality_result(_week_quality)
+                st.session_state["instances"][i]["excel_content_hash"] = _week_quality.get("content_hash", "")
+                st.session_state["instances"][i]["excel_filename"] = _uploaded_name(excel)
+                st.session_state["instances"][i]["quality_blocked"] = (_week_quality.get("status") == "error")
+            else:
+                st.session_state["instances"][i].setdefault("excel_content_hash", "")
+                st.session_state["instances"][i].setdefault("excel_filename", "")
+                st.session_state["instances"][i].setdefault("quality_blocked", False)
 
             _start_label = "Normaltouren-Start CSV (für Verspätung)" if _is_normal else "Sonderwochen-Tourenstart CSV (optional, sonst Normaltouren)"
             start_csv = st.file_uploader(_start_label, type=["csv"], key=f"versp_start_csv_{i}")
+            if start_csv:
+                _start_quality = _validate_uploaded_file(
+                    start_csv, ["csv"], f"quality_week_{i}_tourstart",
+                    area=f"{_label} / Tourenstart", kind="csv", required=False,
+                )
+                _render_quality_result(_start_quality)
+                if _start_quality.get("status") == "error":
+                    start_csv = None
             if start_csv:
                 _start_sig = combine_signatures(EXTRA_CACHE_VERSION, "versp_start_csv", upload_signature(start_csv))
                 if st.session_state["instances"][i].get("versp_start_sig") != _start_sig:
@@ -69407,7 +69800,7 @@ with tab_wochen:
             _rahmen_csv = st.session_state.get("g_rahmen_csv")
             _kundenart_csv = st.session_state.get("g_kundenart_csv")
 
-            if excel and _logo and _key:
+            if excel and _logo and _key and not st.session_state["instances"][i].get("quality_blocked", False):
                 current_source_sig = combine_signatures(
                     APP_CACHE_VERSION,
                     upload_signature(excel),  upload_signature(_logo),
@@ -69465,6 +69858,7 @@ with tab_wochen:
             else:
                 missing = []
                 if not excel: missing.append("Wochen-Excel")
+                if excel and st.session_state["instances"][i].get("quality_blocked", False): missing.append("gueltige Wochen-Excel")
                 if not _logo: missing.append("Logo")
                 if not _key:  missing.append("Schluesseldatei")
                 if missing: st.caption("Fehlt: " + ", ".join(missing))
@@ -69473,6 +69867,13 @@ with tab_wochen:
                 if st.button("Entfernen", key=f"del_inst_{i}"):
                     st.session_state["instances"].pop(i)
                     st.rerun()
+
+    _week_duplicates = _duplicate_week_groups()
+    if _week_duplicates:
+        for _dup_group in _week_duplicates:
+            st.error("Doppelte Wochen-Datei erkannt: " + " = ".join(
+                f"{x['name']} ({x['filename'] or 'ohne Dateiname'})" for x in _dup_group
+            ))
 
     if st.button("Woche hinzufuegen"):
         n = len(st.session_state["instances"])
@@ -69594,7 +69995,14 @@ with tab_dl:
         st.session_state["instances"] = instances_state
 
     ready = [inst for inst in instances_state
-             if inst.get("suche_html") and inst.get("druck_html")]
+             if inst.get("suche_html") and inst.get("druck_html")
+             and not inst.get("quality_blocked", False)]
+
+    _quality_rows = _quality_table_rows()
+    if _quality_rows:
+        _quality_has_issue = any(row.get("Status") != "✓ OK" for row in _quality_rows)
+        with st.expander("Dateiqualitaet", expanded=_quality_has_issue):
+            st.dataframe(_quality_rows, width="stretch", hide_index=True)
 
     st.markdown("##### Startprüfung")
     _preflight_rows, _preflight_blockers, _estimated_html_size = _build_export_preflight(ready)
