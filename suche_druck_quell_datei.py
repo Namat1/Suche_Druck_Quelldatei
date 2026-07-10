@@ -6,8 +6,34 @@
 # Starten:  streamlit run app.py
 # =============================================================================
 
+from __future__ import annotations
+
+# Native Bibliotheken auf einen Thread begrenzen. Das reduziert Startspitzen
+# und vermeidet instabile OpenMP-/BLAS-Konstellationen auf kleinen Cloud-VMs.
+import os
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+os.environ.setdefault("ARROW_NUM_THREADS", "1")
+os.environ.setdefault("MALLOC_ARENA_MAX", "2")
+
+import faulthandler
+try:
+    faulthandler.enable(all_threads=True)
+except Exception:
+    pass
+
+def _boot_log(message: str) -> None:
+    print(f"[NFC-BOOT] {message}", flush=True)
+
+_boot_log("01 Python-Skript gestartet")
+
 import streamlit as st
-import pandas as pd
+_boot_log("02 Streamlit importiert")
+
+import importlib
+import importlib.util
 import json
 import base64
 import unicodedata
@@ -20,11 +46,31 @@ import zlib
 from pathlib import Path
 from typing import List
 
-st.set_page_config(page_title="NFC Generator v36", layout="wide")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-11-v36-assets"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-11-v36-assets"
-APP_DISPLAY_VERSION = "36"
+class _LazyPandas:
+    """Importiert pandas erst bei der ersten tatsächlichen Dateiverarbeitung."""
+    _module = None
+
+    def _load(self):
+        if self._module is None:
+            _boot_log("PANDAS-START: pandas wird jetzt importiert")
+            self._module = importlib.import_module("pandas")
+            _boot_log(f"PANDAS-OK: pandas {getattr(self._module, '__version__', '?')} importiert")
+        return self._module
+
+    def __getattr__(self, name):
+        return getattr(self._load(), name)
+
+
+pd = _LazyPandas()
+_boot_log("03 Standardimporte bereit; pandas wird verzögert geladen")
+
+st.set_page_config(page_title="NFC Generator v37", layout="wide")
+_boot_log("04 Seitenkonfiguration gesetzt")
+
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-11-v37-diagnose"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-11-v37-diagnose"
+APP_DISPLAY_VERSION = "37"
 APP_DISPLAY_NAME = "NFC Generator"
 
 
@@ -34,13 +80,10 @@ APP_DISPLAY_NAME = "NFC Generator"
 # Wenn 'python-calamine' installiert ist, nutzen wir es; sonst Fallback.
 # Schreiben bleibt openpyxl (calamine kann nur lesen).
 # =============================================================================
-try:
-    import python_calamine  # noqa: F401
-    _HAS_CALAMINE = True
-except ImportError:
-    _HAS_CALAMINE = False
-
+# Nur die Verfügbarkeit prüfen; kein nativer Import während des App-Starts.
+_HAS_CALAMINE = importlib.util.find_spec("python_calamine") is not None
 EXCEL_READ_ENGINE = "calamine" if _HAS_CALAMINE else "openpyxl"
+_boot_log(f"05 Excel-Engine vorbereitet: {EXCEL_READ_ENGINE}")
 
 EXCLUDED_DRIVER_NAMES = (
     "Ch.Holtz", "Paasch", "Meyer", "Ihde", "Spedition M+S Express 4", "Spedition M+S Express 3",
@@ -12055,6 +12098,7 @@ def _format_eur(value: float) -> str:
 # -----------------------------------------------------------------------------
 # UI-Layout
 # -----------------------------------------------------------------------------
+_boot_log("06 Funktionsdefinitionen geladen; UI-Aufbau beginnt")
 # region Eingebettete PDF-Dokumente (komprimierte Base64-Daten)
 # PDF-Dokumente: zlib-komprimiert + Base64. Dadurch bleiben sie in der einzigen
 # Ausgabe-Datei enthalten, ohne dass ein separater Ordner benoetigt wird.
@@ -12063,6 +12107,7 @@ def _format_eur(value: float) -> str:
 # endregion
 
 st.title(f"{APP_DISPLAY_NAME} · Version {APP_DISPLAY_VERSION}")
+_boot_log("07 Titel gerendert")
 st.caption("Modularer Einzeldatei-Generator mit speicherschonender Dateiprüfung und sicherem Export")
 
 tab_stamm, tab_wochen, tab_extra, tab_dl = st.tabs(
@@ -12070,6 +12115,7 @@ tab_stamm, tab_wochen, tab_extra, tab_dl = st.tabs(
 )
 
 # === Tab: Stammdaten =========================================================
+_boot_log("08 Tab Stammdaten wird aufgebaut")
 with tab_stamm:
     col_a, col_b = st.columns(2)
     with col_a:
@@ -12096,6 +12142,7 @@ with tab_stamm:
         st.caption("Fehlt: " + ", ".join(_miss))
 
 # === Tab: Wochen =============================================================
+_boot_log("09 Tab Wochen wird aufgebaut")
 with tab_wochen:
     for i, inst in enumerate(st.session_state["instances"]):
         _is_normal = (i == 0)
@@ -12259,6 +12306,7 @@ with tab_wochen:
         st.rerun()
 
 # === Tab: Zusatzdateien ======================================================
+_boot_log("10 Tab Zusatzdateien wird aufgebaut")
 with tab_extra:
     col_l, col_r = st.columns(2)
 
@@ -12364,6 +12412,7 @@ with tab_extra:
 # Die große Einzeldatei wird nicht mehr bei jedem Streamlit-Rerun neu gebaut.
 # Das ist besonders auf Streamlit Cloud wichtig, weil ein String plus mehrere
 # UTF-8-Kopien der HTML kurzzeitig sehr viel RAM belegen können.
+_boot_log("11 Tab Download wird aufgebaut")
 with tab_dl:
     import gc as _gc
 
@@ -12705,3 +12754,6 @@ with st.expander(
             st.session_state["_processing_errors"] = []
             st.rerun()
 
+
+
+_boot_log("99 App-Skript vollständig ausgeführt")
