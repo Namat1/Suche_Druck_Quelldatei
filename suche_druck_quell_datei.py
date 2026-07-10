@@ -20,11 +20,11 @@ import zlib
 from pathlib import Path
 from typing import List
 
-st.set_page_config(page_title="NFC Generator v30", layout="wide")
+st.set_page_config(page_title="NFC Generator v31", layout="wide")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-10-v61-datenstand"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-10-v58-datenstand"
-APP_DISPLAY_VERSION = "30"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-10-v31-cloud-stabil-datenstand"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-10-v31-cloud-stabil-datenstand"
+APP_DISPLAY_VERSION = "31"
 APP_DISPLAY_NAME = "NFC Generator"
 
 
@@ -820,15 +820,15 @@ def _patch_suche_template_search_all_inputs(template: str) -> str:
 
   if(!qRaw){ renderTable([]); return; }
 
-  if(/^\d{1,3}$/.test(qRaw)){
-    const n=qRaw.replace(/^0+(\d)/,'$1');
+  if(/^\\d{1,3}$/.test(qRaw)){
+    const n=qRaw.replace(/^0+(\\d)/,'$1');
     const r=allCustomers.filter(k=>(k.touren||[]).some(t=>(t.tournummer||'').startsWith(n)));
     renderTable(r);
     return;
   }
 
-  if(/^\d{4}$/.test(qRaw)){
-    const n=qRaw.replace(/^0+(\d)/,'$1');
+  if(/^\\d{4}$/.test(qRaw)){
+    const n=qRaw.replace(/^0+(\\d)/,'$1');
     const tr=allCustomers.filter(k=>(k.touren||[]).some(t=>(t.tournummer||'')===n));
     const cr=allCustomers.filter(k=>(k.csb_nummer||'')===n);
     const r=dedupByCSB([...tr,...cr]);
@@ -857,7 +857,7 @@ def _patch_suche_template_search_all_inputs(template: str) -> str:
 
   const q = normDE(qRaw);
   const n = normalizeDigits(qRaw);
-  const isNumeric = /^\d+$/.test(qRaw);
+  const isNumeric = /^\\d+$/.test(qRaw);
   const normalizeRahmentourCode = (value) => String(value||'').toUpperCase().replace(/\\s+/g,'');
   const getRahmentourList = (tournummer, dayLabel) => {
     const key = normalizeDigits(tournummer);
@@ -1097,7 +1097,7 @@ def _patch_suche_template_sonderliste_marktkauf(template: str) -> str:
 const KUNDEN_LISTE_GROUP_ORDER = ['SuL','Malchow','Neumünster','Direkt','Marktkauf','Gemischt','Ohne Rahmentour'];
 
 function normalizeRahmentourCodeGlobal(value){
-  return String(value||'').toUpperCase().replace(/\s+/g,'').trim();
+  return String(value||'').toUpperCase().replace(/\\s+/g,'').trim();
 }
 function getRahmentourListGlobal(tournummer, dayLabel){
   const key = normalizeDigits(tournummer);
@@ -1137,20 +1137,20 @@ function classifyKundenCodes(codes){
 
 function hasMarktkaufTour(k){
   return (k.touren||[]).some(t => {
-    const num = String(t.tournummer||'').replace(/\D/g,'');
-    return /^\d88\d$/.test(num);
+    const num = String(t.tournummer||'').replace(/\\D/g,'');
+    return /^\\d88\\d$/.test(num);
   });
 }
 function hasMalchowTour(k){
   return (k.touren||[]).some(t => {
-    const num = String(t.tournummer||'').replace(/\D/g,'');
-    return /^\d777\d$/.test(num);
+    const num = String(t.tournummer||'').replace(/\\D/g,'');
+    return /^\\d777\\d$/.test(num);
   });
 }
 function hasNMSTour(k){
   return (k.touren||[]).some(t => {
-    const num = String(t.tournummer||'').replace(/\D/g,'');
-    return /^\d222\d$/.test(num);
+    const num = String(t.tournummer||'').replace(/\\D/g,'');
+    return /^\\d222\\d$/.test(num);
   });
 }
 
@@ -1274,15 +1274,15 @@ def _patch_suche_template_multi_keys(template: str) -> str:
     """Unterstuetzt mehrere Schluesselnummern je Kundennummer."""
     normalize_needle = """function normalizeDigits(v){
   if(v == null) return '';
-  let s = String(v).trim().replace(/\.0$/,'');
-  s = s.replace(/[^0-9]/g,'').replace(/^0+(\d)/,'$1');
+  let s = String(v).trim().replace(/\\.0$/,'');
+  s = s.replace(/[^0-9]/g,'').replace(/^0+(\\d)/,'$1');
   return s;
 }"""
     normalize_repl = normalize_needle + """
 function normalizeKeyList(value){
   const source = Array.isArray(value)
     ? value
-    : String(value == null ? '' : value).split(/[\s,;|/]+/);
+    : String(value == null ? '' : value).split(/[\\s,;|/]+/);
   const out = [];
   for(const item of source){
     const key = normalizeDigits(item);
@@ -12719,7 +12719,7 @@ function fwSetDate(value) {{
 }}
 
 function fwIsExcludedNumber(value) {{
-  var s = (value == null ? "" : String(value)).replace(/\D/g, "");
+  var s = (value == null ? "" : String(value)).replace(/\\D/g, "");
   if(!s) return false;
   return FW_EXCLUDED_SUFFIXES.some(function(suffix) {{
     if(s.endsWith(suffix)) return true;
@@ -12928,9 +12928,9 @@ function gkAccentStyle(name) {{
 
 function gkInitials(name) {{
   var raw = String(name || "");
-  var words = raw.replace(/[^0-9A-Za-zÄÖÜäöüß ]/g, " ").split(/\s+/).filter(Boolean)
+  var words = raw.replace(/[^0-9A-Za-zÄÖÜäöüß ]/g, " ").split(/\\s+/).filter(Boolean)
     .filter(function(w){{ return !/^(gmbh|mbh|kg|co|ag|ohg|ek|und|der|die|das)$/i.test(w); }});
-  if (!words.length) words = raw.split(/\s+/).filter(Boolean);
+  if (!words.length) words = raw.split(/\\s+/).filter(Boolean);
   var a = words[0] ? words[0].charAt(0) : "?";
   var b = words.length > 1 ? words[1].charAt(0) : "";
   return ((a + b).toUpperCase()) || "?";
@@ -12942,7 +12942,7 @@ function gkMonoHtml(name, cls) {{
 
 function gkExtractEmails(v) {{
   var s = String(v == null ? "" : v);
-  return s.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{{2,}}/ig) || [];
+  return s.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{{2,}}/ig) || [];
 }}
 
 function gkUniqEmails(list) {{
@@ -13155,7 +13155,7 @@ function gkRenderStructured(customer, detail) {{
   }}).filter(function(i){{return i>=0;}});
 
   function isLabel(v) {{ return v && !v.includes("@") && v.trim().length > 0; }}
-  function isPhone(v) {{ return v && /[\d]{{4,}}/.test(v.trim()); }}
+  function isPhone(v) {{ return v && /[\\d]{{4,}}/.test(v.trim()); }}
 
   // Sheet-weite Hinweise über alle Entries
   var allHints = [];
@@ -13345,7 +13345,7 @@ function gkRenderStructured(customer, detail) {{
         html += "<div class='gk-c-row'><span class='gk-c-left'>";
         if (hasEmail) {{
           html += cr.emails.map(function(em) {{
-            var isMailAddr = em.match(/^[^\s@]+@[^\s@]+/) !== null;
+            var isMailAddr = em.match(/^[^\\s@]+@[^\\s@]+/) !== null;
             return isMailAddr
               ? "<a class='gk-mail' href='mailto:" + gkEsc(em) + "'>" + gkEsc(em) + "</a>"
               : "<span class='gk-c-label'>" + gkEsc(em) + "</span>";
@@ -13358,7 +13358,7 @@ function gkRenderStructured(customer, detail) {{
         html += "</span>";
         if (hasTel) {{
           html += cr.tels.map(function(t) {{
-              var href = "tel:" + t.replace(/[^\d\+]/g,"");
+              var href = "tel:" + t.replace(/[^\\d\\+]/g,"");
               return "<a class='gk-tel' href='" + href + "'>"
                    + "<span class='gk-tel-i'>&#9742;</span>" + gkEsc(t) + "</a>";
             }}).join("");
@@ -13393,7 +13393,7 @@ function gkRenderStructured(customer, detail) {{
 
 // ── Freeform Renderer ─────────────────────────────────────────────────────────
 function gkRenderFreeform(customer, detail) {{
-  var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  var emailRe = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
   var rastingNfcEmails = gkRastingNfcEmailsFromLines(customer);
   var allMails = gkUniqEmails((customer.lines || []).reduce(function(acc, l){{ return acc.concat(gkExtractEmails(l)); }}, []));
   var html = "<div class='gk-fade' style='" + gkAccentStyle(customer.name) + "max-width:780px;'>";
@@ -13414,7 +13414,7 @@ function gkRenderFreeform(customer, detail) {{
     if (!t) return;
     var isEmail = emailRe.test(t);
     var isSection = gkIsSection(t);
-    var hasTelNum = !isEmail && /\d{{5,}}/.test(t) && t.length < 60;
+    var hasTelNum = !isEmail && /\\d{{5,}}/.test(t) && t.length < 60;
     var isLong = t.length > 90;
 
     if (isSection) {{
@@ -13429,7 +13429,7 @@ function gkRenderFreeform(customer, detail) {{
     }} else if (isEmail) {{
       html += "<div class='gk-ff-row'><a class='gk-mail' href='mailto:" + gkEsc(t) + "'>" + gkEsc(t) + "</a></div>";
     }} else if (hasTelNum) {{
-      html += "<div class='gk-ff-row'><a class='gk-tel' href='tel:" + gkEsc(t.replace(/[^\d\+]/g,"")) + "'>"
+      html += "<div class='gk-ff-row'><a class='gk-tel' href='tel:" + gkEsc(t.replace(/[^\\d\\+]/g,"")) + "'>"
             + "<span class='gk-tel-i'>&#9742;</span>" + gkEsc(t) + "</a></div>";
     }} else if (isLong) {{
       html += "<div class='gk-ff-row gk-ff-long'>" + gkEsc(t) + "</div>";
@@ -13522,7 +13522,7 @@ function telRender(q) {{
     html += "<div class='tel-grid'>";
     hits.forEach(function(p) {{
       var safetel = String(p.tel).replace(/'/g,"&#39;");
-      var telClean = String(p.tel).replace(/[^\d+]/g,"");
+      var telClean = String(p.tel).replace(/[^\\d+]/g,"");
       var isRole = (p.mail === "Disponent" || p.mail === "Chef");
       html += "<div class='tel-card'>";
       html += telAvatarHtml(p.name);
@@ -13639,7 +13639,7 @@ function samTotalSaturdays(year) {{
 }}
 
 function samParseYear(datum) {{
-  var m = String(datum||"").match(/(\d{{2}}\.\d{{2}}\.(\d{{4}}))/);
+  var m = String(datum||"").match(/(\\d{{2}}\\.\\d{{2}}\\.(\\d{{4}}))/);
   return m ? parseInt(m[2],10) : null;
 }}
 
@@ -13658,12 +13658,12 @@ function samAttr(v) {{
 function samNameKey(v) {{
   var s = String(v||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
   s = s.replace(/ß/g,"ss").replace(/[^a-z0-9]+/g," ").trim();
-  return s.split(/\s+/).filter(Boolean).sort().join("|");
+  return s.split(/\\s+/).filter(Boolean).sort().join("|");
 }}
 
 function samMergeText(a, b) {{
   var parts = [];
-  String(a||"").split(/\s*,\s*/).concat(String(b||"").split(/\s*,\s*/)).forEach(function(x) {{
+  String(a||"").split(/\\s*,\\s*/).concat(String(b||"").split(/\\s*,\\s*/)).forEach(function(x) {{
     x = x.trim();
     if(x && parts.indexOf(x) === -1) parts.push(x);
   }});
@@ -13715,9 +13715,9 @@ function samPrepareDrivers() {{
 
 function samDateFromEntry(e) {{
   var iso = String((e||{{}}).iso||"");
-  var m = iso.match(/^(\d{{4}})-(\d{{2}})-(\d{{2}})$/);
+  var m = iso.match(/^(\\d{{4}})-(\\d{{2}})-(\\d{{2}})$/);
   if(m) return new Date(parseInt(m[1],10),parseInt(m[2],10)-1,parseInt(m[3],10));
-  m = String((e||{{}}).datum||"").match(/(\d{{2}})\.(\d{{2}})\.(\d{{4}})/);
+  m = String((e||{{}}).datum||"").match(/(\\d{{2}})\\.(\\d{{2}})\\.(\\d{{4}})/);
   return m ? new Date(parseInt(m[3],10),parseInt(m[2],10)-1,parseInt(m[1],10)) : null;
 }}
 
@@ -13945,12 +13945,12 @@ function samExportExcel() {{
     var entries = ((driver._byYear || {{}})[year] || []).slice();
     entries.forEach(function(e) {{
       var datumText = String(e.datum || "");
-      var dateMatch = datumText.match(/\d{{2}}\.\d{{2}}\.\d{{4}}/);
-      var kwMatch = datumText.match(/KW\s*(\d{{1,2}})/i);
+      var dateMatch = datumText.match(/\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}/);
+      var kwMatch = datumText.match(/KW\\s*(\\d{{1,2}})/i);
       var tag = String(e.tag || "Sa");
       var art = tag === "So" ? "Sonntag bis 15 Uhr" :
                 (tag.indexOf("Fr") === 0 ? "Freitag ab 18 Uhr" : "Samstag");
-      var lkw = String(e.tour || "").replace(/^LKW\s*/i, "").trim();
+      var lkw = String(e.tour || "").replace(/^LKW\\s*/i, "").trim();
       rows.push({{
         _iso: String(e.iso || ""),
         Datum: dateMatch ? dateMatch[0] : datumText,
@@ -14328,7 +14328,7 @@ function samToggle(el) {{
     var s = String(t).trim();
     if (!s || s === "-" || s === "—") return 0;
 
-    var m = s.match(/(-?\d{{1,4}})\s*:\s*(\d{{1,2}})/);
+    var m = s.match(/(-?\\d{{1,4}})\\s*:\\s*(\\d{{1,2}})/);
     if (m) {{
       var h = parseInt(m[1], 10) || 0;
       var mi = parseInt(m[2], 10) || 0;
@@ -14336,8 +14336,8 @@ function samToggle(el) {{
     }}
 
     var h2 = 0, m2 = 0;
-    var hm = s.match(/(\d+(?:[\.,]\d+)?)\s*(?:std|stunde|stunden|h)\b/i);
-    var mm = s.match(/(\d+)\s*(?:min|minute|minuten|m)\b/i);
+    var hm = s.match(/(\\d+(?:[\\.,]\\d+)?)\\s*(?:std|stunde|stunden|h)\b/i);
+    var mm = s.match(/(\\d+)\\s*(?:min|minute|minuten|m)\b/i);
     if (hm || mm) {{
       if (hm) h2 = parseFloat(hm[1].replace(",", ".")) || 0;
       if (mm) m2 = parseInt(mm[1], 10) || 0;
@@ -14368,7 +14368,7 @@ function samToggle(el) {{
   function _faComputeEndDate(s) {{
     var d = s.tag || "";
     if (!s.ende_naechster_tag) return d;
-    var m = d.match(/^(\d{{2}})\.(\d{{2}})\.(\d{{4}})$/);
+    var m = d.match(/^(\\d{{2}})\\.(\\d{{2}})\\.(\\d{{4}})$/);
     if (!m) return d;
     var dt = new Date(parseInt(m[3],10), parseInt(m[2],10)-1, parseInt(m[1],10)+1);
     return (dt.getDate()<10?"0":"") + dt.getDate() + "."
@@ -14413,7 +14413,7 @@ function samToggle(el) {{
 
   function _monthInfo(s) {{
     var MONATE = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
-    var m = (s.tag || "").match(/^(\d{{2}})\.(\d{{2}})\.(\d{{4}})$/);
+    var m = (s.tag || "").match(/^(\\d{{2}})\\.(\\d{{2}})\\.(\\d{{4}})$/);
     if (!m) return {{ key: "0000-00", label: "Unbekannt" }};
     return {{ key: m[3] + "-" + m[2], label: (MONATE[parseInt(m[2],10)-1] || m[2]) + " " + m[3] }};
   }}
@@ -14421,7 +14421,7 @@ function samToggle(el) {{
 
   function _monthLabelFromKey(key) {{
     var MONATE = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
-    var m = String(key || "").match(/^(\d{{4}})-(\d{{2}})$/);
+    var m = String(key || "").match(/^(\\d{{4}})-(\\d{{2}})$/);
     if (!m) return "Unbekannt";
     return (MONATE[parseInt(m[2],10)-1] || m[2]) + " " + m[1];
   }}
@@ -14437,10 +14437,10 @@ function samToggle(el) {{
     var s = String(value == null ? "" : value).toLowerCase();
     try {{ s = s.normalize("NFKD").replace(/[\u0300-\u036f]/g, ""); }} catch(e) {{}}
     s = s.replace(/ß/g, "ss").replace(/æ/g, "ae").replace(/œ/g, "oe");
-    s = s.replace(/\([^)]*\)/g, " ");
-    s = s.replace(/[_.\/,;:|]+/g, " ");
+    s = s.replace(/\\([^)]*\\)/g, " ");
+    s = s.replace(/[_.\\/,;:|]+/g, " ");
     s = s.replace(/[-–—]+/g, " ");
-    s = s.replace(/\s+/g, " ").trim();
+    s = s.replace(/\\s+/g, " ").trim();
     return s;
   }}
 
@@ -14565,7 +14565,7 @@ function samToggle(el) {{
 
   function _faPlanDateKey(entry) {{
     var raw = String((entry && entry.datum) || "");
-    var m = raw.match(/(\d{{2}})\.(\d{{2}})\.(\d{{4}})/);
+    var m = raw.match(/(\\d{{2}})\\.(\\d{{2}})\\.(\\d{{4}})/);
     if (!m) return "";
     return m[3] + "-" + m[2] + "-" + m[1];
   }}
@@ -14772,7 +14772,7 @@ function samToggle(el) {{
     var all = (TIMEREC_DATA[name] || []).slice();
     var yr = faYearFilter;
     var yearShifts = (yr === "all") ? all : all.filter(function(s) {{
-      var m = (s.tag || "").match(/(\d{{4}})$/);
+      var m = (s.tag || "").match(/(\\d{{4}})$/);
       return m && m[1] === yr;
     }});
 
@@ -14902,7 +14902,7 @@ function samToggle(el) {{
     var all = (TIMEREC_DATA[name] || []).slice();
     var yr = faYearFilter;
     var yearShifts = (yr === "all") ? all : all.filter(function(s) {{
-      var m = (s.tag || "").match(/(\d{{4}})$/);
+      var m = (s.tag || "").match(/(\\d{{4}})$/);
       return m && m[1] === yr;
     }});
 
@@ -15015,7 +15015,7 @@ function samToggle(el) {{
       doc += _printMonthSection(monthFilter, label, grp.shifts || shifts);
     }}
 
-    doc += "<script>window.onload=function(){{setTimeout(function(){{window.print();}},150);}}<\/script>";
+    doc += "<script>window.onload=function(){{setTimeout(function(){{window.print();}},150);}}<\\/script>";
     doc += "</body></html>";
 
     var w = window.open("", "_blank");
@@ -15089,7 +15089,7 @@ function samToggle(el) {{
           // Year-Filter prüfen
           if (faYearFilter !== "all") {{
             var hasYr = (TIMEREC_DATA[n] || []).some(function(s) {{
-              var m = (s.tag || "").match(/(\d{{4}})$/);
+              var m = (s.tag || "").match(/(\\d{{4}})$/);
               return m && m[1] === faYearFilter;
             }});
             if (!hasYr) return;
@@ -15116,7 +15116,7 @@ function samToggle(el) {{
       var newYears = [];
       Object.keys(TIMEREC_DATA || {{}}).forEach(function(n) {{
         (TIMEREC_DATA[n] || []).forEach(function(s) {{
-          var m = (s.tag || "").match(/(\d{{4}})$/);
+          var m = (s.tag || "").match(/(\\d{{4}})$/);
           if (m && !existing[m[1]] && m[1] !== "2024") {{
             existing[m[1]] = true;
             newYears.push(m[1]);
@@ -15186,7 +15186,7 @@ function samToggle(el) {{
     var rows = (TIMEREC_DATA && TIMEREC_DATA[name] ? TIMEREC_DATA[name] : []).slice();
     if (faYearFilter === "all") return rows;
     return rows.filter(function(s) {{
-      var m = (s.tag || "").match(/(\d{{4}})$/);
+      var m = (s.tag || "").match(/(\\d{{4}})$/);
       return m && m[1] === faYearFilter;
     }});
   }}
@@ -15217,13 +15217,13 @@ function samToggle(el) {{
 
   function _faShiftDateKey(s) {{
     var raw = String((s && s.tag) || "");
-    var m = raw.match(/^(\d{{2}})\.(\d{{2}})\.(\d{{4}})$/);
+    var m = raw.match(/^(\\d{{2}})\\.(\\d{{2}})\\.(\\d{{4}})$/);
     if (!m) return "";
     return m[3] + "-" + m[2] + "-" + m[1];
   }}
 
   function _faDateLabelFromKey(key) {{
-    var m = String(key || "").match(/^(\d{{4}})-(\d{{2}})-(\d{{2}})$/);
+    var m = String(key || "").match(/^(\\d{{4}})-(\\d{{2}})-(\\d{{2}})$/);
     if (!m) return key || "";
     return m[3] + "." + m[2] + "." + m[1];
   }}
@@ -15238,12 +15238,12 @@ function samToggle(el) {{
   var _faCutoffData = null;
 
   function _faEndDateKey(s) {{
-    var m = String(_faComputeEndDate(s)).match(/^(\d{{2}})\.(\d{{2}})\.(\d{{4}})$/);
+    var m = String(_faComputeEndDate(s)).match(/^(\\d{{2}})\\.(\\d{{2}})\\.(\\d{{4}})$/);
     return m ? (m[3] + "-" + m[2] + "-" + m[1]) : "";
   }}
 
   function _faEndMinutes(s) {{
-    var m = String((s && s.ende) || "").match(/^(\d{{1,2}}):(\d{{2}})/);
+    var m = String((s && s.ende) || "").match(/^(\\d{{1,2}}):(\\d{{2}})/);
     if (!m) return -1;
     return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
   }}
@@ -15314,7 +15314,7 @@ function samToggle(el) {{
   }}
 
   function _faAddDaysKey(key, days) {{
-    var m = String(key || "").match(/^(\d{{4}})-(\d{{2}})-(\d{{2}})$/);
+    var m = String(key || "").match(/^(\\d{{4}})-(\\d{{2}})-(\\d{{2}})$/);
     if (!m) return "";
     var d = new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10));
     d.setDate(d.getDate() + (days || 0));
@@ -15435,7 +15435,7 @@ function samToggle(el) {{
 
     var tourText = String(e.tour || "").trim();
     if (tourText) score -= 120;
-    if (/z\.?\s*b\.?\s*v|sonder/i.test(tourText)) score -= 50;
+    if (/z\\.?\\s*b\\.?\\s*v|sonder/i.test(tourText)) score -= 50;
     return score;
   }}
 
@@ -15511,7 +15511,7 @@ function samToggle(el) {{
       (TIMEREC_DATA[name] || []).forEach(function(s) {{
         var yrOk = true;
         if (faYearFilter !== "all") {{
-          var m = (s.tag || "").match(/(\d{{4}})$/);
+          var m = (s.tag || "").match(/(\\d{{4}})$/);
           yrOk = !!(m && m[1] === faYearFilter);
         }}
         if (!yrOk) return;
@@ -15676,7 +15676,7 @@ function samToggle(el) {{
   function _faSafePdfName(v) {{
     return String(v || "")
       .replace(/[\\/:*?"<>|]+/g, "_")
-      .replace(/\s+/g, "_")
+      .replace(/\\s+/g, "_")
       .slice(0, 80) || "Auswertung";
   }}
 
@@ -15938,7 +15938,7 @@ function samToggle(el) {{
     var allYears = [];
     Object.keys(TIMEREC_DATA || {{}}).forEach(function(n) {{
       (TIMEREC_DATA[n] || []).forEach(function(s) {{
-        var m = (s.tag || "").match(/(\d{{4}})$/);
+        var m = (s.tag || "").match(/(\\d{{4}})$/);
         if (m && m[1] !== "2024" && allYears.indexOf(m[1]) === -1) allYears.push(m[1]);
       }});
     }});
@@ -17776,6 +17776,52 @@ def _record_processing_success(key: str, area: str, detail: str = "",
                                filename: str = "") -> None:
     _clear_errors_for_key(key)
     _set_processing_status(key, area, "ok", detail, filename)
+
+
+def _clear_generated_html_file() -> None:
+    """Entfernt eine zuvor erzeugte temporäre HTML-Datei dieser Session."""
+    old_path = st.session_state.pop("_generated_app_html_path", None)
+    st.session_state.pop("_generated_app_html_meta", None)
+    if old_path:
+        try:
+            Path(old_path).unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def _read_generated_html_file(path: str) -> bytes:
+    """Wird von st.download_button erst beim tatsächlichen Download aufgerufen."""
+    return Path(path).read_bytes()
+
+
+def _generation_source_signature(ready_instances: list) -> str:
+    """Kompakte Signatur aller Quellen, die den HTML-Export beeinflussen.
+
+    Es werden nur bereits vorhandene Upload-/Parser-Signaturen und kleine
+    Metadaten gehasht. Die großen JSON- und HTML-Inhalte werden bewusst nicht
+    bei jedem Streamlit-Rerun erneut kopiert.
+    """
+    parts = [APP_CACHE_VERSION, EXTRA_CACHE_VERSION]
+    for inst in ready_instances or []:
+        parts.extend([
+            str(inst.get("name", "")),
+            str(inst.get("source_sig", "")),
+            str(inst.get("versp_start_sig", "")),
+        ])
+
+    for key in sorted(st.session_state.keys()):
+        if str(key).endswith("_sig"):
+            value = st.session_state.get(key)
+            if value not in (None, ""):
+                parts.append(f"{key}={value}")
+
+    for key in (
+        "g_logo", "g_key", "g_fach", "g_fcsb", "g_lh_csv",
+        "g_rahmen_csv", "g_kundenart_csv",
+    ):
+        parts.append(f"{key}={upload_signature(st.session_state.get(key))}")
+
+    return combine_signatures(*parts)
 
 
 def _human_size(num_bytes: int) -> str:
@@ -69389,7 +69435,12 @@ with tab_extra:
 
 
 # === Tab: Download ===========================================================
+# Die große Einzeldatei wird nicht mehr bei jedem Streamlit-Rerun neu gebaut.
+# Das ist besonders auf Streamlit Cloud wichtig, weil ein String plus mehrere
+# UTF-8-Kopien der HTML kurzzeitig sehr viel RAM belegen können.
 with tab_dl:
+    import gc as _gc
+
     instances_state = st.session_state.get("instances")
     if not isinstance(instances_state, list) or not instances_state:
         instances_state = [_empty_inst("Normalwochen")]
@@ -69397,6 +69448,7 @@ with tab_dl:
 
     ready = [inst for inst in instances_state
              if inst.get("suche_html") and inst.get("druck_html")]
+
     if ready:
         zulage_json_state      = st.session_state.get("zulage_json", "{}")
         drittkunden_json_state = st.session_state.get("drittkunden_json", "[]")
@@ -69423,50 +69475,126 @@ with tab_dl:
             )
             if drittkunden_json_state not in ("[]", "") else ""
         )
-        app_html = ""
-        generation_seconds = 0.0
-        generated_at = datetime.datetime.now()
-        generation_meta = _build_generation_metadata(ready, generated_at)
-        try:
-            _generation_started = time.perf_counter()
-            with st.spinner("Kombiniere ..."):
-                app_html = combine_html(
-                instances=ready,
-                tel_json=st.session_state.get("tel_json", "[]"),
-                sam_json=st.session_state.get("sam_json", "[]"),
-                fa_json=st.session_state.get("fa_json", "[]"),
-                zulage_json=zulage_json_state,
-                zulage_xlsx_sonder=zulage_xlsx_sonder,
-                zulage_xlsx_fuengers=zulage_xlsx_fuengers,
-                drittkunden_json=drittkunden_json_state,
-                zulage_xlsx_drittkunden=zulage_xlsx_drittkunden,
-                fahrzeugwaesche_json=st.session_state.get("fahrzeugwaesche_json", "[]"),
-                verstoss_json=st.session_state.get("verstoss_json", '{"drivers":[],"total_violations":0}'),
-                spesen_json=st.session_state.get("spesen_json", '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}'),
-                grosskunden_json=st.session_state.get("grosskunden_json", "[]"),
-                timerec_json=st.session_state.get("timerec_json", "{}"),
-                spediteure_json=st.session_state.get("spediteure_json", '{"katalog":[],"fahrten":[]}'),
-                fahrerbewertung_json=st.session_state.get("fahrerbewertung_json", '{"profile":"","event_types":[],"g_months":{},"g_ev":{},"drivers":[]}'),
-                versp_abfahrt_json="{}",
-                last_updated=generated_at.strftime("Stand: %d.%m.%Y %H:%M"),
-                generation_meta=generation_meta,
+
+        current_generation_signature = _generation_source_signature(ready)
+        stored_generation_meta = st.session_state.get("_generated_app_html_meta", {}) or {}
+        stored_html_path = st.session_state.get("_generated_app_html_path")
+        if stored_html_path and not Path(stored_html_path).is_file():
+            _clear_generated_html_file()
+            stored_html_path = None
+        if (stored_html_path
+                and stored_generation_meta.get("source_signature") != current_generation_signature):
+            _clear_generated_html_file()
+            _gc.collect()
+
+        st.markdown("##### HTML-Einzeldatei")
+        st.caption(
+            "Die große suche.html wird bewusst nur auf Knopfdruck erstellt. "
+            "Dadurch wird sie bei Uploads, Tabwechseln oder anderen Streamlit-Neuläufen "
+            "nicht mehrfach im Arbeitsspeicher aufgebaut."
+        )
+
+        build_clicked = st.button(
+            "suche.html erstellen / aktualisieren",
+            type="primary",
+            width="stretch",
+            key="build_suche_html",
+        )
+
+        if build_clicked:
+            # Alte Exportdaten zuerst freigeben, damit während der Neuerstellung
+            # nicht zwei große HTML-Dateien gleichzeitig im Speicher liegen.
+            _clear_generated_html_file()
+            _gc.collect()
+
+            generated_at = datetime.datetime.now()
+            generation_meta = _build_generation_metadata(ready, generated_at)
+            try:
+                _generation_started = time.perf_counter()
+                with st.spinner("Kombiniere suche.html ..."):
+                    app_html = combine_html(
+                        instances=ready,
+                        tel_json=st.session_state.get("tel_json", "[]"),
+                        sam_json=st.session_state.get("sam_json", "[]"),
+                        fa_json=st.session_state.get("fa_json", "[]"),
+                        zulage_json=zulage_json_state,
+                        zulage_xlsx_sonder=zulage_xlsx_sonder,
+                        zulage_xlsx_fuengers=zulage_xlsx_fuengers,
+                        drittkunden_json=drittkunden_json_state,
+                        zulage_xlsx_drittkunden=zulage_xlsx_drittkunden,
+                        fahrzeugwaesche_json=st.session_state.get("fahrzeugwaesche_json", "[]"),
+                        verstoss_json=st.session_state.get("verstoss_json", '{"drivers":[],"total_violations":0}'),
+                        spesen_json=st.session_state.get("spesen_json", '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}'),
+                        grosskunden_json=st.session_state.get("grosskunden_json", "[]"),
+                        timerec_json=st.session_state.get("timerec_json", "{}"),
+                        spediteure_json=st.session_state.get("spediteure_json", '{"katalog":[],"fahrten":[]}'),
+                        fahrerbewertung_json=st.session_state.get("fahrerbewertung_json", '{"profile":"","event_types":[],"g_months":{},"g_ev":{},"drivers":[]}'),
+                        versp_abfahrt_json="{}",
+                        last_updated=generated_at.strftime("Stand: %d.%m.%Y %H:%M"),
+                        generation_meta=generation_meta,
+                    )
+
+                    # Direkt auf die Platte schreiben. TextIOWrapper kodiert
+                    # schrittweise, sodass keine zweite vollständige Byte-Kopie
+                    # der großen HTML im RAM entsteht.
+                    import tempfile as _tempfile
+                    with _tempfile.NamedTemporaryFile(
+                        mode="w",
+                        encoding="utf-8",
+                        newline="",
+                        suffix=".html",
+                        prefix="nfc_suche_",
+                        delete=False,
+                    ) as _tmp_html:
+                        _tmp_html.write(app_html)
+                        generated_html_path = _tmp_html.name
+                    del app_html
+
+                generation_seconds = time.perf_counter() - _generation_started
+                generated_html_size = Path(generated_html_path).stat().st_size
+                _pdf_count, _pdf_bytes = _embedded_pdf_stats()
+                generated_meta = {
+                    "created_at": generated_at,
+                    "generation_seconds": generation_seconds,
+                    "html_size": generated_html_size,
+                    "pdf_count": _pdf_count,
+                    "pdf_bytes": _pdf_bytes,
+                    "week_names": [str(i.get("name", "")) for i in ready],
+                    "source_signature": current_generation_signature,
+                }
+                st.session_state["_generated_app_html_path"] = generated_html_path
+                st.session_state["_generated_app_html_meta"] = generated_meta
+                _record_processing_success(
+                    "download_html", "Gesamtdatei suche.html",
+                    f"{_human_size(generated_html_size)}, {len(ready)} Woche(n), {generation_seconds:.2f} s",
                 )
-            generation_seconds = time.perf_counter() - _generation_started
-            _record_processing_success(
-                "download_html", "Gesamtdatei suche.html",
-                f"{_human_size(len(app_html.encode('utf-8')))}, {len(ready)} Woche(n), {generation_seconds:.2f} s",
-            )
-        except Exception as exc:
-            _record_processing_error("download_html", "Gesamtdatei suche.html", exc)
-            st.error(f"suche.html konnte nicht erzeugt werden: {type(exc).__name__}: {exc}")
-        if app_html:
+                _gc.collect()
+            except Exception as exc:
+                try:
+                    if 'generated_html_path' in locals():
+                        Path(generated_html_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
+                _clear_generated_html_file()
+                _record_processing_error("download_html", "Gesamtdatei suche.html", exc)
+                st.error(f"suche.html konnte nicht erzeugt werden: {type(exc).__name__}: {exc}")
+                _gc.collect()
+
+        generated_html_path = st.session_state.get("_generated_app_html_path")
+        generated_meta = st.session_state.get("_generated_app_html_meta", {}) or {}
+
+        if generated_html_path and Path(generated_html_path).is_file():
+            # Callable: Die Datei wird erst beim Klick gelesen und nicht dauerhaft
+            # als zusätzlicher Bytes-Block im Streamlit-Session-Speicher gehalten.
             st.download_button(
                 label="suche.html herunterladen",
-                data=app_html.encode("utf-8"),
+                data=lambda p=generated_html_path: _read_generated_html_file(p),
                 file_name="suche.html",
                 mime="text/html",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
+                on_click="ignore",
+                key="download_suche_html",
             )
 
             st.caption(
@@ -69474,17 +69602,30 @@ with tab_dl:
                 "Es wird kein zusätzlicher Ordner benötigt."
             )
 
-            _pdf_count, _pdf_bytes = _embedded_pdf_stats()
+            created_at = generated_meta.get("created_at")
+            generation_seconds = float(generated_meta.get("generation_seconds", 0.0) or 0.0)
+            html_size = int(generated_meta.get("html_size", Path(generated_html_path).stat().st_size) or Path(generated_html_path).stat().st_size)
+            pdf_count = int(generated_meta.get("pdf_count", 0) or 0)
+            pdf_bytes = int(generated_meta.get("pdf_bytes", 0) or 0)
+            week_names = generated_meta.get("week_names", []) or []
+
             st.markdown("##### Generierungsstatistik")
             _g1, _g2, _g3, _g4 = st.columns(4)
             _g1.metric("Version", f"v{APP_DISPLAY_VERSION}")
-            _g2.metric("HTML-Datei", _human_size(len(app_html.encode("utf-8"))))
+            _g2.metric("HTML-Datei", _human_size(html_size))
             _g3.metric("Erzeugungszeit", f"{generation_seconds:.2f} s")
-            _g4.metric("Eingebettete PDFs", f"{_pdf_count} · {_human_size(_pdf_bytes)}")
+            _g4.metric("Eingebettete PDFs", f"{pdf_count} · {_human_size(pdf_bytes)}")
+            if isinstance(created_at, datetime.datetime):
+                created_label = created_at.strftime("%d.%m.%Y %H:%M:%S")
+            else:
+                created_label = str(created_at or "-")
             st.caption(
-                f"Datenstand: {generated_at.strftime('%d.%m.%Y %H:%M:%S')} · "
-                f"{len(ready)} Woche(n): {', '.join(i['name'] for i in ready)}"
+                f"Datenstand: {created_label} · "
+                f"{len(week_names)} Woche(n): {', '.join(week_names)}"
             )
+            st.caption("In der fertigen HTML ist der Datenstand oben rechts über den Button „Datenstand“ abrufbar.")
+        else:
+            st.info("Nach dem letzten Daten-Upload wurde noch keine aktuelle suche.html erstellt.")
 
         plane_zulagen_json = build_plane_zulagen_json(
             zulage_json_state,
@@ -69496,10 +69637,9 @@ with tab_dl:
             data=plane_zulagen_json,
             file_name="zulagen.json",
             mime="application/json",
-            use_container_width=True,
+            width="stretch",
+            on_click="ignore",
         )
-        if app_html:
-            st.caption("In der fertigen HTML ist der Datenstand oben rechts über den Button „Datenstand“ abrufbar.")
     else:
         st.info("Mindestens Logo, Schluesseldatei und eine Wochen-Excel hochladen.")
         zulage_json_state      = st.session_state.get("zulage_json", "{}")
@@ -69515,7 +69655,8 @@ with tab_dl:
                 data=plane_zulagen_json,
                 file_name="zulagen.json",
                 mime="application/json",
-                use_container_width=True,
+                width="stretch",
+                on_click="ignore",
             )
 
 # === Zentrale Verarbeitungsanzeige ===========================================
@@ -69548,7 +69689,7 @@ with st.expander(
                 "Details": row.get("detail", ""),
                 "Zeit": row.get("zeit", ""),
             })
-        st.dataframe(_rows, use_container_width=True, hide_index=True)
+        st.dataframe(_rows, width="stretch", hide_index=True)
 
     if _error_entries:
         with st.expander("Technische Fehlerdetails", expanded=False):
@@ -69571,16 +69712,16 @@ with st.expander(
             data=_error_export.encode("utf-8"),
             file_name="nfc_generator_fehlerprotokoll.json",
             mime="application/json",
-            use_container_width=True,
+            width="stretch",
         )
 
     _status_col1, _status_col2 = st.columns(2)
     with _status_col1:
-        if st.button("Fehlerhistorie leeren", use_container_width=True):
+        if st.button("Fehlerhistorie leeren", width="stretch"):
             st.session_state["_processing_errors"] = []
             st.rerun()
     with _status_col2:
-        if st.button("Statusanzeige zuruecksetzen", use_container_width=True):
+        if st.button("Statusanzeige zuruecksetzen", width="stretch"):
             st.session_state["_processing_status"] = {}
             st.session_state["_processing_errors"] = []
             st.rerun()
