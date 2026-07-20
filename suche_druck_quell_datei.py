@@ -65,12 +65,12 @@ class _LazyPandas:
 pd = _LazyPandas()
 _boot_log("03 Standardimporte bereit; pandas wird verzögert geladen")
 
-st.set_page_config(page_title="NFC Generator v37", layout="wide")
+st.set_page_config(page_title="NFC Generator v39", layout="wide")
 _boot_log("04 Seitenkonfiguration gesetzt")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-11-v37-diagnose"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-11-v37-diagnose"
-APP_DISPLAY_VERSION = "37"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-20-v39-timerecording-datum-fix"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-20-v39-timerecording-datum-fix"
+APP_DISPLAY_VERSION = "39"
 APP_DISPLAY_NAME = "NFC Generator"
 
 
@@ -4159,6 +4159,7 @@ def parse_timerecording_csv(uploaded_file) -> str:
         return -1
 
     idx_person = col(["person"])
+    idx_date   = col(["datum", "date"])
     idx_beg    = col(["schichtbeginn", "beginn"])
     idx_end    = col(["schichtende", "ende"])
     idx_dauer  = col(["schichtdauer"])
@@ -4174,21 +4175,49 @@ def parse_timerecording_csv(uploaded_file) -> str:
     by_driver = {}
 
     def split_dt(s):
-        """Parse 'DD.MM.YYYY HH:MM' or '2026-01-02 00:30:00' → (date_str, time_str)."""
+        """Parse Datum/Zeit aus kombinierten oder getrennten Exportspalten.
+
+        Unterstützt z. B.:
+        - ``02.01.2026 00:30``
+        - ``2026-01-02 00:30:00``
+        - nur Datum ``02.01.2026``
+        - nur Uhrzeit ``00:30``
+        """
         s = (s or "").strip()
-        if not s:
+        if not s or s.casefold() in ("nan", "none", "nat"):
             return ("", "")
-        # Try ISO format first (from XLSX datetime strings: '2026-01-02 00:30:00')
+
+        # Reine Uhrzeit darf niemals als Datum interpretiert werden.
+        m_time = re.fullmatch(r"(\d{1,2}):(\d{2})(?::\d{2})?", s)
+        if m_time:
+            hour = int(m_time.group(1))
+            minute = int(m_time.group(2))
+            if 0 <= hour <= 23 and 0 <= minute <= 59:
+                return ("", f"{hour:02d}:{minute:02d}")
+
+        # ISO-Datum oder ISO-Datum mit Uhrzeit.
         try:
             d_obj = _dt.datetime.fromisoformat(s)
-            return (d_obj.strftime("%d.%m.%Y"), d_obj.strftime("%H:%M"))
+            has_time = bool(re.search(r"[ T]\d{1,2}:\d{2}", s))
+            return (
+                d_obj.strftime("%d.%m.%Y"),
+                d_obj.strftime("%H:%M") if has_time else "",
+            )
         except (ValueError, TypeError):
             pass
-        # Fallback: "DD.MM.YYYY HH:MM"
-        parts = s.split(" ")
-        if len(parts) >= 2:
-            return (parts[0].strip(), parts[1].strip()[:5])
-        return (s, "")
+
+        # Deutsche Datumsformate mit oder ohne Uhrzeit.
+        for fmt in ("%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M", "%d.%m.%Y"):
+            try:
+                d_obj = _dt.datetime.strptime(s, fmt)
+                return (
+                    d_obj.strftime("%d.%m.%Y"),
+                    d_obj.strftime("%H:%M") if "%H" in fmt else "",
+                )
+            except ValueError:
+                continue
+
+        return ("", "")
 
     def fmt_duration(s):
         """Normalize timedelta strings like '0 days 09:14:00' → '09:14'."""
@@ -4207,8 +4236,18 @@ def parse_timerecording_csv(uploaded_file) -> str:
         name = (r[idx_person] or "").strip()
         if not name or name.lower() in ("nan", "none", ""):
             continue
-        beg_d, beg_t = split_dt(r[idx_beg]) if idx_beg < len(r) else ("", "")
+        date_d, _date_t = split_dt(r[idx_date]) if 0 <= idx_date < len(r) else ("", "")
+        beg_d, beg_t = split_dt(r[idx_beg]) if 0 <= idx_beg < len(r) else ("", "")
         end_d, end_t = split_dt(r[idx_end]) if 0 <= idx_end < len(r) else ("", "")
+
+        # YellowFox/timerecording_v3 exportiert Datum, Beginn und Ende in
+        # getrennten Spalten. Bei kombinierten Exporten bleiben beg_d/end_d
+        # dagegen bereits gesetzt.
+        if not beg_d:
+            beg_d = date_d
+        if not end_d and end_t:
+            end_d = beg_d
+
         dauer  = fmt_duration(r[idx_dauer])  if 0 <= idx_dauer  < len(r) else ""
         profil = fmt_duration(r[idx_profil]) if 0 <= idx_profil < len(r) else ""
         lkw    = (r[idx_lkw]    or "").strip() if 0 <= idx_lkw    < len(r) else ""
@@ -4221,7 +4260,8 @@ def parse_timerecording_csv(uploaded_file) -> str:
         if ma_nr.lower() in ("nan", "none", "0"):
             ma_nr = ""
 
-        if not beg_d:
+        # Tageszeilen ohne tatsächlichen Schichtbeginn nicht übernehmen.
+        if not beg_d or not beg_t:
             continue
 
         # Wochentag + ISO-Sortierschlüssel
@@ -4235,6 +4275,13 @@ def parse_timerecording_csv(uploaded_file) -> str:
             pass
 
         next_day = bool(end_d) and end_d != beg_d
+        if not next_day and beg_t and end_t:
+            try:
+                beg_minutes = int(beg_t[:2]) * 60 + int(beg_t[3:5])
+                end_minutes = int(end_t[:2]) * 60 + int(end_t[3:5])
+                next_day = end_minutes < beg_minutes
+            except Exception:
+                pass
 
         entry = {
             "tag": beg_d,
@@ -4658,9 +4705,19 @@ def _build_saturday_json_from_timerecording(timerec_json: str) -> str:
                     sam_active_years[driver_key].add(d_obj.year)
 
                     mins = _sam_parse_mins(beginn)
-                    is_sa = wd == "Sa"
-                    is_fr_abend = wd == "Fr" and mins is not None and mins >= 18 * 60
-                    is_so_frueh = wd == "So" and mins is not None and mins <= 15 * 60
+
+                    # Den Wochentag immer vorrangig aus dem tatsächlichen Datum
+                    # ableiten. In verschiedenen Tachograph-Exporten steht hier
+                    # nicht nur „Sa“, sondern z. B. „Samstag“, „Sa.“ oder gar kein
+                    # Wert. Dadurch wurden echte Samstagsschichten bisher teilweise
+                    # nicht in die Sa-/So-Auswertung übernommen.
+                    weekday_idx = d_obj.weekday()  # Mo=0 ... So=6
+                    wd_norm = re.sub(r"[^a-z]", "", wd.casefold())
+                    is_sa = weekday_idx == 5 or wd_norm in ("sa", "sam", "samstag")
+                    is_fr = weekday_idx == 4 or wd_norm in ("fr", "freitag")
+                    is_so = weekday_idx == 6 or wd_norm in ("so", "sonntag")
+                    is_fr_abend = is_fr and mins is not None and mins >= 18 * 60
+                    is_so_frueh = is_so and mins is not None and mins <= 15 * 60
                     if not (is_sa or is_fr_abend or is_so_frueh):
                         continue
 
