@@ -68,9 +68,9 @@ _boot_log("03 Standardimporte bereit; pandas wird verzögert geladen")
 st.set_page_config(page_title="NFC Generator v39", layout="wide")
 _boot_log("04 Seitenkonfiguration gesetzt")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-20-v39-timerecording-datum-fix"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-20-v39-timerecording-datum-fix"
-APP_DISPLAY_VERSION = "39"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-20-v40-timerecording-platzhalter-fix"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-20-v40-timerecording-platzhalter-fix"
+APP_DISPLAY_VERSION = "40"
 APP_DISPLAY_NAME = "NFC Generator"
 
 
@@ -4100,10 +4100,13 @@ def parse_versp_abfahrt_csv(uploaded_file) -> str:
 
 def parse_timerecording_csv(uploaded_file) -> str:
     """Liest die Tachograph-Schicht-Datei (CSV oder XLSX) und liefert JSON
-    pro Fahrer:
-        {"Nachname, Vorname": [
-            {"tag":"DD.MM.YYYY","wochentag":"Mo","beginn":"HH:MM","ende":"HH:MM",
-             "ende_naechster_tag":bool,"schichtdauer":"HH:MM","profil":"HH:MM","lkw":"..."}, ...]}
+    pro Fahrer.
+
+    YellowFox/timerecording_v3 ist eine Tagesaggregation. Deshalb können in
+    ``Beginn`` und ``Ende`` mehrere Uhrzeiten stehen. Außerdem erzeugt YellowFox
+    bei nicht mehr ausgelesenen Fahrerkarten technische Platzhalter wie
+    ``00:00`` bis ``24:00`` ohne Arbeits-, Lenk- oder Schichtzeit. Diese Zeilen
+    sind keine Schichten und werden hier ausdrücklich verworfen.
     """
     import json as _json
     import csv as _csv
@@ -4114,8 +4117,7 @@ def parse_timerecording_csv(uploaded_file) -> str:
     if not raw:
         return "{}"
 
-    # ── Detect XLSX vs CSV ──────────────────────────────────────────────────
-    is_xlsx = raw[:4] == b'PK\x03\x04'  # ZIP magic bytes = xlsx
+    is_xlsx = raw[:4] == b'PK\x03\x04'
     rows = []
     header_raw = []
 
@@ -4129,7 +4131,6 @@ def parse_timerecording_csv(uploaded_file) -> str:
         except Exception:
             return "{}"
     else:
-        # CSV path (original)
         for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
             try:
                 text = raw.decode(enc)
@@ -4154,8 +4155,15 @@ def parse_timerecording_csv(uploaded_file) -> str:
         for v in name_variants:
             v = v.lower().strip()
             for i, h in enumerate(header):
-                if v in h:  # substring match for longer XLSX headers
+                if v in h:
                     return i
+        return -1
+
+    def col_exact(name_variants):
+        wanted = {str(v).lower().strip() for v in name_variants}
+        for i, h in enumerate(header):
+            if h in wanted:
+                return i
         return -1
 
     idx_person = col(["person"])
@@ -4165,29 +4173,23 @@ def parse_timerecording_csv(uploaded_file) -> str:
     idx_dauer  = col(["schichtdauer"])
     idx_profil = col(["arbeitszeit nach arbeitszeitprofil"])
     idx_lkw    = col(["fahrzeuge", "terminal"])
+    idx_lenk   = col(["lenkzeit"])
+    idx_bereit = col(["bereitschaft"])
+    idx_arbeit = col_exact(["arbeitszeit"])
     idx_card   = col(["fahrerschlüssel", "fahrerschluessel", "driver card", "kartennummer"])
     idx_ma     = col(["ma-nummer", "ma nummer", "personalnummer", "mitarbeiternummer"])
 
-    if idx_person < 0 or idx_beg < 0:
+    if idx_person < 0 or idx_date < 0 or idx_beg < 0:
         return "{}"
 
-    WD = ["Mo","Di","Mi","Do","Fr","Sa","So"]
+    WD = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
     by_driver = {}
 
     def split_dt(s):
-        """Parse Datum/Zeit aus kombinierten oder getrennten Exportspalten.
-
-        Unterstützt z. B.:
-        - ``02.01.2026 00:30``
-        - ``2026-01-02 00:30:00``
-        - nur Datum ``02.01.2026``
-        - nur Uhrzeit ``00:30``
-        """
         s = (s or "").strip()
         if not s or s.casefold() in ("nan", "none", "nat"):
             return ("", "")
 
-        # Reine Uhrzeit darf niemals als Datum interpretiert werden.
         m_time = re.fullmatch(r"(\d{1,2}):(\d{2})(?::\d{2})?", s)
         if m_time:
             hour = int(m_time.group(1))
@@ -4195,7 +4197,6 @@ def parse_timerecording_csv(uploaded_file) -> str:
             if 0 <= hour <= 23 and 0 <= minute <= 59:
                 return ("", f"{hour:02d}:{minute:02d}")
 
-        # ISO-Datum oder ISO-Datum mit Uhrzeit.
         try:
             d_obj = _dt.datetime.fromisoformat(s)
             has_time = bool(re.search(r"[ T]\d{1,2}:\d{2}", s))
@@ -4206,7 +4207,6 @@ def parse_timerecording_csv(uploaded_file) -> str:
         except (ValueError, TypeError):
             pass
 
-        # Deutsche Datumsformate mit oder ohne Uhrzeit.
         for fmt in ("%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M", "%d.%m.%Y"):
             try:
                 d_obj = _dt.datetime.strptime(s, fmt)
@@ -4216,78 +4216,114 @@ def parse_timerecording_csv(uploaded_file) -> str:
                 )
             except ValueError:
                 continue
-
         return ("", "")
 
+    def parse_time_list(value, allow_24=False):
+        """Extrahiert einzelne Uhrzeiten, auch aus ``00:00,18:45``."""
+        out = []
+        for hh, mm in re.findall(r"(?<!\d)(\d{1,2}):(\d{2})(?::\d{2})?(?!\d)", str(value or "")):
+            hour = int(hh)
+            minute = int(mm)
+            valid_hour = 0 <= hour <= 23 or (allow_24 and hour == 24 and minute == 0)
+            if not valid_hour or not (0 <= minute <= 59):
+                continue
+            value_norm = f"{hour:02d}:{minute:02d}"
+            if value_norm not in out:
+                out.append(value_norm)
+        return out
+
     def fmt_duration(s):
-        """Normalize timedelta strings like '0 days 09:14:00' → '09:14'."""
         s = (s or "").strip()
-        if not s:
+        if not s or s.casefold() in ("nan", "none", "nat"):
             return ""
-        import re
         m = re.search(r'(\d{1,2}):(\d{2})', s)
         if m:
             return f"{int(m.group(1)):02d}:{m.group(2)}"
         return s
 
+    def cell(r, idx):
+        return (r[idx] or "").strip() if 0 <= idx < len(r) else ""
+
     for r in rows:
         if not r or len(r) <= idx_person:
             continue
-        name = (r[idx_person] or "").strip()
-        if not name or name.lower() in ("nan", "none", ""):
+        name = cell(r, idx_person)
+        if not name or name.casefold() in ("nan", "none"):
             continue
-        date_d, _date_t = split_dt(r[idx_date]) if 0 <= idx_date < len(r) else ("", "")
-        beg_d, beg_t = split_dt(r[idx_beg]) if 0 <= idx_beg < len(r) else ("", "")
-        end_d, end_t = split_dt(r[idx_end]) if 0 <= idx_end < len(r) else ("", "")
 
-        # YellowFox/timerecording_v3 exportiert Datum, Beginn und Ende in
-        # getrennten Spalten. Bei kombinierten Exporten bleiben beg_d/end_d
-        # dagegen bereits gesetzt.
+        date_raw = cell(r, idx_date)
+        beg_raw = cell(r, idx_beg)
+        end_raw = cell(r, idx_end)
+        date_d, _date_t = split_dt(date_raw)
+        beg_d, beg_t = split_dt(beg_raw)
+        end_d, end_t = split_dt(end_raw)
+
         if not beg_d:
             beg_d = date_d
-        if not end_d and end_t:
+        if not end_d:
             end_d = beg_d
 
-        dauer  = fmt_duration(r[idx_dauer])  if 0 <= idx_dauer  < len(r) else ""
-        profil = fmt_duration(r[idx_profil]) if 0 <= idx_profil < len(r) else ""
-        lkw    = (r[idx_lkw]    or "").strip() if 0 <= idx_lkw    < len(r) else ""
-        card   = (r[idx_card]   or "").strip() if 0 <= idx_card   < len(r) else ""
-        ma_nr  = (r[idx_ma]     or "").strip() if 0 <= idx_ma     < len(r) else ""
-        if lkw.lower() in ("nan", "none"):
+        beg_times = parse_time_list(beg_raw, allow_24=False)
+        end_times = parse_time_list(end_raw, allow_24=True)
+        if beg_t and beg_t not in beg_times:
+            beg_times.insert(0, beg_t)
+        if end_t and end_t not in end_times:
+            end_times.insert(0, end_t)
+
+        dauer  = fmt_duration(cell(r, idx_dauer))
+        profil = fmt_duration(cell(r, idx_profil))
+        lkw    = cell(r, idx_lkw)
+        lenk   = fmt_duration(cell(r, idx_lenk))
+        bereit = fmt_duration(cell(r, idx_bereit))
+        arbeit = fmt_duration(cell(r, idx_arbeit))
+        card   = cell(r, idx_card)
+        ma_nr  = cell(r, idx_ma)
+
+        if lkw.casefold() in ("nan", "none"):
             lkw = ""
-        if card.lower() in ("nan", "none", "0"):
+        if card.casefold() in ("nan", "none", "0"):
             card = ""
-        if ma_nr.lower() in ("nan", "none", "0"):
+        if ma_nr.casefold() in ("nan", "none", "0"):
             ma_nr = ""
 
-        # Tageszeilen ohne tatsächlichen Schichtbeginn nicht übernehmen.
-        if not beg_d or not beg_t:
+        # Technische YellowFox-Platzhalter besitzen zwar Beginn/Ende, aber
+        # keinerlei echte Aktivitätswerte. Sie dürfen weder als Schicht noch als
+        # Sa-/So-Einsatz gewertet werden.
+        has_shift_evidence = any((dauer, profil, lkw, lenk, bereit, arbeit))
+        if not has_shift_evidence:
+            continue
+        if not beg_d or not beg_times:
             continue
 
-        # Wochentag + ISO-Sortierschlüssel
         sort_key = beg_d
         wd = ""
         try:
             d_obj = _dt.datetime.strptime(beg_d, "%d.%m.%Y")
             wd = WD[d_obj.weekday()]
-            sort_key = d_obj.strftime("%Y-%m-%d") + " " + (beg_t or "00:00")
+            sort_key = d_obj.strftime("%Y-%m-%d") + " " + beg_times[0]
         except Exception:
             pass
 
         next_day = bool(end_d) and end_d != beg_d
-        if not next_day and beg_t and end_t:
+        if not next_day and "24:00" in end_times:
+            next_day = True
+        if not next_day and beg_times and end_times:
             try:
-                beg_minutes = int(beg_t[:2]) * 60 + int(beg_t[3:5])
-                end_minutes = int(end_t[:2]) * 60 + int(end_t[3:5])
-                next_day = end_minutes < beg_minutes
+                last_beg = int(beg_times[-1][:2]) * 60 + int(beg_times[-1][3:5])
+                last_end = int(end_times[-1][:2]) * 60 + int(end_times[-1][3:5])
+                next_day = last_end < last_beg
             except Exception:
                 pass
 
         entry = {
             "tag": beg_d,
             "wochentag": wd,
-            "beginn": beg_t,
-            "ende": end_t,
+            "beginn": ", ".join(beg_times),
+            "ende": ", ".join(end_times),
+            "beginn_zeiten": beg_times,
+            "ende_zeiten": end_times,
+            "echte_beginne": list(beg_times),
+            "fortsetzung_vortag": False,
             "ende_naechster_tag": next_day,
             "schichtdauer": dauer,
             "profil": profil,
@@ -4298,11 +4334,29 @@ def parse_timerecording_csv(uploaded_file) -> str:
         }
         by_driver.setdefault(name, []).append(entry)
 
-    # Sortieren je Fahrer
-    for n in by_driver:
-        by_driver[n].sort(key=lambda e: e.get("_sort", ""))
-        for e in by_driver[n]:
-            e.pop("_sort", None)
+    # Eine 00:00-Zeile ist häufig nur die Fortsetzung einer am Vortag bis
+    # 24:00 laufenden Schicht. Für die Anfangstagsregel ist 00:00 dann kein
+    # neuer Schichtbeginn. Weitere Startzeiten desselben Tages bleiben erhalten.
+    for name in by_driver:
+        by_driver[name].sort(key=lambda e: e.get("_sort", ""))
+        previous = None
+        for entry in by_driver[name]:
+            starts = list(entry.get("beginn_zeiten") or [])
+            continuation = False
+            if starts and starts[0] == "00:00" and previous:
+                try:
+                    prev_date = _dt.datetime.strptime(previous.get("tag", ""), "%d.%m.%Y").date()
+                    this_date = _dt.datetime.strptime(entry.get("tag", ""), "%d.%m.%Y").date()
+                    prev_ends = previous.get("ende_zeiten") or []
+                    if (this_date - prev_date).days == 1 and "24:00" in prev_ends:
+                        starts = starts[1:]
+                        continuation = True
+                except Exception:
+                    pass
+            entry["echte_beginne"] = starts
+            entry["fortsetzung_vortag"] = continuation
+            entry.pop("_sort", None)
+            previous = entry
 
     return _json.dumps(by_driver, ensure_ascii=False)
 
@@ -4550,28 +4604,39 @@ def _build_saturday_json_from_timerecording(timerec_json: str) -> str:
                 return None
             try:
                 parts = str(zeit_str).strip().split(":")
-                return int(parts[0]) * 60 + int(parts[1])
+                hour = int(parts[0])
+                minute = int(parts[1])
+                if 0 <= hour <= 23 and 0 <= minute <= 59:
+                    return hour * 60 + minute
             except Exception:
-                return None
+                pass
+            return None
 
-        # Ohne Tachograph-Datei keine vermeintlichen Nullstände aus Planungsdaten
-        # erzeugen. Die Oberfläche zeigt dann einen klaren Upload-Hinweis.
+        def _sam_start_values(shift):
+            raw_values = shift.get("echte_beginne")
+            if isinstance(raw_values, list):
+                candidates = raw_values
+            else:
+                candidates = re.findall(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", str(shift.get("beginn", "") or ""))
+            values = []
+            for raw_value in candidates:
+                mins = _sam_parse_mins(raw_value)
+                if mins is None:
+                    continue
+                value = f"{mins // 60:02d}:{mins % 60:02d}"
+                if value not in values:
+                    values.append(value)
+            return values
+
         if not timerec:
             sam_json = "[]"
         else:
-            # Fahrer werden über die eindeutigen Kennungen der Timerecording-Datei
-            # zusammengeführt. Primär gilt die MA-Nummer. Falls sie fehlt, wird die
-            # Fahrerkartennummer verwendet; erst danach dient der bereinigte Name als
-            # Fallback. Damit werden auch Schreibvarianten wie „Vassili“/„Vasilli“
-            # korrekt derselben Person zugeordnet, sofern die MA-Nummer identisch ist.
-            sam_by_name = {}       # person_key -> Fahrerobjekt
-            sam_by_day = {}        # person_key -> {YYYY-MM-DD -> Einsatz}
-            sam_active_years = {}  # person_key -> set(Jahr)
+            sam_by_name = {}
+            sam_by_day = {}
+            sam_active_years = {}
 
             def _sam_clean_name(value):
                 s = str(value or "").replace("\xa0", " ")
-                # Unsichtbare Unicode-Zeichen entfernen, die optisch gleiche Namen
-                # sonst technisch unterschiedlich machen würden.
                 s = re.sub(r"[\u200b-\u200f\u202a-\u202e\u2060\ufeff]", "", s)
                 s = re.sub(r"\s+", " ", s).strip()
                 s = re.sub(r"\s*,\s*", ", ", s)
@@ -4584,7 +4649,6 @@ def _build_saturday_json_from_timerecording(timerec_json: str) -> str:
                 return re.sub(r"\s+", "", s)
 
             def _sam_name_key(value):
-                """Reihenfolge-, Groß-/Kleinschreibungs- und Umlaut-unabhängiger Schlüssel."""
                 s = _sam_clean_name(value).casefold()
                 if not s:
                     return ""
@@ -4595,7 +4659,6 @@ def _build_saturday_json_from_timerecording(timerec_json: str) -> str:
                 return "|".join(sorted(tokens))
 
             def _sam_display_score(value):
-                """Bevorzugt die gut lesbare Schreibweise 'Nachname, Vorname'."""
                 s = _sam_clean_name(value)
                 score = 0
                 if "," in s:
@@ -4620,8 +4683,6 @@ def _build_saturday_json_from_timerecording(timerec_json: str) -> str:
                         driver["nachname"] = candidate
                         driver["vorname"] = ""
 
-            # Zuordnungshilfen aus der kompletten Timerecording-Datei bilden.
-            # Eine neue Fahrerkarte derselben Person bleibt über die MA-Nummer verbunden.
             name_to_ma = {}
             card_to_ma = {}
             for raw_name, shifts in timerec.items():
@@ -4674,56 +4735,53 @@ def _build_saturday_json_from_timerecording(timerec_json: str) -> str:
                 _sam_update_display(sam_by_name[person_key], display_name)
                 return person_key
 
-            # Sa immer, Freitag ab 18:00 als Fr→Sa, Sonntag bis einschließlich 15:00.
-            # Pro Fahrer und Anfangsdatum wird höchstens ein Einsatz gezählt.
-            # Fahrerbasis, aktive Jahre und Einsätze stammen ausschließlich aus
-            # den tatsächlich geladenen Timerecording-Schichten.
+            # Gezählt wird nur ein echter Schichtbeginn. Technische 00:00–24:00-
+            # Platzhalter und reine Fortsetzungen vom Vortag besitzen keine
+            # ``echte_beginne`` und gelangen deshalb nicht in die Auswertung.
             for driver_name, shifts in timerec.items():
-                if _sam_excluded_driver(driver_name):
-                    continue
-                if not isinstance(shifts, list):
+                if _sam_excluded_driver(driver_name) or not isinstance(shifts, list):
                     continue
 
                 name = _sam_clean_name(driver_name)
                 for shift in shifts:
                     if not isinstance(shift, dict):
                         continue
-                    person_key = _sam_person_key(name, shift)
-                    driver_key = _ensure_sam_driver(name, person_key)
-                    if not driver_key:
-                        continue
 
-                    tag_str = str(shift.get("tag", "") or "").strip()       # Anfangstag DD.MM.YYYY
-                    wd      = str(shift.get("wochentag", "") or "").strip() # Mo ... So
-                    beginn  = str(shift.get("beginn", "") or "").strip()
-                    lkw     = str(shift.get("lkw", "") or "").strip()
+                    tag_str = str(shift.get("tag", "") or "").strip()
+                    lkw = str(shift.get("lkw", "") or "").strip()
+                    starts = _sam_start_values(shift)
+                    if not starts:
+                        continue
 
                     try:
                         d_obj = _dt2.datetime.strptime(tag_str, "%d.%m.%Y")
                     except Exception:
                         continue
+
+                    person_key = _sam_person_key(name, shift)
+                    driver_key = _ensure_sam_driver(name, person_key)
+                    if not driver_key:
+                        continue
                     sam_active_years[driver_key].add(d_obj.year)
 
-                    mins = _sam_parse_mins(beginn)
-
-                    # Den Wochentag immer vorrangig aus dem tatsächlichen Datum
-                    # ableiten. In verschiedenen Tachograph-Exporten steht hier
-                    # nicht nur „Sa“, sondern z. B. „Samstag“, „Sa.“ oder gar kein
-                    # Wert. Dadurch wurden echte Samstagsschichten bisher teilweise
-                    # nicht in die Sa-/So-Auswertung übernommen.
                     weekday_idx = d_obj.weekday()  # Mo=0 ... So=6
-                    wd_norm = re.sub(r"[^a-z]", "", wd.casefold())
-                    is_sa = weekday_idx == 5 or wd_norm in ("sa", "sam", "samstag")
-                    is_fr = weekday_idx == 4 or wd_norm in ("fr", "freitag")
-                    is_so = weekday_idx == 6 or wd_norm in ("so", "sonntag")
-                    is_fr_abend = is_fr and mins is not None and mins >= 18 * 60
-                    is_so_frueh = is_so and mins is not None and mins <= 15 * 60
-                    if not (is_sa or is_fr_abend or is_so_frueh):
+                    if weekday_idx == 5:
+                        tag_label = "Sa"
+                        qualifying_starts = starts
+                    elif weekday_idx == 4:
+                        tag_label = "Fr→Sa"
+                        qualifying_starts = [s for s in starts if (_sam_parse_mins(s) or 0) >= 18 * 60]
+                    elif weekday_idx == 6:
+                        tag_label = "So"
+                        qualifying_starts = [s for s in starts if _sam_parse_mins(s) is not None and _sam_parse_mins(s) <= 15 * 60]
+                    else:
+                        continue
+
+                    if not qualifying_starts:
                         continue
 
                     day_key = d_obj.strftime("%Y-%m-%d")
                     kw = d_obj.isocalendar()[1]
-                    tag_label = "So" if is_so_frueh else ("Fr→Sa" if is_fr_abend else "Sa")
                     day_map = sam_by_day[driver_key]
                     if day_key not in day_map:
                         day_map[day_key] = {
@@ -4731,13 +4789,13 @@ def _build_saturday_json_from_timerecording(timerec_json: str) -> str:
                             "datum": f"{tag_str} (KW{kw})",
                             "tour": "",
                             "tag": tag_label,
-                            "beginn": beginn,
+                            "beginn": "",
                             "_lkw": set(),
                             "_starts": set(),
                         }
-                    if beginn:
-                        day_map[day_key]["_starts"].add(beginn)
-                    if lkw and lkw.lower() not in ("nan", "none", "0"):
+                    for start_value in qualifying_starts:
+                        day_map[day_key]["_starts"].add(start_value)
+                    if lkw and lkw.casefold() not in ("nan", "none", "0"):
                         day_map[day_key]["_lkw"].add(lkw)
 
             sam_list = []
@@ -4747,7 +4805,7 @@ def _build_saturday_json_from_timerecording(timerec_json: str) -> str:
                     entry = sam_by_day[driver_key][day_key]
                     lkw_values = sorted(entry.pop("_lkw", set()))
                     start_values = sorted(entry.pop("_starts", set()))
-                    entry["beginn"] = ", ".join(start_values) if start_values else entry.get("beginn", "")
+                    entry["beginn"] = ", ".join(start_values)
                     entry["tour"] = ("LKW " + ", ".join(lkw_values)) if lkw_values else ""
                     entries.append(entry)
                 driver["daten"] = entries
