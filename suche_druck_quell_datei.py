@@ -68,9 +68,9 @@ _boot_log("03 Standardimporte bereit; pandas wird verzögert geladen")
 st.set_page_config(page_title="NFC Generator v39", layout="wide")
 _boot_log("04 Seitenkonfiguration gesetzt")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-20-v40-timerecording-platzhalter-fix"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-20-v40-timerecording-platzhalter-fix"
-APP_DISPLAY_VERSION = "40"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-21-v41-samstag-doppelfilter-fix"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-21-v41-samstag-doppelfilter-fix"
+APP_DISPLAY_VERSION = "41"
 APP_DISPLAY_NAME = "NFC Generator"
 
 
@@ -4328,6 +4328,7 @@ def parse_timerecording_csv(uploaded_file) -> str:
             "schichtdauer": dauer,
             "profil": profil,
             "lkw": lkw,
+            "hat_schichtdaten": True,
             "fahrerschluessel": card,
             "ma_nummer": ma_nr,
             "_sort": sort_key,
@@ -4628,6 +4629,29 @@ def _build_saturday_json_from_timerecording(timerec_json: str) -> str:
                     values.append(value)
             return values
 
+        def _sam_has_shift_evidence(shift):
+            """Zweiter Sicherheitsfilter für bereits gecachte ältere Parserdaten.
+
+            Technische YellowFox-Zeilen enthalten oft nur Datum, 00:00 und
+            24:00, aber keinerlei Dauer, Fahrzeug oder Arbeitsprofil. Solche
+            Zeilen dürfen auch dann nicht zählen, wenn sie aus einem älteren
+            ``timerec_json`` stammen.
+            """
+            if shift.get("hat_schichtdaten") is True:
+                return True
+
+            evidence_keys = (
+                "schichtdauer", "profil", "lkw",
+                "lenkzeit", "lenk", "bereitschaft", "bereit",
+                "arbeitszeit", "arbeit",
+            )
+            empty_values = {"", "nan", "none", "nat", "0", "0:00", "00:00", "00:00:00"}
+            for key in evidence_keys:
+                value = str(shift.get(key, "") or "").strip().casefold()
+                if value not in empty_values:
+                    return True
+            return False
+
         if not timerec:
             sam_json = "[]"
         else:
@@ -4745,6 +4769,11 @@ def _build_saturday_json_from_timerecording(timerec_json: str) -> str:
                 name = _sam_clean_name(driver_name)
                 for shift in shifts:
                     if not isinstance(shift, dict):
+                        continue
+
+                    # Unabhängig vom Parser nochmals prüfen. Das entfernt
+                    # auch Platzhalter aus einem alten Streamlit-Session-Cache.
+                    if not _sam_has_shift_evidence(shift):
                         continue
 
                     tag_str = str(shift.get("tag", "") or "").strip()
