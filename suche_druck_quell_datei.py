@@ -65,12 +65,12 @@ class _LazyPandas:
 pd = _LazyPandas()
 _boot_log("03 Standardimporte bereit; pandas wird verzögert geladen")
 
-st.set_page_config(page_title="NFC Generator v42", layout="wide")
+st.set_page_config(page_title="NFC Generator v43", layout="wide")
 _boot_log("04 Seitenkonfiguration gesetzt")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-21-v42-timerecording-beide-formate"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-21-v42-timerecording-beide-formate"
-APP_DISPLAY_VERSION = "42"
+APP_CACHE_VERSION = "waschen-tanken-dashboard-2026-07-21-v43"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-21-v43-tanken-upload"
+APP_DISPLAY_VERSION = "43"
 APP_DISPLAY_NAME = "NFC Generator"
 
 
@@ -4867,6 +4867,7 @@ def _json_or_default(raw_value: str, default_json: str):
 def _build_embedded_data_js(
     *,
     fahrzeugwaesche_json: str,
+    tanken_json: str,
     tel_json: str,
     sam_json: str,
     fa_json: str,
@@ -4882,6 +4883,7 @@ def _build_embedded_data_js(
 ) -> str:
     data = {
         "fahrzeugwaesche": _json_or_default(fahrzeugwaesche_json, "[]"),
+        "tanken": _json_or_default(tanken_json, "[]"),
         "telefon": _json_or_default(tel_json, "[]"),
         "samstag": _json_or_default(sam_json, "[]"),
         "fahrer": _json_or_default(fa_json, "[]"),
@@ -4900,6 +4902,196 @@ def _build_embedded_data_js(
     return _to_js_array(compressed_b64)
 
 
+
+def _tank_panels_html() -> str:
+    """HTML-Panels für Tankübersicht und Tankgraph."""
+    return r"""
+<style>
+  #ddmenu-vz .dd-group-title{padding:7px 12px 5px;background:#eef3f8;color:#64748b;font-size:9px;font-weight:950;text-transform:uppercase;letter-spacing:.65px;border-bottom:1px solid #dce4ed}
+  #ddmenu-vz .dd-subitem{padding-left:27px;position:relative}
+  #ddmenu-vz .dd-subitem:before{content:'›';position:absolute;left:14px;color:#94a3b8;font-size:15px;line-height:1}
+  #panel-tank,#panel-tank-graph{--tank:#9a5b00;--tank-dark:#704000;--tank-soft:#fff7e6;--ink:#132033;--muted:#64748b}
+  .tank-shell{width:100%;max-width:1728px;margin:0 auto}
+  .tank-card{background:#fff;border:1px solid #d8dee7;border-radius:13px;box-shadow:0 3px 12px rgba(15,23,42,.06);overflow:hidden}
+  .tank-head{display:flex;align-items:center;gap:13px;padding:17px 20px;background:linear-gradient(180deg,#fffaf0 0%,#fff 100%);border-bottom:1px solid #eceff4;flex-wrap:wrap}
+  .tank-icon{width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#d99a22,#9a5b00);color:#fff;display:flex;align-items:center;justify-content:center;font-size:21px;box-shadow:0 5px 13px rgba(154,91,0,.24);flex-shrink:0}
+  .tank-title{font-size:19px;font-weight:950;color:var(--ink);letter-spacing:-.3px}
+  .tank-sub{font-size:11.5px;font-weight:650;color:var(--muted);margin-top:2px}
+  .tank-controls{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:13px 18px;background:#fbfcfe;border-bottom:1px solid #edf1f5}
+  .tank-select,.tank-search{padding:9px 11px;border:1.5px solid #cfd8e3;border-radius:8px;background:#fff;color:#26374a;font:700 12px 'Segoe UI',Arial,sans-serif;outline:none;min-width:145px}
+  .tank-search{min-width:260px;flex:1;max-width:430px}
+  .tank-select:focus,.tank-search:focus{border-color:#b7791f;box-shadow:0 0 0 3px rgba(183,121,31,.12)}
+  .tank-kpis{display:grid;grid-template-columns:repeat(6,minmax(125px,1fr));gap:10px;padding:15px 18px;background:#f6f8fb}
+  .tank-kpi{background:#fff;border:1px solid #e1e7ef;border-radius:11px;padding:12px 13px;min-width:0}
+  .tank-kpi-label{font-size:9px;font-weight:950;color:#718096;text-transform:uppercase;letter-spacing:.55px}
+  .tank-kpi-value{font-size:19px;font-weight:950;color:#172033;margin-top:4px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tank-kpi-note{font-size:9.5px;color:#94a3b8;font-weight:700;margin-top:2px}
+  .tank-section-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:13px 18px;background:#fff;border-top:1px solid #edf1f5;border-bottom:1px solid #edf1f5}
+  .tank-section-title{font-size:12px;font-weight:950;color:#1f2937}
+  .tank-section-meta{font-size:10.5px;color:#64748b;font-weight:700}
+  .tank-table-wrap{overflow:auto;max-height:520px}
+  .tank-table{width:100%;border-collapse:collapse;font-size:11px;min-width:900px}
+  .tank-table th{position:sticky;top:0;z-index:1;background:#edf2f7;color:#536273;font-size:9px;text-transform:uppercase;letter-spacing:.42px;font-weight:950;padding:9px 10px;text-align:left;border-bottom:1px solid #d8e0e9;white-space:nowrap}
+  .tank-table td{padding:8px 10px;border-bottom:1px solid #edf1f5;color:#263548;font-weight:650;vertical-align:middle;white-space:nowrap}
+  .tank-table tbody tr:nth-child(even) td{background:#fafbfc}
+  .tank-table tbody tr:hover td{background:#fff8e8}
+  .tank-num{text-align:right!important;font-variant-numeric:tabular-nums}
+  .tank-empty{color:#94a3b8;padding:58px 20px;text-align:center;font-size:14px;font-weight:650}
+  .tank-badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:999px;background:#fff4d6;border:1px solid #f2d083;color:#815000;font-size:9.5px;font-weight:900}
+  .tank-graph-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:0 18px 24px}
+  .tank-chart-card{background:#fff;border:1px solid #d8dee7;border-radius:12px;padding:15px 16px;box-shadow:0 3px 12px rgba(15,23,42,.05);min-height:350px}
+  .tank-chart-card.wide{grid-column:1/-1}
+  .tank-chart-title{font-size:12.5px;font-weight:950;color:#1f2937;margin-bottom:3px}
+  .tank-chart-sub{font-size:10.5px;color:#64748b;font-weight:650;margin-bottom:12px}
+  .tank-canvas-wrap{position:relative;height:285px}
+  @media(max-width:1100px){.tank-kpis{grid-template-columns:repeat(3,minmax(120px,1fr))}.tank-graph-grid{grid-template-columns:1fr}.tank-chart-card.wide{grid-column:auto}}
+  @media(max-width:650px){.tank-kpis{grid-template-columns:repeat(2,minmax(110px,1fr))}.tank-search{min-width:100%;max-width:none}.tank-select{flex:1}.tank-head{padding:14px}.tank-controls{padding:11px}.tank-graph-grid{padding:0 10px 18px}}
+</style>
+
+<div id="panel-tank" style="display:none;flex:1;overflow-y:auto;padding:18px 18px 30px;background:linear-gradient(180deg,#f5f7fa 0%,#edf1f5 100%);font-family:'Segoe UI',Arial,sans-serif">
+  <div class="tank-shell tank-card">
+    <div class="tank-head">
+      <div class="tank-icon">&#9981;</div>
+      <div style="min-width:0;flex:1">
+        <div class="tank-title">Tanken &ndash; Übersicht</div>
+        <div class="tank-sub">Monatliche Tankdateien aus dem Streamlit-Mehrfach-Upload auswerten</div>
+      </div>
+      <span id="tank-data-range" class="tank-badge"></span>
+    </div>
+    <div class="tank-controls">
+      <select id="tank-year" class="tank-select" onchange="tankRenderOverview()"></select>
+      <select id="tank-month" class="tank-select" onchange="tankRenderOverview()"></select>
+      <select id="tank-group" class="tank-select" onchange="tankRenderOverview()">
+        <option value="fahrzeug">Zusammenfassung nach LKW</option>
+        <option value="fahrer">Zusammenfassung nach Fahrer</option>
+        <option value="produkt">Zusammenfassung nach Produkt</option>
+      </select>
+      <input id="tank-search" class="tank-search" type="search" placeholder="Fahrer, Kennzeichen oder Fahrzeug suchen …" oninput="tankRenderOverview()">
+    </div>
+    <div id="tank-kpis" class="tank-kpis"></div>
+    <div class="tank-section-head"><div class="tank-section-title" id="tank-summary-title">Zusammenfassung</div><div class="tank-section-meta" id="tank-summary-meta"></div></div>
+    <div id="tank-summary-table" class="tank-table-wrap"></div>
+    <div class="tank-section-head"><div class="tank-section-title">Einzelne Tankvorgänge</div><div class="tank-section-meta" id="tank-detail-meta"></div></div>
+    <div id="tank-detail-table" class="tank-table-wrap"></div>
+  </div>
+</div>
+
+<div id="panel-tank-graph" style="display:none;flex:1;overflow-y:auto;padding:18px 0 30px;background:linear-gradient(180deg,#f5f7fa 0%,#edf1f5 100%);font-family:'Segoe UI',Arial,sans-serif">
+  <div class="tank-shell">
+    <div class="tank-head" style="margin:0 18px 14px;border:1px solid #d8dee7;border-radius:13px;box-shadow:0 3px 12px rgba(15,23,42,.05)">
+      <div class="tank-icon">&#128202;</div>
+      <div style="min-width:0;flex:1"><div class="tank-title">Tanken &ndash; Graph</div><div class="tank-sub">Monatsentwicklung, Verbrauch und meistbetankte Fahrzeuge</div></div>
+      <select id="tank-graph-year" class="tank-select" onchange="tankRenderGraph()"></select>
+      <span id="tank-graph-stats" class="tank-badge"></span>
+    </div>
+    <div id="tank-graph-empty" class="tank-empty" style="display:none">Keine Tankdaten vorhanden &ndash; bitte die Monatsdateien in Streamlit hochladen.</div>
+    <div id="tank-graph-grid" class="tank-graph-grid">
+      <div class="tank-chart-card wide"><div class="tank-chart-title">Getankte Liter pro Monat</div><div class="tank-chart-sub">Gesamtmenge aller Tankvorgänge des ausgewählten Jahres</div><div class="tank-canvas-wrap"><canvas id="tank-chart-liters"></canvas></div></div>
+      <div class="tank-chart-card"><div class="tank-chart-title">Ø Verbrauch pro Monat</div><div class="tank-chart-sub">Liter je 100 km aus plausiblen Streckenangaben</div><div class="tank-canvas-wrap"><canvas id="tank-chart-consumption"></canvas></div></div>
+      <div class="tank-chart-card"><div class="tank-chart-title">Top 12 LKW nach Litermenge</div><div class="tank-chart-sub">Fahrzeuge mit der höchsten getankten Gesamtmenge</div><div class="tank-canvas-wrap"><canvas id="tank-chart-vehicles"></canvas></div></div>
+    </div>
+  </div>
+</div>
+"""
+
+
+def _tank_dashboard_js() -> str:
+    """Browserlogik für Tankübersicht, Tanktabellen und Chart.js-Graphen."""
+    return r"""
+// ── Waschen & Tanken: gruppiertes Dropdown ──────────────────────────────────
+window.ddSelectWashTank = function(area){
+  showArea(area);
+  document.querySelectorAll('.nav-dd').forEach(function(d){ d.classList.remove('open'); });
+};
+window.buildVzDdMenu = function(){
+  var menu = document.getElementById('ddmenu-vz');
+  if(!menu) return;
+  var item = function(area,label){
+    return "<div class='dd-item dd-subitem" + (currentArea===area?' active':'') + "' data-area='"+area+"' onclick='ddSelectWashTank(this.dataset.area)'>"+label+"</div>";
+  };
+  menu.innerHTML = "<div class='dd-group-title'>Fahrzeugwäsche</div>" + item('vz','Übersicht') + item('vz_graph','Graph') +
+                   "<div class='dd-group-title'>Tanken</div>" + item('tank','Übersicht') + item('tank_graph','Graph');
+};
+
+// ── Tankdaten: Hilfsfunktionen ───────────────────────────────────────────────
+var tankCharts = {liters:null, consumption:null, vehicles:null};
+var TANK_MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+function tankEsc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function tankN(v){var n=Number(v);return Number.isFinite(n)?n:0;}
+function tankFmt(v,d){return new Intl.NumberFormat('de-DE',{minimumFractionDigits:d||0,maximumFractionDigits:d==null?0:d}).format(tankN(v));}
+function tankDateLabel(iso){if(!iso)return '';var p=String(iso).slice(0,10).split('-');return p.length===3?p[2]+'.'+p[1]+'.'+p[0]:iso;}
+function tankValidDistance(r){var km=tankN(r.km);return km>=10 && km<=5000;}
+function tankConsumption(rows){var liters=0,km=0;(rows||[]).forEach(function(r){if(tankValidDistance(r)){liters+=tankN(r.menge_liter);km+=tankN(r.km);}});return km>0?(liters/km*100):0;}
+function tankYears(){return Array.from(new Set((TANK_DATA||[]).map(function(r){return Number(r.jahr)||0;}).filter(Boolean))).sort(function(a,b){return b-a;});}
+function tankFiltered(){
+  var y=Number((document.getElementById('tank-year')||{}).value)||0;
+  var m=Number((document.getElementById('tank-month')||{}).value)||0;
+  var q=String((document.getElementById('tank-search')||{}).value||'').trim().toLocaleLowerCase('de-DE');
+  return (TANK_DATA||[]).filter(function(r){
+    if(y && Number(r.jahr)!==y) return false;
+    if(m && Number(r.monat)!==m) return false;
+    if(q){var hay=[r.fahrer,r.fahrzeug,r.fahrzeug_ia,r.produkt,r.zapfsaeule].join(' ').toLocaleLowerCase('de-DE');if(hay.indexOf(q)<0)return false;}
+    return true;
+  });
+}
+function tankSetOptions(){
+  var years=tankYears(), y=document.getElementById('tank-year'), gy=document.getElementById('tank-graph-year'), m=document.getElementById('tank-month');
+  if(y && !y.options.length){y.innerHTML=years.map(function(v){return '<option value="'+v+'">Jahr '+v+'</option>';}).join('')+'<option value="0">Alle Jahre</option>';}
+  if(gy && !gy.options.length){gy.innerHTML=years.map(function(v){return '<option value="'+v+'">Jahr '+v+'</option>';}).join('');}
+  if(m && !m.options.length){m.innerHTML='<option value="0">Ganzes Jahr</option>'+TANK_MONTHS.map(function(v,i){return '<option value="'+(i+1)+'">'+v+'</option>';}).join('');}
+  if(years.length){if(y && !y.value)y.value=String(years[0]);if(gy && !gy.value)gy.value=String(years[0]);}
+  var range=document.getElementById('tank-data-range');
+  if(range){var dates=(TANK_DATA||[]).map(function(r){return r.date_iso||'';}).filter(Boolean).sort();range.textContent=dates.length?tankDateLabel(dates[0])+' – '+tankDateLabel(dates[dates.length-1]):'Keine Daten';}
+}
+function tankKpi(label,value,note){return '<div class="tank-kpi"><div class="tank-kpi-label">'+tankEsc(label)+'</div><div class="tank-kpi-value">'+tankEsc(value)+'</div><div class="tank-kpi-note">'+tankEsc(note||'')+'</div></div>';}
+function tankAggregate(rows,key){
+  var map={};
+  (rows||[]).forEach(function(r){
+    var name=String(r[key]||'Ohne Angabe').trim()||'Ohne Angabe';
+    if(!map[name])map[name]={name:name,count:0,liters:0,km:0,validKm:0,validLiters:0,last:'',drivers:new Set(),vehicles:new Set()};
+    var a=map[name];a.count++;a.liters+=tankN(r.menge_liter);a.km+=tankN(r.km);if(tankValidDistance(r)){a.validLiters+=tankN(r.menge_liter);a.validKm+=tankN(r.km);}if((r.date_iso||'')>a.last)a.last=r.date_iso||'';if(r.fahrer)a.drivers.add(r.fahrer);if(r.fahrzeug)a.vehicles.add(r.fahrzeug);
+  });
+  return Object.values(map).map(function(a){a.consumption=a.validKm>0?(a.validLiters/a.validKm*100):0;a.avg=a.count?a.liters/a.count:0;return a;}).sort(function(a,b){return b.liters-a.liters;});
+}
+function tankRenderOverview(){
+  tankSetOptions();
+  var rows=tankFiltered(), totalLiters=rows.reduce(function(s,r){return s+tankN(r.menge_liter);},0), totalKm=rows.reduce(function(s,r){return s+(tankValidDistance(r)?tankN(r.km):0);},0);
+  var vehicles=new Set(rows.map(function(r){return r.fahrzeug;}).filter(Boolean)), drivers=new Set(rows.map(function(r){return r.fahrer;}).filter(Boolean));
+  var k=document.getElementById('tank-kpis');
+  if(k)k.innerHTML=tankKpi('Tankvorgänge',tankFmt(rows.length,0),'gefilterte Datensätze')+tankKpi('Liter gesamt',tankFmt(totalLiters,2)+' l','Diesel / Produkte')+tankKpi('Strecke',tankFmt(totalKm,0)+' km','plausible km-Angaben')+tankKpi('Ø Verbrauch',tankFmt(tankConsumption(rows),2)+' l','je 100 km')+tankKpi('Fahrzeuge',tankFmt(vehicles.size,0),'unterschiedliche LKW')+tankKpi('Fahrer',tankFmt(drivers.size,0),'unterschiedliche Fahrer');
+  var group=(document.getElementById('tank-group')||{value:'fahrzeug'}).value||'fahrzeug';
+  var labels={fahrzeug:'LKW',fahrer:'Fahrer',produkt:'Produkt'}, ag=tankAggregate(rows,group);
+  var title=document.getElementById('tank-summary-title');if(title)title.textContent='Zusammenfassung nach '+(labels[group]||group);
+  var meta=document.getElementById('tank-summary-meta');if(meta)meta.textContent=ag.length+' Gruppen · '+tankFmt(totalLiters,2)+' Liter';
+  var target=document.getElementById('tank-summary-table');
+  if(target){
+    if(!ag.length)target.innerHTML='<div class="tank-empty">Keine Tankdaten für die gewählte Auswahl.</div>';
+    else target.innerHTML='<table class="tank-table"><thead><tr><th>'+(labels[group]||'Gruppe')+'</th><th class="tank-num">Tankvorgänge</th><th class="tank-num">Liter</th><th class="tank-num">km</th><th class="tank-num">Ø l/100 km</th><th class="tank-num">Ø Liter/Tankung</th><th>Letzte Tankung</th><th class="tank-num">Fahrer</th><th class="tank-num">LKW</th></tr></thead><tbody>'+ag.map(function(a){return '<tr><td><b>'+tankEsc(a.name)+'</b></td><td class="tank-num">'+tankFmt(a.count,0)+'</td><td class="tank-num">'+tankFmt(a.liters,2)+'</td><td class="tank-num">'+tankFmt(a.km,0)+'</td><td class="tank-num">'+(a.consumption?tankFmt(a.consumption,2):'–')+'</td><td class="tank-num">'+tankFmt(a.avg,2)+'</td><td>'+tankDateLabel(a.last)+'</td><td class="tank-num">'+a.drivers.size+'</td><td class="tank-num">'+a.vehicles.size+'</td></tr>';}).join('')+'</tbody></table>';
+  }
+  var detail=document.getElementById('tank-detail-table'), sorted=rows.slice().sort(function(a,b){return String(b.datetime_iso||'').localeCompare(String(a.datetime_iso||''));}), shown=sorted.slice(0,500);
+  var dm=document.getElementById('tank-detail-meta');if(dm)dm.textContent=sorted.length>500?'500 von '+sorted.length+' Einträgen':sorted.length+' Einträge';
+  if(detail){if(!shown.length)detail.innerHTML='<div class="tank-empty">Keine einzelnen Tankvorgänge vorhanden.</div>';else detail.innerHTML='<table class="tank-table"><thead><tr><th>Datum</th><th>Uhrzeit</th><th>Kennzeichen</th><th>Fahrer</th><th>Produkt</th><th class="tank-num">Liter</th><th class="tank-num">Kilometerstand</th><th class="tank-num">km</th><th class="tank-num">l/100 km</th><th>Zapfsäule</th></tr></thead><tbody>'+shown.map(function(r){var c=tankValidDistance(r)?tankN(r.menge_liter)/tankN(r.km)*100:0;return '<tr><td>'+tankDateLabel(r.date_iso)+'</td><td>'+tankEsc(String(r.uhrzeit||'').slice(0,5))+'</td><td><b>'+tankEsc(r.fahrzeug||r.fahrzeug_ia)+'</b></td><td>'+tankEsc(r.fahrer)+'</td><td>'+tankEsc(r.produkt)+'</td><td class="tank-num">'+tankFmt(r.menge_liter,2)+'</td><td class="tank-num">'+tankFmt(r.kilometerzaehler,0)+'</td><td class="tank-num">'+tankFmt(r.km,0)+'</td><td class="tank-num">'+(c?tankFmt(c,2):'–')+'</td><td>'+tankEsc(r.zapfsaeule)+'</td></tr>';}).join('')+'</tbody></table>';}
+}
+window.tankInitOverview=function(){tankSetOptions();tankRenderOverview();};
+function tankDestroyChart(key){if(tankCharts[key]){tankCharts[key].destroy();tankCharts[key]=null;}}
+function tankRenderGraph(){
+  tankSetOptions();
+  var year=Number((document.getElementById('tank-graph-year')||{}).value)||0, rows=(TANK_DATA||[]).filter(function(r){return !year||Number(r.jahr)===year;});
+  var empty=document.getElementById('tank-graph-empty'), grid=document.getElementById('tank-graph-grid');if(empty)empty.style.display=rows.length?'none':'block';if(grid)grid.style.display=rows.length?'grid':'none';
+  ['liters','consumption','vehicles'].forEach(tankDestroyChart);if(!rows.length)return;
+  var months=Array.from({length:12},function(){return [];});rows.forEach(function(r){var m=Number(r.monat)||0;if(m>=1&&m<=12)months[m-1].push(r);});
+  var liters=months.map(function(x){return x.reduce(function(s,r){return s+tankN(r.menge_liter);},0);}), consumptions=months.map(tankConsumption), ag=tankAggregate(rows,'fahrzeug').slice(0,12);
+  var stats=document.getElementById('tank-graph-stats');if(stats)stats.textContent=tankFmt(rows.length,0)+' Tankvorgänge · '+tankFmt(liters.reduce(function(a,b){return a+b;},0),2)+' Liter';
+  var common={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{grid:{display:false},ticks:{font:{size:10,weight:'bold'}}},y:{beginAtZero:true,ticks:{font:{size:10}}}}};
+  var c1=document.getElementById('tank-chart-liters');if(c1)tankCharts.liters=new Chart(c1,{type:'bar',data:{labels:TANK_MONTHS,datasets:[{label:'Liter',data:liters,borderWidth:1,borderRadius:5}]},options:common});
+  var c2=document.getElementById('tank-chart-consumption');if(c2)tankCharts.consumption=new Chart(c2,{type:'line',data:{labels:TANK_MONTHS,datasets:[{label:'l/100 km',data:consumptions,tension:.28,spanGaps:true,pointRadius:4,borderWidth:2,fill:false}]},options:common});
+  var vOptions={responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{font:{size:10}}},y:{grid:{display:false},ticks:{font:{size:10,weight:'bold'}}}}};
+  var c3=document.getElementById('tank-chart-vehicles');if(c3)tankCharts.vehicles=new Chart(c3,{type:'bar',data:{labels:ag.map(function(a){return a.name;}),datasets:[{label:'Liter',data:ag.map(function(a){return a.liters;}),borderWidth:1,borderRadius:4}]},options:vOptions});
+}
+window.tankInitGraph=function(){tankSetOptions();tankRenderGraph();};
+"""
+
+
 def _render_dashboard_html(
     *,
     logo_data_url: str,
@@ -4915,6 +5107,8 @@ def _render_dashboard_html(
     wash_js_code: str,
     wash_ranking_js_code: str,
     fw_graph_js_code: str,
+    tank_panels_html: str,
+    tank_js_code: str,
     verstoss_js_code: str,
     sped_js_code: str,
     fabew_js_code: str,
@@ -5074,7 +5268,7 @@ iframe.active{{display:block}}
   </div>
   <div class="nav-dd" id="dd-vz">
     <button class="nav-dd-btn" id="btn-vz" onclick="ddToggle('vz',event)">
-      &#128703; Fahrzeugw&#228;sche <span id="inst-label-vz"></span><span class="dd-arrow">&#9660;</span>
+      &#128703; Waschen &amp; Tanken <span id="inst-label-vz"></span><span class="dd-arrow">&#9660;</span>
     </button>
     <div class="dd-menu" id="ddmenu-vz"></div>
   </div>
@@ -5274,6 +5468,8 @@ document.addEventListener('keydown',function(e){{if(e.key==='Escape')closeBuildI
       </div>
     </div>
   </div>
+
+{tank_panels_html}
 
   <div id="panel-tel" style="display:none;flex:1;overflow-y:auto;font-family:'Segoe UI',Arial,sans-serif;">
     <style>
@@ -6040,6 +6236,7 @@ var EMBEDDED_DATA_B64 = [
 
 // Sichere Startwerte, bis der komprimierte Datenblock entpackt ist.
 var FAHRZEUGWAESCHE_DATA = [];
+var TANK_DATA = [];
 var TEL_DATA = [];
 var SAM_DATA = [];
 var FA_DATA = [];
@@ -6060,6 +6257,7 @@ function loadEmbeddedData() {{
     var raw = await b64ChunksToString(EMBEDDED_DATA_B64);
     var data = JSON.parse(raw);
     FAHRZEUGWAESCHE_DATA = data.fahrzeugwaesche || [];
+    TANK_DATA = data.tanken || [];
     TEL_DATA = data.telefon || [];
     SAM_DATA = data.samstag || [];
     FA_DATA = data.fahrer || [];
@@ -6208,7 +6406,7 @@ function showArea(s) {{
   // Dropdown-Buttons aktiv/inaktiv
   ["suche","vz"].forEach(function(id) {{
     var btn = document.getElementById("btn-"+id);
-    if(btn) btn.className = "nav-dd-btn" + ((id===s || (id==="vz" && s==="vz_graph"))?" active":"");
+    if(btn) btn.className = "nav-dd-btn" + ((id===s || (id==="vz" && (s==="vz_graph" || s==="tank" || s==="tank_graph")))?" active":"");
   }});
   // Telefonliste-Button
   var telBtn = document.getElementById("btn-tel");
@@ -6228,6 +6426,10 @@ function showArea(s) {{
   vzPanel.style.display  = (s==="vz")  ? "block" : "none";
   var vzGraphPanel = document.getElementById("panel-vz-graph");
   if(vzGraphPanel) vzGraphPanel.style.display = (s==="vz_graph") ? "flex" : "none";
+  var tankPanel = document.getElementById("panel-tank");
+  if(tankPanel) tankPanel.style.display = (s==="tank") ? "block" : "none";
+  var tankGraphPanel = document.getElementById("panel-tank-graph");
+  if(tankGraphPanel) tankGraphPanel.style.display = (s==="tank_graph") ? "block" : "none";
   telPanel.style.display = (s==="tel") ? "block" : "none";
   if(samPanel)      samPanel.style.display      = (s==="sam" || s==="sam_graph") ? "block" : "none";
   var faPanel = document.getElementById("panel-fa");
@@ -6256,6 +6458,14 @@ function showArea(s) {{
   if(s==="vz_graph") {{
     if(vzGraphPanel && !vzGraphPanel.dataset.loaded) {{ fwInitGraph(); vzGraphPanel.dataset.loaded="1"; }}
     else {{ fwRenderGraph(); }}
+  }}
+  if(s==="tank") {{
+    if(tankPanel && !tankPanel.dataset.loaded) {{ tankInitOverview(); tankPanel.dataset.loaded="1"; }}
+    else {{ tankRenderOverview(); }}
+  }}
+  if(s==="tank_graph") {{
+    if(tankGraphPanel && !tankGraphPanel.dataset.loaded) {{ tankInitGraph(); tankGraphPanel.dataset.loaded="1"; }}
+    else {{ tankRenderGraph(); }}
   }}
   if(typeof buildVzDdMenu === "function") buildVzDdMenu();
   if(s==="tel" && !telPanel.dataset.loaded) {{ telRender(""); telPanel.dataset.loaded="1"; }}
@@ -6597,6 +6807,7 @@ function fwExportPdf() {{
 {wash_js_code}
 {wash_ranking_js_code}
 {fw_graph_js_code}
+{tank_js_code}
 // Zusatzdaten wurden oben komprimiert eingebettet und durch loadEmbeddedData() geladen.
 var ZULAGE_XLSX_SONDER      = "{zulage_xlsx_sonder}";
 var ZULAGE_XLSX_FUENGERS    = "{zulage_xlsx_fuengers}";
@@ -9726,7 +9937,7 @@ function samToggle(el) {{
 </html>"""
 
 
-def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', spesen_json: str = '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}', grosskunden_json: str = "[]", timerec_json: str = "{}", spediteure_json: str = '{"katalog":[],"fahrten":[]}', fahrerbewertung_json: str = '{"profile":"","event_types":[],"g_months":{},"g_ev":{},"drivers":[]}', versp_abfahrt_json: str = "{}", last_updated: str = "", generation_meta: dict | None = None) -> str:
+def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa_json: str = "[]", zulage_json: str = "{}", zulage_xlsx_sonder: str = "", zulage_xlsx_fuengers: str = "", drittkunden_json: str = "[]", zulage_xlsx_drittkunden: str = "", fahrzeugwaesche_json: str = "[]", tanken_json: str = "[]", verstoss_json: str = '{"drivers":[],"total_violations":0}', spesen_json: str = '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}', grosskunden_json: str = "[]", timerec_json: str = "{}", spediteure_json: str = '{"katalog":[],"fahrten":[]}', fahrerbewertung_json: str = '{"profile":"","event_types":[],"g_months":{},"g_ev":{},"drivers":[]}', versp_abfahrt_json: str = "{}", last_updated: str = "", generation_meta: dict | None = None) -> str:
     _combine_started = time.perf_counter()
     try:
         _logo_up = st.session_state.get("g_logo")
@@ -9745,6 +9956,8 @@ def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa
     wash_js_code = js_parts['wash']
     wash_ranking_js_code = js_parts['wash_ranking']
     fw_graph_js_code = js_parts['fw_graph']
+    tank_panels_html = _tank_panels_html()
+    tank_js_code = _tank_dashboard_js()
     verstoss_js_code = js_parts['verstoss']
     knapp_js_code = js_parts['knapp']
     sped_js_code = js_parts['sped']
@@ -9789,6 +10002,7 @@ def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa
     # eingebettet. Im Browser erfolgt das Entpacken einmalig beim Start.
     embedded_data_js = _build_embedded_data_js(
         fahrzeugwaesche_json=fahrzeugwaesche_json,
+        tanken_json=tanken_json,
         tel_json=tel_json,
         sam_json=sam_json,
         fa_json=fa_json,
@@ -9825,6 +10039,8 @@ def combine_html(instances: list, tel_json: str = "[]", sam_json: str = "[]", fa
         wash_js_code=wash_js_code,
         wash_ranking_js_code=wash_ranking_js_code,
         fw_graph_js_code=fw_graph_js_code,
+        tank_panels_html=tank_panels_html,
+        tank_js_code=tank_js_code,
         verstoss_js_code=verstoss_js_code,
         sped_js_code=sped_js_code,
         fabew_js_code=fabew_js_code,
@@ -11099,6 +11315,196 @@ def parse_verstoss_csv(uploaded_file) -> str:
         "last_violation_month": last_violation_month,
     }, ensure_ascii=False)
 
+
+def parse_tanken_excel(uploaded_files) -> str:
+    """Liest mehrere monatliche Tank-Excel-Dateien speicherschonend ein.
+
+    Einige Exporte enthalten bis zum Excel-Zeilenlimit formatierte Leerzeilen.
+    Deshalb wird im Read-only-Modus nach 100 aufeinanderfolgenden Leerzeilen
+    hinter den echten Daten abgebrochen.
+    """
+    import openpyxl as _opxl
+    from openpyxl.utils.datetime import from_excel as _from_excel
+
+    def _norm(value) -> str:
+        value = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode("ascii")
+        return re.sub(r"[^a-z0-9]+", "", value.strip().lower())
+
+    def _clean(value) -> str:
+        if value is None:
+            return ""
+        s = str(value).replace("\xa0", " ").strip()
+        if s.lower() in {"nan", "none"}:
+            return ""
+        return re.sub(r"\s+", " ", s).replace("_", " ").strip()
+
+    def _number(value) -> float:
+        if value in (None, ""):
+            return 0.0
+        if isinstance(value, (int, float)):
+            return float(value)
+        s = _clean(value).replace("l", "").replace("km", "").replace(" ", "")
+        if not s:
+            return 0.0
+        if "," in s and "." in s:
+            s = s.replace(".", "").replace(",", ".")
+        elif "," in s:
+            s = s.replace(",", ".")
+        try:
+            return float(s)
+        except Exception:
+            return 0.0
+
+    def _date(value, epoch):
+        dt = None
+        if isinstance(value, datetime.datetime):
+            dt = value
+        elif isinstance(value, datetime.date):
+            dt = datetime.datetime.combine(value, datetime.time())
+        elif isinstance(value, (int, float)) and 20000 <= float(value) <= 80000:
+            try:
+                dt = _from_excel(float(value), epoch)
+            except Exception:
+                dt = None
+        if dt is None:
+            s = _clean(value)
+            for fmt in ("%d.%m.%Y", "%d/%m/%Y", "%Y-%m-%d"):
+                try:
+                    dt = datetime.datetime.strptime(s[:10], fmt)
+                    break
+                except Exception:
+                    pass
+        if dt is None:
+            return "", "", 0, 0
+        return dt.strftime("%d.%m.%Y"), dt.strftime("%Y-%m-%d"), dt.year, dt.month
+
+    def _time(value):
+        if isinstance(value, datetime.datetime):
+            return value.strftime("%H:%M:%S")
+        if isinstance(value, datetime.time):
+            return value.strftime("%H:%M:%S")
+        if isinstance(value, (int, float)) and 0 <= float(value) < 1:
+            seconds = int(round(float(value) * 86400)) % 86400
+            return f"{seconds // 3600:02d}:{(seconds % 3600) // 60:02d}:{seconds % 60:02d}"
+        s = _clean(value)
+        m = re.search(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", s)
+        if m:
+            return f"{int(m.group(1)):02d}:{m.group(2)}:{m.group(3) or '00'}"
+        return ""
+
+    aliases = {
+        "firma": {"fahrzeugkategorie", "firmaspedition", "firma", "spedition"},
+        "datum": {"datumdertransaktion", "datum"},
+        "uhrzeit": {"zeitpunktdertransaktion", "zeitpunkt", "uhrzeit", "zeit"},
+        "fahrzeug_ia": {"fahrzeugia", "fahrzeug"},
+        "fahrzeug": {"fahrzeugkfzkennzeichen", "kfzkennzeichen", "kennzeichen"},
+        "fahrer": {"fahrer"},
+        "produkt": {"produkt"},
+        "menge_liter": {"menge", "mengeinliter", "liter", "tankmenge"},
+        "kilometerzaehler": {"kilometerzahler", "kilometerstand", "kmstand"},
+        "transaktions_typ": {"transaktionstyp", "typ"},
+        "zapfsaeule": {"zapfsaule", "zapfsaeule"},
+        "km": {"km", "gefahrenekm", "strecke"},
+    }
+    required = {"datum", "uhrzeit", "fahrzeug", "fahrer", "menge_liter"}
+    rows = []
+    seen = set()
+
+    for uploaded_file in uploaded_files or []:
+        payload = read_upload_bytes(uploaded_file)
+        if not payload:
+            continue
+        try:
+            wb = _opxl.load_workbook(io.BytesIO(payload), data_only=True, read_only=True)
+        except Exception:
+            continue
+        source_name = getattr(uploaded_file, "name", "") or ""
+        try:
+            for ws in wb.worksheets:
+                mapping = None
+                data_started = False
+                empty_streak = 0
+                iterator = ws.iter_rows(values_only=True)
+                for row_no, values in enumerate(iterator, 1):
+                    values = tuple(values or ())
+                    if mapping is None:
+                        if row_no > 25:
+                            break
+                        candidate = {}
+                        for idx, value in enumerate(values):
+                            key = _norm(value)
+                            if not key:
+                                continue
+                            for target, names in aliases.items():
+                                if key in names and target not in candidate:
+                                    candidate[target] = idx
+                        if required.issubset(candidate):
+                            mapping = candidate
+                        continue
+
+                    if not any(value not in (None, "") for value in values):
+                        empty_streak += 1
+                        if data_started and empty_streak >= 100:
+                            break
+                        continue
+                    empty_streak = 0
+
+                    def get(key):
+                        idx = mapping.get(key)
+                        return values[idx] if idx is not None and idx < len(values) else None
+
+                    datum, date_iso, jahr, monat = _date(get("datum"), wb.epoch)
+                    uhrzeit = _time(get("uhrzeit"))
+                    fahrzeug = _clean(get("fahrzeug"))
+                    fahrzeug_ia = _clean(get("fahrzeug_ia"))
+                    fahrer = _clean(get("fahrer"))
+                    produkt = _clean(get("produkt"))
+                    menge = _number(get("menge_liter"))
+                    transaktions_typ = _clean(get("transaktions_typ"))
+                    if transaktions_typ and "betank" not in transaktions_typ.casefold():
+                        continue
+                    if not datum or not fahrzeug or menge <= 0:
+                        continue
+                    data_started = True
+                    kilometerzaehler = _number(get("kilometerzaehler"))
+                    km = _number(get("km"))
+                    item = {
+                        "firma": _clean(get("firma")),
+                        "datum": datum,
+                        "date_iso": date_iso,
+                        "uhrzeit": uhrzeit,
+                        "datetime_iso": f"{date_iso} {uhrzeit or '00:00:00'}",
+                        "jahr": jahr,
+                        "monat": monat,
+                        "fahrzeug_ia": fahrzeug_ia,
+                        "fahrzeug": fahrzeug,
+                        "fahrer": fahrer,
+                        "produkt": produkt,
+                        "menge_liter": round(menge, 3),
+                        "kilometerzaehler": round(kilometerzaehler, 1),
+                        "km": round(km, 1),
+                        "transaktions_typ": transaktions_typ,
+                        "zapfsaeule": _clean(get("zapfsaeule")),
+                        "quelle": source_name,
+                    }
+                    dedup = (
+                        item["date_iso"], item["uhrzeit"], item["fahrzeug"], item["fahrzeug_ia"],
+                        item["fahrer"], item["produkt"], item["menge_liter"], item["kilometerzaehler"],
+                    )
+                    if dedup in seen:
+                        continue
+                    seen.add(dedup)
+                    rows.append(item)
+        finally:
+            try:
+                wb.close()
+            except Exception:
+                pass
+
+    rows.sort(key=lambda x: (x.get("datetime_iso", ""), x.get("fahrzeug", "")), reverse=True)
+    return json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
+
+
 def parse_fahrzeugwaesche_excel(uploaded_files) -> str:
     """Verarbeitet mehrere Fahrzeugwäsche-Excel-Dateien zu JSON für die Übersicht."""
     def _norm_header(value: str) -> str:
@@ -11830,6 +12236,7 @@ def _build_generation_metadata(ready_instances: list, generated_at: datetime.dat
 
     tel = _safe_state_json("tel_json", [])
     wash = _safe_state_json("fahrzeugwaesche_json", [])
+    tank = _safe_state_json("tanken_json", [])
     timerec = _safe_state_json("timerec_json", {})
     violations = _safe_state_json("verstoss_json", {})
     expenses = _safe_state_json("spesen_json", {})
@@ -11845,6 +12252,7 @@ def _build_generation_metadata(ready_instances: list, generated_at: datetime.dat
         {"label": "Wochen / Suche", "value": str(len(weeks)), "detail": ", ".join(weeks)},
         {"label": "Telefon / Fachberater", "value": str(len(tel) if isinstance(tel, list) else 0), "detail": "Einträge"},
         {"label": "Fahrzeugwaesche", "value": str(len(wash) if isinstance(wash, list) else 0), "detail": "Datensaetze"},
+        {"label": "Tanken", "value": str(len(tank) if isinstance(tank, list) else 0), "detail": f"{sum(float(r.get('menge_liter', 0) or 0) for r in tank):,.0f} Liter" if isinstance(tank, list) else "0 Liter"},
         {"label": "Schichten / Tachograph", "value": str(shift_count), "detail": f"{len(timerec) if isinstance(timerec, dict) else 0} Fahrer"},
         {"label": "Verstöße", "value": str(violations.get("total_violations", 0) if isinstance(violations, dict) else 0), "detail": f"{len(violations.get('drivers', [])) if isinstance(violations, dict) else 0} Fahrer"},
         {"label": "Spesen", "value": str(expenses.get("total_rows", 0) if isinstance(expenses, dict) else 0), "detail": f"{len(expenses.get('drivers', [])) if isinstance(expenses, dict) else 0} Fahrer"},
@@ -11886,7 +12294,7 @@ def _estimate_export_size(ready_instances: list) -> int:
     extra_chars = 0
     for key in (
         "tel_json", "sam_json", "fa_json", "zulage_json",
-        "drittkunden_json", "fahrzeugwaesche_json", "verstoss_json",
+        "drittkunden_json", "fahrzeugwaesche_json", "tanken_json", "verstoss_json",
         "spesen_json", "grosskunden_json", "timerec_json",
         "spediteure_json", "fahrerbewertung_json",
     ):
@@ -11968,7 +12376,7 @@ def _build_export_preflight(ready_instances: list) -> tuple[list[dict], list[str
     )
 
     optional_keys = (
-        "tel_json", "zulage_json", "drittkunden_json", "fahrzeugwaesche_json",
+        "tel_json", "zulage_json", "drittkunden_json", "fahrzeugwaesche_json", "tanken_json",
         "verstoss_json", "spesen_json", "grosskunden_json", "timerec_json",
         "spediteure_json", "fahrerbewertung_json",
     )
@@ -12503,6 +12911,22 @@ with tab_extra:
             summary_fn=_fw_summary,
         )
 
+        def _tank_summary(ups):
+            rows = json.loads(st.session_state.get("tanken_json", "[]") or "[]")
+            liters = sum(float(r.get("menge_liter", 0) or 0) for r in rows)
+            vehicles = len({str(r.get("fahrzeug", "") or "").strip() for r in rows if str(r.get("fahrzeug", "") or "").strip()})
+            drivers = len({str(r.get("fahrer", "") or "").strip() for r in rows if str(r.get("fahrer", "") or "").strip()})
+            years = sorted({int(r.get("jahr", 0) or 0) for r in rows if int(r.get("jahr", 0) or 0)})
+            year_text = ", ".join(str(y) for y in years) if years else "kein Jahr"
+            return (f"{len(rows)} Tankvorgaenge, {liters:,.2f} Liter, {vehicles} LKW, "
+                    f"{drivers} Fahrer, {year_text}").replace(",", "X").replace(".", ",").replace("X", ".")
+        _extra_multi_upload(
+            "Tanken (Excel-Monatsdateien)", ["xlsx"], "tanken",
+            {"tanken_json": parse_tanken_excel},
+            summary_fn=_tank_summary,
+            spinner_text="Verarbeite Tank-Monatsdateien ...",
+        )
+
     with col_r:
         def _spesen_summary(j):
             sp     = json.loads(j or "{}")
@@ -12668,6 +13092,7 @@ with tab_dl:
                         drittkunden_json=drittkunden_json_state,
                         zulage_xlsx_drittkunden=zulage_xlsx_drittkunden,
                         fahrzeugwaesche_json=st.session_state.get("fahrzeugwaesche_json", "[]"),
+                        tanken_json=st.session_state.get("tanken_json", "[]"),
                         verstoss_json=st.session_state.get("verstoss_json", '{"drivers":[],"total_violations":0}'),
                         spesen_json=st.session_state.get("spesen_json", '{"drivers":[],"months":[],"total_cost":0,"total_rows":0}'),
                         grosskunden_json=st.session_state.get("grosskunden_json", "[]"),
