@@ -65,12 +65,12 @@ class _LazyPandas:
 pd = _LazyPandas()
 _boot_log("03 Standardimporte bereit; pandas wird verzögert geladen")
 
-st.set_page_config(page_title="NFC Generator v43", layout="wide")
+st.set_page_config(page_title="NFC Generator v44", layout="wide")
 _boot_log("04 Seitenkonfiguration gesetzt")
 
-APP_CACHE_VERSION = "waschen-tanken-dashboard-2026-07-21-v43"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-21-v43-tanken-upload"
-APP_DISPLAY_VERSION = "43"
+APP_CACHE_VERSION = "waschen-tanken-dashboard-2026-07-21-v44-fahrergraph"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-21-v44-tanken-fahrergraph"
+APP_DISPLAY_VERSION = "44"
 APP_DISPLAY_NAME = "NFC Generator"
 
 
@@ -4944,6 +4944,7 @@ def _tank_panels_html() -> str:
   .tank-chart-title{font-size:12.5px;font-weight:950;color:#1f2937;margin-bottom:3px}
   .tank-chart-sub{font-size:10.5px;color:#64748b;font-weight:650;margin-bottom:12px}
   .tank-canvas-wrap{position:relative;height:285px}
+  .tank-canvas-wrap.tank-driver-chart{height:420px}
   @media(max-width:1100px){.tank-kpis{grid-template-columns:repeat(3,minmax(120px,1fr))}.tank-graph-grid{grid-template-columns:1fr}.tank-chart-card.wide{grid-column:auto}}
   @media(max-width:650px){.tank-kpis{grid-template-columns:repeat(2,minmax(110px,1fr))}.tank-search{min-width:100%;max-width:none}.tank-select{flex:1}.tank-head{padding:14px}.tank-controls{padding:11px}.tank-graph-grid{padding:0 10px 18px}}
 </style>
@@ -4980,7 +4981,7 @@ def _tank_panels_html() -> str:
   <div class="tank-shell">
     <div class="tank-head" style="margin:0 18px 14px;border:1px solid #d8dee7;border-radius:13px;box-shadow:0 3px 12px rgba(15,23,42,.05)">
       <div class="tank-icon">&#128202;</div>
-      <div style="min-width:0;flex:1"><div class="tank-title">Tanken &ndash; Graph</div><div class="tank-sub">Monatsentwicklung, Verbrauch und meistbetankte Fahrzeuge</div></div>
+      <div style="min-width:0;flex:1"><div class="tank-title">Tanken &ndash; Graph</div><div class="tank-sub">Monatsentwicklung, Verbrauch sowie Auswertung nach Fahrzeugen und Fahrern</div></div>
       <select id="tank-graph-year" class="tank-select" onchange="tankRenderGraph()"></select>
       <span id="tank-graph-stats" class="tank-badge"></span>
     </div>
@@ -4989,6 +4990,7 @@ def _tank_panels_html() -> str:
       <div class="tank-chart-card wide"><div class="tank-chart-title">Getankte Liter pro Monat</div><div class="tank-chart-sub">Gesamtmenge aller Tankvorgänge des ausgewählten Jahres</div><div class="tank-canvas-wrap"><canvas id="tank-chart-liters"></canvas></div></div>
       <div class="tank-chart-card"><div class="tank-chart-title">Ø Verbrauch pro Monat</div><div class="tank-chart-sub">Liter je 100 km aus plausiblen Streckenangaben</div><div class="tank-canvas-wrap"><canvas id="tank-chart-consumption"></canvas></div></div>
       <div class="tank-chart-card"><div class="tank-chart-title">Top 12 LKW nach Litermenge</div><div class="tank-chart-sub">Fahrzeuge mit der höchsten getankten Gesamtmenge</div><div class="tank-canvas-wrap"><canvas id="tank-chart-vehicles"></canvas></div></div>
+      <div class="tank-chart-card wide"><div class="tank-chart-title">Getankte Liter nach Fahrer</div><div class="tank-chart-sub">Alle Fahrer des ausgewählten Jahres, absteigend nach getankter Gesamtmenge</div><div class="tank-canvas-wrap tank-driver-chart" id="tank-driver-chart-wrap"><canvas id="tank-chart-drivers"></canvas></div></div>
     </div>
   </div>
 </div>
@@ -5014,7 +5016,7 @@ window.buildVzDdMenu = function(){
 };
 
 // ── Tankdaten: Hilfsfunktionen ───────────────────────────────────────────────
-var tankCharts = {liters:null, consumption:null, vehicles:null};
+var tankCharts = {liters:null, consumption:null, vehicles:null, drivers:null};
 var TANK_MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 function tankEsc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function tankN(v){var n=Number(v);return Number.isFinite(n)?n:0;}
@@ -5078,15 +5080,17 @@ function tankRenderGraph(){
   tankSetOptions();
   var year=Number((document.getElementById('tank-graph-year')||{}).value)||0, rows=(TANK_DATA||[]).filter(function(r){return !year||Number(r.jahr)===year;});
   var empty=document.getElementById('tank-graph-empty'), grid=document.getElementById('tank-graph-grid');if(empty)empty.style.display=rows.length?'none':'block';if(grid)grid.style.display=rows.length?'grid':'none';
-  ['liters','consumption','vehicles'].forEach(tankDestroyChart);if(!rows.length)return;
+  ['liters','consumption','vehicles','drivers'].forEach(tankDestroyChart);if(!rows.length)return;
   var months=Array.from({length:12},function(){return [];});rows.forEach(function(r){var m=Number(r.monat)||0;if(m>=1&&m<=12)months[m-1].push(r);});
-  var liters=months.map(function(x){return x.reduce(function(s,r){return s+tankN(r.menge_liter);},0);}), consumptions=months.map(tankConsumption), ag=tankAggregate(rows,'fahrzeug').slice(0,12);
+  var liters=months.map(function(x){return x.reduce(function(s,r){return s+tankN(r.menge_liter);},0);}), consumptions=months.map(tankConsumption), ag=tankAggregate(rows,'fahrzeug').slice(0,12), driverAg=tankAggregate(rows,'fahrer').filter(function(a){return a.name!=='Ohne Angabe';});
   var stats=document.getElementById('tank-graph-stats');if(stats)stats.textContent=tankFmt(rows.length,0)+' Tankvorgänge · '+tankFmt(liters.reduce(function(a,b){return a+b;},0),2)+' Liter';
   var common={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{grid:{display:false},ticks:{font:{size:10,weight:'bold'}}},y:{beginAtZero:true,ticks:{font:{size:10}}}}};
   var c1=document.getElementById('tank-chart-liters');if(c1)tankCharts.liters=new Chart(c1,{type:'bar',data:{labels:TANK_MONTHS,datasets:[{label:'Liter',data:liters,borderWidth:1,borderRadius:5}]},options:common});
   var c2=document.getElementById('tank-chart-consumption');if(c2)tankCharts.consumption=new Chart(c2,{type:'line',data:{labels:TANK_MONTHS,datasets:[{label:'l/100 km',data:consumptions,tension:.28,spanGaps:true,pointRadius:4,borderWidth:2,fill:false}]},options:common});
   var vOptions={responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{font:{size:10}}},y:{grid:{display:false},ticks:{font:{size:10,weight:'bold'}}}}};
   var c3=document.getElementById('tank-chart-vehicles');if(c3)tankCharts.vehicles=new Chart(c3,{type:'bar',data:{labels:ag.map(function(a){return a.name;}),datasets:[{label:'Liter',data:ag.map(function(a){return a.liters;}),borderWidth:1,borderRadius:4}]},options:vOptions});
+  var driverWrap=document.getElementById('tank-driver-chart-wrap');if(driverWrap)driverWrap.style.height=Math.max(420,driverAg.length*26+70)+'px';
+  var c4=document.getElementById('tank-chart-drivers');if(c4)tankCharts.drivers=new Chart(c4,{type:'bar',data:{labels:driverAg.map(function(a){return a.name;}),datasets:[{label:'Liter',data:driverAg.map(function(a){return a.liters;}),borderWidth:1,borderRadius:4}]},options:vOptions});
 }
 window.tankInitGraph=function(){tankSetOptions();tankRenderGraph();};
 """
