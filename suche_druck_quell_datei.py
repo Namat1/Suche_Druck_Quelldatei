@@ -65,12 +65,12 @@ class _LazyPandas:
 pd = _LazyPandas()
 _boot_log("03 Standardimporte bereit; pandas wird verzögert geladen")
 
-st.set_page_config(page_title="NFC Generator v39", layout="wide")
+st.set_page_config(page_title="NFC Generator v42", layout="wide")
 _boot_log("04 Seitenkonfiguration gesetzt")
 
-APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-21-v41-samstag-doppelfilter-fix"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-21-v41-samstag-doppelfilter-fix"
-APP_DISPLAY_VERSION = "41"
+APP_CACHE_VERSION = "fahrerbewertung-dashboard-2026-07-21-v42-timerecording-beide-formate"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-21-v42-timerecording-beide-formate"
+APP_DISPLAY_VERSION = "42"
 APP_DISPLAY_NAME = "NFC Generator"
 
 
@@ -4102,6 +4102,10 @@ def parse_timerecording_csv(uploaded_file) -> str:
     """Liest die Tachograph-Schicht-Datei (CSV oder XLSX) und liefert JSON
     pro Fahrer.
 
+    Unterstützt sowohl das neue YellowFox-Format mit getrennten Spalten
+    ``Datum``/``Beginn``/``Ende`` als auch das ältere Format mit kombinierten
+    Spalten ``Schichtbeginn``/``Schichtende``.
+
     YellowFox/timerecording_v3 ist eine Tagesaggregation. Deshalb können in
     ``Beginn`` und ``Ende`` mehrere Uhrzeiten stehen. Außerdem erzeugt YellowFox
     bei nicht mehr ausgelesenen Fahrerkarten technische Platzhalter wie
@@ -4179,7 +4183,11 @@ def parse_timerecording_csv(uploaded_file) -> str:
     idx_card   = col(["fahrerschlüssel", "fahrerschluessel", "driver card", "kartennummer"])
     idx_ma     = col(["ma-nummer", "ma nummer", "personalnummer", "mitarbeiternummer"])
 
-    if idx_person < 0 or idx_date < 0 or idx_beg < 0:
+    # YellowFox liefert zwei unterschiedliche Exportvarianten:
+    # 1) separate Spalten ``Datum`` + ``Beginn`` + ``Ende``
+    # 2) kombinierte Spalten ``Schichtbeginn`` + ``Schichtende`` mit Datum/Uhrzeit
+    # Eine separate Datumsspalte darf deshalb NICHT zwingend vorausgesetzt werden.
+    if idx_person < 0 or idx_beg < 0:
         return "{}"
 
     WD = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
