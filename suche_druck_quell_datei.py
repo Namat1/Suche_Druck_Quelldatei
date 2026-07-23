@@ -65,12 +65,12 @@ class _LazyPandas:
 pd = _LazyPandas()
 _boot_log("03 Standardimporte bereit; pandas wird verzögert geladen")
 
-st.set_page_config(page_title="NFC Generator v44", layout="wide")
+st.set_page_config(page_title="NFC Generator v45", layout="wide")
 _boot_log("04 Seitenkonfiguration gesetzt")
 
-APP_CACHE_VERSION = "waschen-tanken-dashboard-2026-07-21-v44-fahrergraph"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-21-v44-tanken-fahrergraph"
-APP_DISPLAY_VERSION = "44"
+APP_CACHE_VERSION = "waschen-tanken-dashboard-2026-07-23-v45-tankauswertung-export"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-23-v45-tankauswertung-export"
+APP_DISPLAY_VERSION = "45"
 APP_DISPLAY_NAME = "NFC Generator"
 
 
@@ -4904,7 +4904,7 @@ def _build_embedded_data_js(
 
 
 def _tank_panels_html() -> str:
-    """HTML-Panels für Tankübersicht und Tankgraph."""
+    """HTML-Panels für Tankübersicht und die erweiterte Tankauswertung."""
     return r"""
 <style>
   #ddmenu-vz .dd-group-title{padding:7px 12px 5px;background:#eef3f8;color:#64748b;font-size:9px;font-weight:950;text-transform:uppercase;letter-spacing:.65px;border-bottom:1px solid #dce4ed}
@@ -4919,9 +4919,12 @@ def _tank_panels_html() -> str:
   .tank-sub{font-size:11.5px;font-weight:650;color:var(--muted);margin-top:2px}
   .tank-controls{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:13px 18px;background:#fbfcfe;border-bottom:1px solid #edf1f5}
   .tank-select,.tank-search{padding:9px 11px;border:1.5px solid #cfd8e3;border-radius:8px;background:#fff;color:#26374a;font:700 12px 'Segoe UI',Arial,sans-serif;outline:none;min-width:145px}
-  .tank-search{min-width:260px;flex:1;max-width:430px}
+  .tank-search{min-width:240px;flex:1;max-width:430px}
   .tank-select:focus,.tank-search:focus{border-color:#b7791f;box-shadow:0 0 0 3px rgba(183,121,31,.12)}
+  .tank-export-btn{padding:9px 14px;border:1.5px solid #15803d;border-radius:8px;background:linear-gradient(180deg,#22c55e 0%,#15803d 100%);color:#fff;font:900 12px 'Segoe UI',Arial,sans-serif;cursor:pointer;box-shadow:0 3px 8px rgba(21,128,61,.2);white-space:nowrap}
+  .tank-export-btn:hover{filter:brightness(1.04)}
   .tank-kpis{display:grid;grid-template-columns:repeat(6,minmax(125px,1fr));gap:10px;padding:15px 18px;background:#f6f8fb}
+  .tank-graph-kpis{margin:0 18px 14px;border:1px solid #d8dee7;border-radius:13px;box-shadow:0 3px 12px rgba(15,23,42,.05)}
   .tank-kpi{background:#fff;border:1px solid #e1e7ef;border-radius:11px;padding:12px 13px;min-width:0}
   .tank-kpi-label{font-size:9px;font-weight:950;color:#718096;text-transform:uppercase;letter-spacing:.55px}
   .tank-kpi-value{font-size:19px;font-weight:950;color:#172033;margin-top:4px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -4945,8 +4948,9 @@ def _tank_panels_html() -> str:
   .tank-chart-sub{font-size:10.5px;color:#64748b;font-weight:650;margin-bottom:12px}
   .tank-canvas-wrap{position:relative;height:285px}
   .tank-canvas-wrap.tank-driver-chart{height:420px}
+  @media(max-width:1250px){.tank-graph-kpis{grid-template-columns:repeat(3,minmax(120px,1fr))}}
   @media(max-width:1100px){.tank-kpis{grid-template-columns:repeat(3,minmax(120px,1fr))}.tank-graph-grid{grid-template-columns:1fr}.tank-chart-card.wide{grid-column:auto}}
-  @media(max-width:650px){.tank-kpis{grid-template-columns:repeat(2,minmax(110px,1fr))}.tank-search{min-width:100%;max-width:none}.tank-select{flex:1}.tank-head{padding:14px}.tank-controls{padding:11px}.tank-graph-grid{padding:0 10px 18px}}
+  @media(max-width:650px){.tank-kpis{grid-template-columns:repeat(2,minmax(110px,1fr))}.tank-search{min-width:100%;max-width:none}.tank-select{flex:1}.tank-head{padding:14px}.tank-controls{padding:11px}.tank-graph-grid{padding:0 10px 18px}.tank-graph-kpis{margin:0 10px 12px}}
 </style>
 
 <div id="panel-tank" style="display:none;flex:1;overflow-y:auto;padding:18px 18px 30px;background:linear-gradient(180deg,#f5f7fa 0%,#edf1f5 100%);font-family:'Segoe UI',Arial,sans-serif">
@@ -4979,26 +4983,38 @@ def _tank_panels_html() -> str:
 
 <div id="panel-tank-graph" style="display:none;flex:1;overflow-y:auto;padding:18px 0 30px;background:linear-gradient(180deg,#f5f7fa 0%,#edf1f5 100%);font-family:'Segoe UI',Arial,sans-serif">
   <div class="tank-shell">
-    <div class="tank-head" style="margin:0 18px 14px;border:1px solid #d8dee7;border-radius:13px;box-shadow:0 3px 12px rgba(15,23,42,.05)">
+    <div class="tank-head" style="margin:0 18px 12px;border:1px solid #d8dee7;border-radius:13px;box-shadow:0 3px 12px rgba(15,23,42,.05)">
       <div class="tank-icon">&#128202;</div>
-      <div style="min-width:0;flex:1"><div class="tank-title">Tanken &ndash; Graph</div><div class="tank-sub">Monatsentwicklung, Verbrauch sowie Auswertung nach Fahrzeugen und Fahrern</div></div>
-      <select id="tank-graph-year" class="tank-select" onchange="tankRenderGraph()"></select>
+      <div style="min-width:220px;flex:1"><div class="tank-title">Tanken &ndash; Graph &amp; Auswertung</div><div class="tank-sub">Monatsentwicklung, Verbrauch, Datenqualität sowie Auswertung nach Fahrzeugen, Fahrern und Produkten</div></div>
+      <select id="tank-graph-year" class="tank-select" onchange="tankRenderGraph()" title="Jahr"></select>
+      <select id="tank-graph-product" class="tank-select" onchange="tankRenderGraph()" title="Produkt"></select>
+      <select id="tank-graph-from" class="tank-select" onchange="tankRenderGraph()" title="Von Monat"></select>
+      <select id="tank-graph-to" class="tank-select" onchange="tankRenderGraph()" title="Bis Monat"></select>
+      <input id="tank-graph-search" class="tank-search" type="search" placeholder="LKW, Fahrer, Firma oder Zapfsäule …" oninput="tankRenderGraph()">
+      <button class="tank-export-btn" type="button" onclick="tankExportExcel()" title="Aktuelle Tankauswertung als Excel-Datei exportieren">&#128190; Excel-Export</button>
       <span id="tank-graph-stats" class="tank-badge"></span>
     </div>
-    <div id="tank-graph-empty" class="tank-empty" style="display:none">Keine Tankdaten vorhanden &ndash; bitte die Monatsdateien in Streamlit hochladen.</div>
+    <div id="tank-graph-kpis" class="tank-kpis tank-graph-kpis"></div>
+    <div id="tank-graph-empty" class="tank-empty" style="display:none">Keine Tankdaten für die gewählte Auswahl vorhanden.</div>
     <div id="tank-graph-grid" class="tank-graph-grid">
-      <div class="tank-chart-card wide"><div class="tank-chart-title">Getankte Liter pro Monat</div><div class="tank-chart-sub">Gesamtmenge aller Tankvorgänge des ausgewählten Jahres</div><div class="tank-canvas-wrap"><canvas id="tank-chart-liters"></canvas></div></div>
+      <div class="tank-chart-card wide"><div class="tank-chart-title">Getankte Liter pro Monat</div><div class="tank-chart-sub">Gesamtmenge im gewählten Zeitraum</div><div class="tank-canvas-wrap"><canvas id="tank-chart-liters"></canvas></div></div>
       <div class="tank-chart-card"><div class="tank-chart-title">Ø Verbrauch pro Monat</div><div class="tank-chart-sub">Liter je 100 km aus plausiblen Streckenangaben</div><div class="tank-canvas-wrap"><canvas id="tank-chart-consumption"></canvas></div></div>
+      <div class="tank-chart-card"><div class="tank-chart-title">Plausible Strecke pro Monat</div><div class="tank-chart-sub">Summierte Kilometer aus Tankvorgängen mit 10 bis 5.000 km</div><div class="tank-canvas-wrap"><canvas id="tank-chart-distance"></canvas></div></div>
+      <div class="tank-chart-card"><div class="tank-chart-title">Tankvorgänge pro Monat</div><div class="tank-chart-sub">Anzahl der erfassten Betankungen</div><div class="tank-canvas-wrap"><canvas id="tank-chart-count"></canvas></div></div>
+      <div class="tank-chart-card"><div class="tank-chart-title">Ø Liter je Tankvorgang</div><div class="tank-chart-sub">Durchschnittliche Tankmenge pro Betankung</div><div class="tank-canvas-wrap"><canvas id="tank-chart-average"></canvas></div></div>
+      <div class="tank-chart-card"><div class="tank-chart-title">Produktverteilung</div><div class="tank-chart-sub">Anteil der getankten Liter nach Produkt</div><div class="tank-canvas-wrap"><canvas id="tank-chart-products"></canvas></div></div>
       <div class="tank-chart-card"><div class="tank-chart-title">Top 12 LKW nach Litermenge</div><div class="tank-chart-sub">Fahrzeuge mit der höchsten getankten Gesamtmenge</div><div class="tank-canvas-wrap"><canvas id="tank-chart-vehicles"></canvas></div></div>
-      <div class="tank-chart-card wide"><div class="tank-chart-title">Getankte Liter nach Fahrer</div><div class="tank-chart-sub">Alle Fahrer des ausgewählten Jahres, absteigend nach getankter Gesamtmenge</div><div class="tank-canvas-wrap tank-driver-chart" id="tank-driver-chart-wrap"><canvas id="tank-chart-drivers"></canvas></div></div>
+      <div class="tank-chart-card"><div class="tank-chart-title">Top 12 LKW nach Ø Verbrauch</div><div class="tank-chart-sub">Nur Fahrzeuge mit mindestens 200 plausiblen Kilometern</div><div class="tank-canvas-wrap"><canvas id="tank-chart-vehicle-consumption"></canvas></div></div>
+      <div class="tank-chart-card wide"><div class="tank-chart-title">Getankte Liter nach Fahrer</div><div class="tank-chart-sub">Alle Fahrer der aktuellen Auswahl, absteigend nach getankter Gesamtmenge</div><div class="tank-canvas-wrap tank-driver-chart" id="tank-driver-chart-wrap"><canvas id="tank-chart-drivers"></canvas></div></div>
     </div>
   </div>
 </div>
 """
 
 
+
 def _tank_dashboard_js() -> str:
-    """Browserlogik für Tankübersicht, Tanktabellen und Chart.js-Graphen."""
+    """Browserlogik für Tankübersicht, erweiterte Graphen und Excel-Export."""
     return r"""
 // ── Waschen & Tanken: gruppiertes Dropdown ──────────────────────────────────
 window.ddSelectWashTank = function(area){
@@ -5012,11 +5028,11 @@ window.buildVzDdMenu = function(){
     return "<div class='dd-item dd-subitem" + (currentArea===area?' active':'') + "' data-area='"+area+"' onclick='ddSelectWashTank(this.dataset.area)'>"+label+"</div>";
   };
   menu.innerHTML = "<div class='dd-group-title'>Fahrzeugwäsche</div>" + item('vz','Übersicht') + item('vz_graph','Graph') +
-                   "<div class='dd-group-title'>Tanken</div>" + item('tank','Übersicht') + item('tank_graph','Graph');
+                   "<div class='dd-group-title'>Tanken</div>" + item('tank','Übersicht') + item('tank_graph','Graph & Auswertung');
 };
 
 // ── Tankdaten: Hilfsfunktionen ───────────────────────────────────────────────
-var tankCharts = {liters:null, consumption:null, vehicles:null, drivers:null};
+var tankCharts = {liters:null, consumption:null, distance:null, count:null, average:null, products:null, vehicles:null, vehicleConsumption:null, drivers:null};
 var TANK_MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 function tankEsc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function tankN(v){var n=Number(v);return Number.isFinite(n)?n:0;}
@@ -5025,6 +5041,7 @@ function tankDateLabel(iso){if(!iso)return '';var p=String(iso).slice(0,10).spli
 function tankValidDistance(r){var km=tankN(r.km);return km>=10 && km<=5000;}
 function tankConsumption(rows){var liters=0,km=0;(rows||[]).forEach(function(r){if(tankValidDistance(r)){liters+=tankN(r.menge_liter);km+=tankN(r.km);}});return km>0?(liters/km*100):0;}
 function tankYears(){return Array.from(new Set((TANK_DATA||[]).map(function(r){return Number(r.jahr)||0;}).filter(Boolean))).sort(function(a,b){return b-a;});}
+function tankProducts(){return Array.from(new Set((TANK_DATA||[]).map(function(r){return String(r.produkt||'Ohne Angabe').trim()||'Ohne Angabe';}))).sort(function(a,b){return a.localeCompare(b,'de');});}
 function tankFiltered(){
   var y=Number((document.getElementById('tank-year')||{}).value)||0;
   var m=Number((document.getElementById('tank-month')||{}).value)||0;
@@ -5032,7 +5049,7 @@ function tankFiltered(){
   return (TANK_DATA||[]).filter(function(r){
     if(y && Number(r.jahr)!==y) return false;
     if(m && Number(r.monat)!==m) return false;
-    if(q){var hay=[r.fahrer,r.fahrzeug,r.fahrzeug_ia,r.produkt,r.zapfsaeule].join(' ').toLocaleLowerCase('de-DE');if(hay.indexOf(q)<0)return false;}
+    if(q){var hay=[r.fahrer,r.fahrzeug,r.fahrzeug_ia,r.produkt,r.zapfsaeule,r.firma].join(' ').toLocaleLowerCase('de-DE');if(hay.indexOf(q)<0)return false;}
     return true;
   });
 }
@@ -5041,6 +5058,14 @@ function tankSetOptions(){
   if(y && !y.options.length){y.innerHTML=years.map(function(v){return '<option value="'+v+'">Jahr '+v+'</option>';}).join('')+'<option value="0">Alle Jahre</option>';}
   if(gy && !gy.options.length){gy.innerHTML=years.map(function(v){return '<option value="'+v+'">Jahr '+v+'</option>';}).join('');}
   if(m && !m.options.length){m.innerHTML='<option value="0">Ganzes Jahr</option>'+TANK_MONTHS.map(function(v,i){return '<option value="'+(i+1)+'">'+v+'</option>';}).join('');}
+  var gp=document.getElementById('tank-graph-product');
+  if(gp){
+    var products=tankProducts(), signature=products.join('|'), previous=gp.value||'';
+    if(gp.dataset.signature!==signature){gp.innerHTML='<option value="">Alle Produkte</option>'+products.map(function(v){return '<option value="'+tankEsc(v)+'">'+tankEsc(v)+'</option>';}).join('');gp.dataset.signature=signature;if(products.indexOf(previous)>=0)gp.value=previous;}
+  }
+  var gf=document.getElementById('tank-graph-from'), gt=document.getElementById('tank-graph-to');
+  if(gf && !gf.options.length){gf.innerHTML=TANK_MONTHS.map(function(v,i){return '<option value="'+(i+1)+'">Von '+v+'</option>';}).join('');gf.value='1';}
+  if(gt && !gt.options.length){gt.innerHTML=TANK_MONTHS.map(function(v,i){return '<option value="'+(i+1)+'">Bis '+v+'</option>';}).join('');gt.value='12';}
   if(years.length){if(y && !y.value)y.value=String(years[0]);if(gy && !gy.value)gy.value=String(years[0]);}
   var range=document.getElementById('tank-data-range');
   if(range){var dates=(TANK_DATA||[]).map(function(r){return r.date_iso||'';}).filter(Boolean).sort();range.textContent=dates.length?tankDateLabel(dates[0])+' – '+tankDateLabel(dates[dates.length-1]):'Keine Daten';}
@@ -5050,10 +5075,23 @@ function tankAggregate(rows,key){
   var map={};
   (rows||[]).forEach(function(r){
     var name=String(r[key]||'Ohne Angabe').trim()||'Ohne Angabe';
-    if(!map[name])map[name]={name:name,count:0,liters:0,km:0,validKm:0,validLiters:0,last:'',drivers:new Set(),vehicles:new Set()};
-    var a=map[name];a.count++;a.liters+=tankN(r.menge_liter);a.km+=tankN(r.km);if(tankValidDistance(r)){a.validLiters+=tankN(r.menge_liter);a.validKm+=tankN(r.km);}if((r.date_iso||'')>a.last)a.last=r.date_iso||'';if(r.fahrer)a.drivers.add(r.fahrer);if(r.fahrzeug)a.vehicles.add(r.fahrzeug);
+    if(!map[name])map[name]={name:name,count:0,liters:0,km:0,validKm:0,validLiters:0,validCount:0,last:'',first:'',drivers:new Set(),vehicles:new Set()};
+    var a=map[name];a.count++;a.liters+=tankN(r.menge_liter);a.km+=tankN(r.km);
+    if(tankValidDistance(r)){a.validCount++;a.validLiters+=tankN(r.menge_liter);a.validKm+=tankN(r.km);}
+    if((r.date_iso||'')>a.last)a.last=r.date_iso||'';
+    if(!a.first || (r.date_iso||'')<a.first)a.first=r.date_iso||'';
+    if(r.fahrer)a.drivers.add(r.fahrer);if(r.fahrzeug)a.vehicles.add(r.fahrzeug);
   });
-  return Object.values(map).map(function(a){a.consumption=a.validKm>0?(a.validLiters/a.validKm*100):0;a.avg=a.count?a.liters/a.count:0;return a;}).sort(function(a,b){return b.liters-a.liters;});
+  return Object.values(map).map(function(a){a.consumption=a.validKm>0?(a.validLiters/a.validKm*100):0;a.avg=a.count?a.liters/a.count:0;a.validShare=a.count?(a.validCount/a.count*100):0;return a;}).sort(function(a,b){return b.liters-a.liters;});
+}
+function tankMonthly(rows){
+  var months=Array.from({length:12},function(_,i){return {month:i+1,label:TANK_MONTHS[i],rows:[]};});
+  (rows||[]).forEach(function(r){var m=Number(r.monat)||0;if(m>=1&&m<=12)months[m-1].rows.push(r);});
+  return months.map(function(m){
+    var liters=m.rows.reduce(function(s,r){return s+tankN(r.menge_liter);},0);
+    var km=m.rows.reduce(function(s,r){return s+(tankValidDistance(r)?tankN(r.km):0);},0);
+    return {month:m.month,label:m.label,count:m.rows.length,liters:liters,km:km,consumption:tankConsumption(m.rows),average:m.rows.length?liters/m.rows.length:0,vehicles:new Set(m.rows.map(function(r){return r.fahrzeug;}).filter(Boolean)).size,drivers:new Set(m.rows.map(function(r){return r.fahrer;}).filter(Boolean)).size};
+  });
 }
 function tankRenderOverview(){
   tankSetOptions();
@@ -5068,7 +5106,7 @@ function tankRenderOverview(){
   var target=document.getElementById('tank-summary-table');
   if(target){
     if(!ag.length)target.innerHTML='<div class="tank-empty">Keine Tankdaten für die gewählte Auswahl.</div>';
-    else target.innerHTML='<table class="tank-table"><thead><tr><th>'+(labels[group]||'Gruppe')+'</th><th class="tank-num">Tankvorgänge</th><th class="tank-num">Liter</th><th class="tank-num">km</th><th class="tank-num">Ø l/100 km</th><th class="tank-num">Ø Liter/Tankung</th><th>Letzte Tankung</th><th class="tank-num">Fahrer</th><th class="tank-num">LKW</th></tr></thead><tbody>'+ag.map(function(a){return '<tr><td><b>'+tankEsc(a.name)+'</b></td><td class="tank-num">'+tankFmt(a.count,0)+'</td><td class="tank-num">'+tankFmt(a.liters,2)+'</td><td class="tank-num">'+tankFmt(a.km,0)+'</td><td class="tank-num">'+(a.consumption?tankFmt(a.consumption,2):'–')+'</td><td class="tank-num">'+tankFmt(a.avg,2)+'</td><td>'+tankDateLabel(a.last)+'</td><td class="tank-num">'+a.drivers.size+'</td><td class="tank-num">'+a.vehicles.size+'</td></tr>';}).join('')+'</tbody></table>';
+    else target.innerHTML='<table class="tank-table"><thead><tr><th>'+(labels[group]||'Gruppe')+'</th><th class="tank-num">Tankvorgänge</th><th class="tank-num">Liter</th><th class="tank-num">plausible km</th><th class="tank-num">Ø l/100 km</th><th class="tank-num">Ø Liter/Tankung</th><th>Letzte Tankung</th><th class="tank-num">Fahrer</th><th class="tank-num">LKW</th></tr></thead><tbody>'+ag.map(function(a){return '<tr><td><b>'+tankEsc(a.name)+'</b></td><td class="tank-num">'+tankFmt(a.count,0)+'</td><td class="tank-num">'+tankFmt(a.liters,2)+'</td><td class="tank-num">'+tankFmt(a.validKm,0)+'</td><td class="tank-num">'+(a.consumption?tankFmt(a.consumption,2):'–')+'</td><td class="tank-num">'+tankFmt(a.avg,2)+'</td><td>'+tankDateLabel(a.last)+'</td><td class="tank-num">'+a.drivers.size+'</td><td class="tank-num">'+a.vehicles.size+'</td></tr>';}).join('')+'</tbody></table>';
   }
   var detail=document.getElementById('tank-detail-table'), sorted=rows.slice().sort(function(a,b){return String(b.datetime_iso||'').localeCompare(String(a.datetime_iso||''));}), shown=sorted.slice(0,500);
   var dm=document.getElementById('tank-detail-meta');if(dm)dm.textContent=sorted.length>500?'500 von '+sorted.length+' Einträgen':sorted.length+' Einträge';
@@ -5076,24 +5114,127 @@ function tankRenderOverview(){
 }
 window.tankInitOverview=function(){tankSetOptions();tankRenderOverview();};
 function tankDestroyChart(key){if(tankCharts[key]){tankCharts[key].destroy();tankCharts[key]=null;}}
+function tankGraphRows(){
+  var year=Number((document.getElementById('tank-graph-year')||{}).value)||0;
+  var product=String((document.getElementById('tank-graph-product')||{}).value||'');
+  var from=Number((document.getElementById('tank-graph-from')||{}).value)||1;
+  var to=Number((document.getElementById('tank-graph-to')||{}).value)||12;
+  if(from>to){var tmp=from;from=to;to=tmp;}
+  var q=String((document.getElementById('tank-graph-search')||{}).value||'').trim().toLocaleLowerCase('de-DE');
+  return (TANK_DATA||[]).filter(function(r){
+    var month=Number(r.monat)||0;
+    if(year && Number(r.jahr)!==year)return false;
+    if(month<from || month>to)return false;
+    if(product && String(r.produkt||'Ohne Angabe').trim()!==product)return false;
+    if(q){var hay=[r.fahrer,r.fahrzeug,r.fahrzeug_ia,r.produkt,r.zapfsaeule,r.firma].join(' ').toLocaleLowerCase('de-DE');if(hay.indexOf(q)<0)return false;}
+    return true;
+  });
+}
+function tankGraphFilterLabel(){
+  var year=String((document.getElementById('tank-graph-year')||{}).value||'');
+  var product=String((document.getElementById('tank-graph-product')||{}).value||'Alle Produkte');
+  var from=Math.max(1,Number((document.getElementById('tank-graph-from')||{}).value)||1);
+  var to=Math.min(12,Number((document.getElementById('tank-graph-to')||{}).value)||12);
+  if(from>to){var tmp=from;from=to;to=tmp;}
+  return {year:year,product:product||'Alle Produkte',from:from,to:to,months:TANK_MONTHS[from-1]+' bis '+TANK_MONTHS[to-1],search:String((document.getElementById('tank-graph-search')||{}).value||'').trim()};
+}
 function tankRenderGraph(){
   tankSetOptions();
-  var year=Number((document.getElementById('tank-graph-year')||{}).value)||0, rows=(TANK_DATA||[]).filter(function(r){return !year||Number(r.jahr)===year;});
+  var rows=tankGraphRows(), filter=tankGraphFilterLabel();
   var empty=document.getElementById('tank-graph-empty'), grid=document.getElementById('tank-graph-grid');if(empty)empty.style.display=rows.length?'none':'block';if(grid)grid.style.display=rows.length?'grid':'none';
-  ['liters','consumption','vehicles','drivers'].forEach(tankDestroyChart);if(!rows.length)return;
-  var months=Array.from({length:12},function(){return [];});rows.forEach(function(r){var m=Number(r.monat)||0;if(m>=1&&m<=12)months[m-1].push(r);});
-  var liters=months.map(function(x){return x.reduce(function(s,r){return s+tankN(r.menge_liter);},0);}), consumptions=months.map(tankConsumption), ag=tankAggregate(rows,'fahrzeug').slice(0,12), driverAg=tankAggregate(rows,'fahrer').filter(function(a){return a.name!=='Ohne Angabe';});
-  var stats=document.getElementById('tank-graph-stats');if(stats)stats.textContent=tankFmt(rows.length,0)+' Tankvorgänge · '+tankFmt(liters.reduce(function(a,b){return a+b;},0),2)+' Liter';
-  var common={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{grid:{display:false},ticks:{font:{size:10,weight:'bold'}}},y:{beginAtZero:true,ticks:{font:{size:10}}}}};
-  var c1=document.getElementById('tank-chart-liters');if(c1)tankCharts.liters=new Chart(c1,{type:'bar',data:{labels:TANK_MONTHS,datasets:[{label:'Liter',data:liters,borderWidth:1,borderRadius:5}]},options:common});
-  var c2=document.getElementById('tank-chart-consumption');if(c2)tankCharts.consumption=new Chart(c2,{type:'line',data:{labels:TANK_MONTHS,datasets:[{label:'l/100 km',data:consumptions,tension:.28,spanGaps:true,pointRadius:4,borderWidth:2,fill:false}]},options:common});
-  var vOptions={responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{font:{size:10}}},y:{grid:{display:false},ticks:{font:{size:10,weight:'bold'}}}}};
-  var c3=document.getElementById('tank-chart-vehicles');if(c3)tankCharts.vehicles=new Chart(c3,{type:'bar',data:{labels:ag.map(function(a){return a.name;}),datasets:[{label:'Liter',data:ag.map(function(a){return a.liters;}),borderWidth:1,borderRadius:4}]},options:vOptions});
+  Object.keys(tankCharts).forEach(tankDestroyChart);
+  var totalLiters=rows.reduce(function(s,r){return s+tankN(r.menge_liter);},0), totalKm=rows.reduce(function(s,r){return s+(tankValidDistance(r)?tankN(r.km):0);},0), validCount=rows.filter(tankValidDistance).length;
+  var vehicles=new Set(rows.map(function(r){return r.fahrzeug;}).filter(Boolean)), drivers=new Set(rows.map(function(r){return r.fahrer;}).filter(Boolean));
+  var stats=document.getElementById('tank-graph-stats');if(stats)stats.textContent=tankFmt(rows.length,0)+' Vorgänge · '+tankFmt(vehicles.size,0)+' LKW · '+tankFmt(drivers.size,0)+' Fahrer';
+  var kpis=document.getElementById('tank-graph-kpis');if(kpis)kpis.innerHTML=tankKpi('Tankvorgänge',tankFmt(rows.length,0),filter.months)+tankKpi('Liter gesamt',tankFmt(totalLiters,2)+' l',filter.product)+tankKpi('Plausible Strecke',tankFmt(totalKm,0)+' km','10 bis 5.000 km je Vorgang')+tankKpi('Ø Verbrauch',tankFmt(tankConsumption(rows),2)+' l/100 km','gewichteter Gesamtwert')+tankKpi('Ø Tankmenge',tankFmt(rows.length?totalLiters/rows.length:0,2)+' l','pro Tankvorgang')+tankKpi('Datenqualität',tankFmt(rows.length?validCount/rows.length*100:0,1)+' %','Tankungen mit plausibler Strecke');
+  if(!rows.length)return;
+  var monthly=tankMonthly(rows), rangeMonthly=monthly.filter(function(m){return m.month>=filter.from&&m.month<=filter.to;});
+  var vehicleAg=tankAggregate(rows,'fahrzeug').filter(function(a){return a.name!=='Ohne Angabe';});
+  var topVehicles=vehicleAg.slice(0,12);
+  var topVehicleConsumption=vehicleAg.filter(function(a){return a.validKm>=200&&a.consumption>0;}).sort(function(a,b){return b.consumption-a.consumption;}).slice(0,12);
+  var driverAg=tankAggregate(rows,'fahrer').filter(function(a){return a.name!=='Ohne Angabe';});
+  var productAg=tankAggregate(rows,'produkt');
+  var basePlugins={legend:{display:false},tooltip:{mode:'index',intersect:false}};
+  var monthOptions={responsive:true,maintainAspectRatio:false,plugins:basePlugins,scales:{x:{grid:{display:false},ticks:{font:{size:10,weight:'bold'}}},y:{beginAtZero:true,ticks:{font:{size:10}}}}};
+  var horizontalOptions={responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{font:{size:10}}},y:{grid:{display:false},ticks:{font:{size:10,weight:'bold'}}}}};
+  var labels=rangeMonthly.map(function(m){return m.label;});
+  var c1=document.getElementById('tank-chart-liters');if(c1)tankCharts.liters=new Chart(c1,{type:'bar',data:{labels:labels,datasets:[{label:'Liter',data:rangeMonthly.map(function(m){return m.liters;}),borderWidth:1,borderRadius:5}]},options:monthOptions});
+  var c2=document.getElementById('tank-chart-consumption');if(c2)tankCharts.consumption=new Chart(c2,{type:'line',data:{labels:labels,datasets:[{label:'l/100 km',data:rangeMonthly.map(function(m){return m.consumption||null;}),tension:.28,spanGaps:true,pointRadius:4,borderWidth:2,fill:false}]},options:monthOptions});
+  var c3=document.getElementById('tank-chart-distance');if(c3)tankCharts.distance=new Chart(c3,{type:'bar',data:{labels:labels,datasets:[{label:'km',data:rangeMonthly.map(function(m){return m.km;}),borderWidth:1,borderRadius:5}]},options:monthOptions});
+  var c4=document.getElementById('tank-chart-count');if(c4)tankCharts.count=new Chart(c4,{type:'bar',data:{labels:labels,datasets:[{label:'Tankvorgänge',data:rangeMonthly.map(function(m){return m.count;}),borderWidth:1,borderRadius:5}]},options:monthOptions});
+  var c5=document.getElementById('tank-chart-average');if(c5)tankCharts.average=new Chart(c5,{type:'line',data:{labels:labels,datasets:[{label:'Ø Liter',data:rangeMonthly.map(function(m){return m.average||null;}),tension:.28,spanGaps:true,pointRadius:4,borderWidth:2,fill:false}]},options:monthOptions});
+  var c6=document.getElementById('tank-chart-products');if(c6)tankCharts.products=new Chart(c6,{type:'doughnut',data:{labels:productAg.map(function(a){return a.name;}),datasets:[{label:'Liter',data:productAg.map(function(a){return a.liters;}),borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:12,font:{size:10,weight:'bold'}}},tooltip:{callbacks:{label:function(ctx){return ctx.label+': '+tankFmt(ctx.raw,2)+' l';}}}}}});
+  var c7=document.getElementById('tank-chart-vehicles');if(c7)tankCharts.vehicles=new Chart(c7,{type:'bar',data:{labels:topVehicles.map(function(a){return a.name;}),datasets:[{label:'Liter',data:topVehicles.map(function(a){return a.liters;}),borderWidth:1,borderRadius:4}]},options:horizontalOptions});
+  var c8=document.getElementById('tank-chart-vehicle-consumption');if(c8)tankCharts.vehicleConsumption=new Chart(c8,{type:'bar',data:{labels:topVehicleConsumption.map(function(a){return a.name;}),datasets:[{label:'l/100 km',data:topVehicleConsumption.map(function(a){return a.consumption;}),borderWidth:1,borderRadius:4}]},options:horizontalOptions});
   var driverWrap=document.getElementById('tank-driver-chart-wrap');if(driverWrap)driverWrap.style.height=Math.max(420,driverAg.length*26+70)+'px';
-  var c4=document.getElementById('tank-chart-drivers');if(c4)tankCharts.drivers=new Chart(c4,{type:'bar',data:{labels:driverAg.map(function(a){return a.name;}),datasets:[{label:'Liter',data:driverAg.map(function(a){return a.liters;}),borderWidth:1,borderRadius:4}]},options:vOptions});
+  var c9=document.getElementById('tank-chart-drivers');if(c9)tankCharts.drivers=new Chart(c9,{type:'bar',data:{labels:driverAg.map(function(a){return a.name;}),datasets:[{label:'Liter',data:driverAg.map(function(a){return a.liters;}),borderWidth:1,borderRadius:4}]},options:horizontalOptions});
 }
 window.tankInitGraph=function(){tankSetOptions();tankRenderGraph();};
+
+// ── Tankauswertung: Excel-Export ─────────────────────────────────────────────
+function tankExcelSafeName(value){return String(value||'').replace(/[\\/:*?"<>|]+/g,'_').replace(/\s+/g,'_').replace(/^_+|_+$/g,'').slice(0,45)||'Auswertung';}
+function tankExcelSheet(lib,data,widths,autoFilter){
+  var ws=lib.utils.aoa_to_sheet(data);
+  ws['!cols']=(widths||[]).map(function(w){return {wch:w};});
+  if(autoFilter && data.length>1)ws['!autofilter']={ref:'A1:'+lib.utils.encode_cell({r:data.length-1,c:data[0].length-1})};
+  if(data.length){
+    for(var c=0;c<data[0].length;c++){
+      var ref=lib.utils.encode_cell({r:0,c:c});
+      if(ws[ref])ws[ref].s={font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'9A5B00'}},alignment:{horizontal:'center',vertical:'center'}};
+    }
+  }
+  return ws;
+}
+function tankExportExcel(){
+  var lib=window.XLSXStyle||window.XLSX;
+  if(!lib||!lib.utils){alert('Excel-Bibliothek nicht geladen. Bitte die Seite neu laden.');return;}
+  var rows=tankGraphRows(), filter=tankGraphFilterLabel();
+  if(!rows.length){alert('Für die aktuelle Auswahl sind keine Tankdaten vorhanden.');return;}
+  var totalLiters=rows.reduce(function(s,r){return s+tankN(r.menge_liter);},0), totalKm=rows.reduce(function(s,r){return s+(tankValidDistance(r)?tankN(r.km):0);},0), validCount=rows.filter(tankValidDistance).length;
+  var vehicles=new Set(rows.map(function(r){return r.fahrzeug;}).filter(Boolean)), drivers=new Set(rows.map(function(r){return r.fahrer;}).filter(Boolean));
+  var wb=lib.utils.book_new();
+  var overview=[
+    ['Tankauswertung','Wert','Einheit / Hinweis'],
+    ['Jahr',filter.year,''],
+    ['Zeitraum',filter.months,''],
+    ['Produkt',filter.product,''],
+    ['Suchfilter',filter.search||'Kein Filter',''],
+    ['Tankvorgänge',rows.length,'Anzahl'],
+    ['Liter gesamt',totalLiters,'Liter'],
+    ['Plausible Strecke',totalKm,'km (10 bis 5.000 km je Tankung)'],
+    ['Ø Verbrauch',tankConsumption(rows),'l/100 km'],
+    ['Ø Tankmenge',rows.length?totalLiters/rows.length:0,'Liter je Tankvorgang'],
+    ['Datenqualität',rows.length?validCount/rows.length*100:0,'% mit plausibler Strecke'],
+    ['Fahrzeuge',vehicles.size,'Anzahl'],
+    ['Fahrer',drivers.size,'Anzahl']
+  ];
+  var wsOverview=tankExcelSheet(lib,overview,[28,22,38],false);
+  ['B7','B8','B9','B10','B11'].forEach(function(ref){if(wsOverview[ref])wsOverview[ref].z='#,##0.00';});
+  lib.utils.book_append_sheet(wb,wsOverview,'Übersicht');
+
+  var monthly=tankMonthly(rows).filter(function(m){return m.month>=filter.from&&m.month<=filter.to;});
+  var monthData=[['Monat','Tankvorgänge','Liter','Plausible km','Ø l/100 km','Ø Liter/Tankung','Fahrzeuge','Fahrer']].concat(monthly.map(function(m){return [m.label,m.count,m.liters,m.km,m.consumption,m.average,m.vehicles,m.drivers];}));
+  var wsMonths=tankExcelSheet(lib,monthData,[16,15,14,16,15,19,12,12],true);
+  lib.utils.book_append_sheet(wb,wsMonths,'Monate');
+
+  function aggregateData(key,label){
+    return [[label,'Tankvorgänge','Liter','Plausible km','Ø l/100 km','Ø Liter/Tankung','Gültige km-Daten %','Erste Tankung','Letzte Tankung','Fahrer','LKW']].concat(tankAggregate(rows,key).map(function(a){return [a.name,a.count,a.liters,a.validKm,a.consumption,a.avg,a.validShare,tankDateLabel(a.first),tankDateLabel(a.last),Array.from(a.drivers).sort().join(', '),Array.from(a.vehicles).sort().join(', ')];}));
+  }
+  lib.utils.book_append_sheet(wb,tankExcelSheet(lib,aggregateData('fahrzeug','LKW'),[22,14,14,16,15,18,18,14,14,35,30],true),'Fahrzeuge');
+  lib.utils.book_append_sheet(wb,tankExcelSheet(lib,aggregateData('fahrer','Fahrer'),[30,14,14,16,15,18,18,14,14,35,30],true),'Fahrer');
+  lib.utils.book_append_sheet(wb,tankExcelSheet(lib,aggregateData('produkt','Produkt'),[28,14,14,16,15,18,18,14,14,35,30],true),'Produkte');
+
+  var sorted=rows.slice().sort(function(a,b){return String(a.datetime_iso||'').localeCompare(String(b.datetime_iso||''));});
+  var detail=[['Datum','Uhrzeit','Firma / Spedition','Kennzeichen','Fahrzeug IA','Fahrer','Produkt','Liter','Kilometerstand','km','l/100 km','Zapfsäule','Quelldatei']].concat(sorted.map(function(r){return [tankDateLabel(r.date_iso),String(r.uhrzeit||'').slice(0,5),r.firma||'',r.fahrzeug||'',r.fahrzeug_ia||'',r.fahrer||'',r.produkt||'',tankN(r.menge_liter),tankN(r.kilometerzaehler),tankN(r.km),tankValidDistance(r)?tankN(r.menge_liter)/tankN(r.km)*100:'',r.zapfsaeule||'',r.quelle||''];}));
+  lib.utils.book_append_sheet(wb,tankExcelSheet(lib,detail,[13,9,24,18,18,30,20,12,16,12,13,14,32],true),'Tankvorgänge');
+
+  var filename='Tankauswertung_'+tankExcelSafeName(filter.year)+'_'+String(filter.from).padStart(2,'0')+'-'+String(filter.to).padStart(2,'0');
+  if(filter.product!=='Alle Produkte')filename+='_'+tankExcelSafeName(filter.product);
+  lib.writeFile(wb,filename+'.xlsx');
+}
+window.tankExportExcel=tankExportExcel;
 """
+
 
 
 def _render_dashboard_html(
