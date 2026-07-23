@@ -65,12 +65,12 @@ class _LazyPandas:
 pd = _LazyPandas()
 _boot_log("03 Standardimporte bereit; pandas wird verzögert geladen")
 
-st.set_page_config(page_title="NFC Generator v45", layout="wide")
+st.set_page_config(page_title="NFC Generator v46", layout="wide")
 _boot_log("04 Seitenkonfiguration gesetzt")
 
-APP_CACHE_VERSION = "waschen-tanken-dashboard-2026-07-23-v45-tankauswertung-export"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-23-v45-tankauswertung-export"
-APP_DISPLAY_VERSION = "45"
+APP_CACHE_VERSION = "waschen-tanken-dashboard-2026-07-23-v46-zulagengraph"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-23-v46-zulagengraph"
+APP_DISPLAY_VERSION = "46"
 APP_DISPLAY_NAME = "NFC Generator"
 
 
@@ -5237,6 +5237,175 @@ window.tankExportExcel=tankExportExcel;
 
 
 
+def _zulagen_graph_js() -> str:
+    """Erweitert die bestehende Zulagenansicht um einen Chart.js-Graphmodus."""
+    return r"""
+// ── Zulagen-Graph ─────────────────────────────────────────────────────────────
+(function(){
+  var ZG_VIEW = 'list';
+  var ZG_TAB = 'sonder';
+  var ZG_CHARTS = {months:null, drivers:null};
+  var ZG_TIMER = null;
+
+  function zgNumber(value){
+    var n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  }
+  function zgMoney(value){
+    return zgNumber(value).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+  }
+  function zgLabel(tab){
+    if(tab==='fuengers') return 'Füngers';
+    if(tab==='drittkunden') return 'Drittkunden';
+    return 'Sonderfahrzeuge';
+  }
+  function zgMonths(tab){
+    if(tab==='drittkunden') return Array.isArray(DRITTKUNDEN_DATA) ? DRITTKUNDEN_DATA : [];
+    var root = (ZULAGE_DATA && typeof ZULAGE_DATA==='object') ? ZULAGE_DATA : {};
+    return Array.isArray(root[tab]) ? root[tab] : [];
+  }
+  function zgMonthTotal(month){
+    return (month && Array.isArray(month.fahrer) ? month.fahrer : []).reduce(function(sum,f){return sum+zgNumber(f.gesamt);},0);
+  }
+  function zgMonthEntries(month){
+    return (month && Array.isArray(month.fahrer) ? month.fahrer : []).reduce(function(sum,f){return sum+(Array.isArray(f.tage)?f.tage.length:0);},0);
+  }
+  function zgDetectTab(){
+    if(ZG_TAB) return ZG_TAB;
+    ['sonder','fuengers','drittkunden'].some(function(tab){
+      var el=document.getElementById('ztab-'+tab);
+      if(!el) return false;
+      var bg=(window.getComputedStyle?getComputedStyle(el).backgroundColor:el.style.backgroundColor)||'';
+      if(bg && bg!=='rgb(255, 255, 255)' && bg!=='rgba(0, 0, 0, 0)' && bg!=='transparent'){
+        ZG_TAB=tab; return true;
+      }
+      return false;
+    });
+    return ZG_TAB || 'sonder';
+  }
+  function zgSelectedMonth(months){
+    if(!months.length) return null;
+    var sel=document.getElementById('zulage-month-sel');
+    if(!sel) return months[months.length-1];
+    var value=String(sel.value||'').trim();
+    var text=sel.options && sel.selectedIndex>=0 ? String(sel.options[sel.selectedIndex].textContent||'').trim() : '';
+    var found=months.find(function(m){return String(m.monat||'').trim()===value || String(m.monat||'').trim()===text;});
+    if(found) return found;
+    var idx=Number(value);
+    if(Number.isInteger(idx)){
+      if(idx>=0 && idx<months.length) return months[idx];
+      if(idx>0 && idx<=months.length) return months[idx-1];
+    }
+    if(sel.options && sel.options.length===months.length && sel.selectedIndex>=0 && sel.selectedIndex<months.length) return months[sel.selectedIndex];
+    if(sel.options && sel.options.length===months.length+1 && sel.selectedIndex>0) return months[sel.selectedIndex-1] || months[months.length-1];
+    return months[months.length-1];
+  }
+  function zgDestroy(key){
+    if(ZG_CHARTS[key]){ZG_CHARTS[key].destroy();ZG_CHARTS[key]=null;}
+  }
+  function zgLayout(){
+    var grid=document.getElementById('zulage-graph-grid');
+    if(grid) grid.style.gridTemplateColumns=(window.innerWidth<1120)?'minmax(0,1fr)':'minmax(0,1fr) minmax(0,1fr)';
+  }
+  function zgKpi(title,value,sub){
+    return '<div style="background:#fff;border:1px solid #d8e0ea;border-radius:12px;padding:13px 15px;box-shadow:0 3px 10px rgba(15,23,42,.05);min-width:0;">'
+      +'<div style="font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.45px;color:#64748b;">'+title+'</div>'
+      +'<div style="font-size:22px;font-weight:950;color:#0f172a;letter-spacing:-.45px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+value+'</div>'
+      +'<div style="font-size:10px;font-weight:700;color:#94a3b8;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+sub+'</div></div>';
+  }
+  function zgRender(){
+    if(ZG_VIEW!=='graph') return;
+    zgLayout();
+    var tab=zgDetectTab(), months=zgMonths(tab), selected=zgSelectedMonth(months);
+    var graphGrid=document.getElementById('zulage-graph-grid');
+    var empty=document.getElementById('zulage-graph-empty');
+    var kpis=document.getElementById('zulage-graph-kpis');
+    var hasData=months.some(function(m){return (m.fahrer||[]).length>0;});
+    if(graphGrid) graphGrid.style.display=hasData?'grid':'none';
+    if(empty) empty.style.display=hasData?'none':'block';
+    zgDestroy('months'); zgDestroy('drivers');
+    if(!hasData){if(kpis)kpis.innerHTML='';return;}
+
+    var allTotal=months.reduce(function(sum,m){return sum+zgMonthTotal(m);},0);
+    var currentTotal=zgMonthTotal(selected);
+    var currentDrivers=(selected&&Array.isArray(selected.fahrer)?selected.fahrer:[]).filter(function(f){return zgNumber(f.gesamt)!==0;});
+    var currentEntries=zgMonthEntries(selected);
+    var avg=currentDrivers.length?currentTotal/currentDrivers.length:0;
+    if(kpis) kpis.innerHTML=
+      zgKpi('Auswahl',zgLabel(tab),(selected&&selected.monat)||'Kein Monat')+
+      zgKpi('Monatssumme',zgMoney(currentTotal),currentEntries.toLocaleString('de-DE')+' Einsätze')+
+      zgKpi('Fahrer',currentDrivers.length.toLocaleString('de-DE'),'mit Zulage im Monat')+
+      zgKpi('Ø je Fahrer',zgMoney(avg),'im ausgewählten Monat')+
+      zgKpi('Gesamt',zgMoney(allTotal),months.length.toLocaleString('de-DE')+' Monate');
+
+    var monthSub=document.getElementById('zulage-month-chart-sub');
+    if(monthSub) monthSub.textContent=zgLabel(tab)+' · Gesamtsumme je Monat';
+    var driverSub=document.getElementById('zulage-driver-chart-sub');
+    if(driverSub) driverSub.textContent=zgLabel(tab)+' · '+((selected&&selected.monat)||'Kein Monat');
+
+    var monthCanvas=document.getElementById('zulage-chart-months');
+    if(monthCanvas && window.Chart){
+      ZG_CHARTS.months=new Chart(monthCanvas,{type:'bar',data:{labels:months.map(function(m){return m.monat||'';}),datasets:[{label:'Zulagen',data:months.map(zgMonthTotal),borderWidth:1,borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return ' '+zgMoney(ctx.raw);}}}},scales:{x:{grid:{display:false},ticks:{font:{size:10,weight:'bold'},maxRotation:45,minRotation:0}},y:{beginAtZero:true,ticks:{font:{size:10},callback:function(v){return Number(v).toLocaleString('de-DE')+' €';}}}}}});
+    }
+
+    currentDrivers.sort(function(a,b){return zgNumber(b.gesamt)-zgNumber(a.gesamt) || String(a.name||'').localeCompare(String(b.name||''),'de');});
+    var driverWrap=document.getElementById('zulage-driver-chart-wrap');
+    if(driverWrap) driverWrap.style.height=Math.max(420,currentDrivers.length*31+75)+'px';
+    var driverCanvas=document.getElementById('zulage-chart-drivers');
+    if(driverCanvas && window.Chart){
+      ZG_CHARTS.drivers=new Chart(driverCanvas,{type:'bar',data:{labels:currentDrivers.map(function(f){return f.name||'Ohne Angabe';}),datasets:[{label:'Zulagen',data:currentDrivers.map(function(f){return zgNumber(f.gesamt);}),borderWidth:1,borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return ' '+zgMoney(ctx.raw);}}}},scales:{x:{beginAtZero:true,ticks:{font:{size:10},callback:function(v){return Number(v).toLocaleString('de-DE')+' €';}}},y:{grid:{display:false},ticks:{font:{size:10,weight:'bold'},autoSkip:false}}}}});
+    }
+  }
+  function zgSchedule(){
+    if(ZG_TIMER) clearTimeout(ZG_TIMER);
+    ZG_TIMER=setTimeout(function(){ZG_TIMER=null;zgRender();},20);
+  }
+
+  window.zulagenSetView=function(view){
+    ZG_VIEW=(view==='graph')?'graph':'list';
+    var list=document.getElementById('zulage-content'), graph=document.getElementById('zulage-graph-content');
+    var listBtn=document.getElementById('zulage-view-list'), graphBtn=document.getElementById('zulage-view-graph');
+    if(list) list.style.display=ZG_VIEW==='list'?'block':'none';
+    if(graph) graph.style.display=ZG_VIEW==='graph'?'block':'none';
+    if(listBtn){listBtn.style.background=ZG_VIEW==='list'?'#1b66b3':'#fff';listBtn.style.color=ZG_VIEW==='list'?'#fff':'#1b66b3';}
+    if(graphBtn){graphBtn.style.background=ZG_VIEW==='graph'?'#1b66b3':'#fff';graphBtn.style.color=ZG_VIEW==='graph'?'#fff':'#1b66b3';}
+    if(ZG_VIEW==='graph') requestAnimationFrame(zgSchedule);
+  };
+
+  function zgBindControls(){
+    ['sonder','fuengers','drittkunden'].forEach(function(tab){
+      var btn=document.getElementById('ztab-'+tab);
+      if(btn && !btn.dataset.zgBound){
+        btn.dataset.zgBound='1';
+        btn.addEventListener('click',function(){ZG_TAB=tab;zgSchedule();});
+      }
+    });
+    var sel=document.getElementById('zulage-month-sel');
+    if(sel && !sel.dataset.zgBound){sel.dataset.zgBound='1';sel.addEventListener('change',zgSchedule);}
+  }
+
+  var originalInit=window.zulagenInit;
+  if(typeof originalInit==='function') window.zulagenInit=function(){
+    var result=originalInit.apply(this,arguments); ZG_TAB='sonder'; zgBindControls(); zgSchedule(); return result;
+  };
+  var originalTab=window.zulagenTab;
+  if(typeof originalTab==='function') window.zulagenTab=function(tab){
+    ZG_TAB=tab||'sonder'; var result=originalTab.apply(this,arguments); zgSchedule(); return result;
+  };
+  var originalRender=window.zulagenRender;
+  if(typeof originalRender==='function') window.zulagenRender=function(){
+    var result=originalRender.apply(this,arguments); zgSchedule(); return result;
+  };
+  function zgReady(){zgBindControls();zgLayout();}
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',zgReady);
+  else zgReady();
+  window.addEventListener('resize',function(){zgLayout();if(ZG_VIEW==='graph')zgSchedule();});
+})();
+// ── /Zulagen-Graph ────────────────────────────────────────────────────────────
+"""
+
+
+
 def _render_dashboard_html(
     *,
     logo_data_url: str,
@@ -6100,10 +6269,32 @@ document.addEventListener('keydown',function(e){{if(e.key==='Escape')closeBuildI
         <button id="ztab-drittkunden" onclick="zulagenTab('drittkunden')" style="padding:3px 9px;border-radius:3px;border:1.5px solid #1b66b3;cursor:pointer;font-weight:700;font-size:12px;background:#fff;color:#1b66b3;">Drittkunden</button>
       </div>
       <select id="zulage-month-sel" onchange="zulagenRender()" style="padding:5px 12px;border:2px solid #1b66b3;border-radius:5px;font-size:12px;outline:none;cursor:pointer;"></select>
+      <div style="display:flex;gap:4px;margin-left:2px;">
+        <button id="zulage-view-list" onclick="zulagenSetView('list')" style="padding:5px 11px;border-radius:5px;border:1.5px solid #1b66b3;cursor:pointer;font-weight:800;font-size:11px;background:#1b66b3;color:#fff;">&#9776; Liste</button>
+        <button id="zulage-view-graph" onclick="zulagenSetView('graph')" style="padding:5px 11px;border-radius:5px;border:1.5px solid #1b66b3;cursor:pointer;font-weight:800;font-size:11px;background:#fff;color:#1b66b3;">&#128200; Graph</button>
+      </div>
       <button onclick="zulagenExportExcel()" style="padding:5px 12px;background:#1d6f42;color:#fff;border:none;border-radius:5px;font-weight:700;font-size:12px;cursor:pointer;">&#128196; Excel</button>
       <span id="zulage-stats" style="font-size:12px;color:#64748b;margin-left:auto;font-weight:600;"></span>
     </div>
     <div id="zulage-content" style="flex:1;overflow-y:auto;padding:20px;"></div>
+    <div id="zulage-graph-content" style="display:none;flex:1;overflow-y:auto;padding:18px 20px 32px;background:linear-gradient(180deg,#eef3f8 0%,#f8fafc 100%);">
+      <div style="max-width:1700px;margin:0 auto;">
+        <div id="zulage-graph-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;"></div>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start;" id="zulage-graph-grid">
+          <div style="background:#fff;border:1px solid #d8e0ea;border-radius:13px;padding:15px 16px;box-shadow:0 3px 12px rgba(15,23,42,.06);min-width:0;">
+            <div style="font-size:14px;font-weight:950;color:#0f172a;">Monatsverlauf</div>
+            <div id="zulage-month-chart-sub" style="font-size:10.5px;font-weight:700;color:#64748b;margin-top:2px;margin-bottom:10px;">Gesamtsumme je Monat</div>
+            <div style="height:390px;position:relative;"><canvas id="zulage-chart-months"></canvas></div>
+          </div>
+          <div style="background:#fff;border:1px solid #d8e0ea;border-radius:13px;padding:15px 16px;box-shadow:0 3px 12px rgba(15,23,42,.06);min-width:0;">
+            <div style="font-size:14px;font-weight:950;color:#0f172a;">Zulagen nach Fahrer</div>
+            <div id="zulage-driver-chart-sub" style="font-size:10.5px;font-weight:700;color:#64748b;margin-top:2px;margin-bottom:10px;">Ausgewählter Monat</div>
+            <div id="zulage-driver-chart-wrap" style="height:420px;position:relative;"><canvas id="zulage-chart-drivers"></canvas></div>
+          </div>
+        </div>
+        <div id="zulage-graph-empty" style="display:none;background:#fff;border:1px dashed #cbd5e1;border-radius:13px;padding:52px 20px;text-align:center;color:#64748b;font-size:13px;font-weight:750;">Keine Zulagendaten für diese Auswahl vorhanden.</div>
+      </div>
+    </div>
   </div>
 
 
@@ -10072,6 +10263,7 @@ function samToggle(el) {{
 // ── /Schichten-Tab ─────────────────────────────────────────────────────────────
 
 {zulage_js_code}
+{_zulagen_graph_js()}
 {verstoss_js_code}
 
 
