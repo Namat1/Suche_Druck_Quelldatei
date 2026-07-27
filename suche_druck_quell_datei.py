@@ -65,12 +65,12 @@ class _LazyPandas:
 pd = _LazyPandas()
 _boot_log("03 Standardimporte bereit; pandas wird verzögert geladen")
 
-st.set_page_config(page_title="NFC Generator v46", layout="wide")
+st.set_page_config(page_title="NFC Generator v47", layout="wide")
 _boot_log("04 Seitenkonfiguration gesetzt")
 
-APP_CACHE_VERSION = "waschen-tanken-dashboard-2026-07-23-v46-zulagengraph"
-EXTRA_CACHE_VERSION = "extra-parser-2026-07-23-v46-zulagengraph"
-APP_DISPLAY_VERSION = "46"
+APP_CACHE_VERSION = "waschen-tanken-dashboard-2026-07-27-v47-buskontakte"
+EXTRA_CACHE_VERSION = "extra-parser-2026-07-27-v47-buskontakte"
+APP_DISPLAY_VERSION = "47"
 APP_DISPLAY_NAME = "NFC Generator"
 
 
@@ -4399,6 +4399,224 @@ _JS_KNAPP = r""""""
 
 # _static_payload_text("_JS_BUS") wurde fuer Cloud-Stabilitaet nach nfc_assets ausgelagert.
 
+_BUS_CONTACT_RUNTIME_PATCH = r"""
+// ── Buskontakte: Jens Becker + Eskalationsstufe Daniel Bock ──────────────────
+(function(){
+  var JENS_PHONE = "0172-5829596";
+  var DANIEL_PHONE = "0170-6653968";
+  var DANIEL_EMAIL = "daniel.bock@123bus.de";
+
+  function digits(value){
+    return String(value || "").replace(/\D/g, "");
+  }
+
+  function isDaniel(entry){
+    var text = String((entry && (entry.label || entry.kopf)) || "").toLowerCase();
+    return text.indexOf("daniel bock") !== -1 ||
+           digits(entry && entry.nummer) === digits(DANIEL_PHONE) ||
+           String((entry && entry.email) || "").toLowerCase() === DANIEL_EMAIL;
+  }
+
+  if(Array.isArray(BUS_KONTAKTE)){
+    var jensIndex = BUS_KONTAKTE.findIndex(function(entry){
+      var label = String((entry && entry.label) || "").toLowerCase();
+      return label.indexOf("jens becker") !== -1 || label.indexOf("becker tours") !== -1;
+    });
+
+    var jensEntry = {
+      label: "Jens Becker (Becker Tours)",
+      nummer: JENS_PHONE
+    };
+    if(jensIndex >= 0){
+      jensEntry = Object.assign({}, BUS_KONTAKTE[jensIndex], jensEntry);
+    }
+
+    BUS_KONTAKTE = BUS_KONTAKTE.filter(function(entry, index){
+      return index !== jensIndex && !isDaniel(entry);
+    });
+
+    var insertAt = jensIndex >= 0 ? Math.min(jensIndex, BUS_KONTAKTE.length) : Math.min(1, BUS_KONTAKTE.length);
+    BUS_KONTAKTE.splice(insertAt, 0,
+      jensEntry,
+      {
+        label: "Daniel Bock (nächsthöherer Ansprechpartner)",
+        nummer: DANIEL_PHONE,
+        email: DANIEL_EMAIL
+      }
+    );
+  }
+
+  function patchEmergencyScenario(titlePart, jensHeading){
+    if(!Array.isArray(BUS_NOTFALL)) return;
+    var scenario = BUS_NOTFALL.find(function(entry){
+      return String((entry && entry.titel) || "").toLowerCase().indexOf(titlePart) !== -1;
+    });
+    if(!scenario || !Array.isArray(scenario.schritte)) return;
+
+    var jensIndex = scenario.schritte.findIndex(function(step){
+      var heading = String((step && step.kopf) || "").toLowerCase();
+      var number = digits(step && step.nummer);
+      return heading.indexOf("jens becker") !== -1 ||
+             heading.indexOf("becker tours") !== -1 ||
+             number === "01725825596" || number === digits(JENS_PHONE);
+    });
+    if(jensIndex < 0) return;
+
+    scenario.schritte[jensIndex] = Object.assign({}, scenario.schritte[jensIndex], {
+      kopf: jensHeading,
+      nummer: JENS_PHONE
+    });
+    scenario.schritte = scenario.schritte.filter(function(step, index){
+      return index === jensIndex || !isDaniel(step);
+    });
+    scenario.schritte.splice(jensIndex + 1, 0, {
+      kopf: "Daniel Bock – nächsthöherer Ansprechpartner",
+      nummer: DANIEL_PHONE,
+      email: DANIEL_EMAIL,
+      punkte: ["falls Jens Becker nicht erreicht wird"]
+    });
+  }
+
+  patchEmergencyScenario("busfahrer ist nicht gekommen", "Handynummer Jens Becker");
+  patchEmergencyScenario("bus hat unfall / panne", "Jens Becker von Becker Tours informieren");
+
+  function addDanielEmailLinks(root){
+    if(!root) return;
+    var links = root.querySelectorAll('a[href="tel:' + digits(DANIEL_PHONE) + '"]');
+    links.forEach(function(phoneLink){
+      var host = phoneLink.parentElement;
+      if(!host || host.querySelector('a[href="mailto:' + DANIEL_EMAIL + '"]')) return;
+      var mail = document.createElement("a");
+      mail.href = "mailto:" + DANIEL_EMAIL;
+      mail.textContent = DANIEL_EMAIL;
+      mail.style.cssText = "display:block;margin-top:3px;font-size:11.5px;font-weight:800;color:#1e6091;text-decoration:none;word-break:break-all";
+      host.appendChild(mail);
+    });
+  }
+
+  if(typeof busRender === "function"){
+    var originalBusRender = busRender;
+    busRender = function(){
+      originalBusRender.apply(this, arguments);
+      addDanielEmailLinks(document.getElementById("bus-content"));
+    };
+  }
+
+  if(typeof busPDF === "function"){
+    var originalBusPDF = busPDF;
+    busPDF = function(){
+      var openedWindow = null;
+      var realOpen = window.open;
+      window.open = function(){
+        openedWindow = realOpen.apply(window, arguments);
+        return openedWindow;
+      };
+      try {
+        originalBusPDF.apply(this, arguments);
+      } finally {
+        window.open = realOpen;
+      }
+      if(openedWindow){
+        setTimeout(function(){
+          try {
+            var doc = openedWindow.document;
+            if(!doc || !doc.body || doc.body.innerHTML.indexOf(DANIEL_EMAIL) !== -1) return;
+            var nodes = doc.querySelectorAll("span,.num,b,div");
+            Array.prototype.forEach.call(nodes, function(node){
+              if(String(node.textContent || "").indexOf(DANIEL_PHONE) === -1) return;
+              var host = node.parentElement || node;
+              if(host.querySelector && host.querySelector('[data-daniel-mail="1"]')) return;
+              var mail = doc.createElement("div");
+              mail.setAttribute("data-daniel-mail", "1");
+              mail.textContent = DANIEL_EMAIL;
+              mail.style.cssText = "margin-top:1mm;font-size:7pt;font-weight:800;color:#1e6091";
+              host.appendChild(mail);
+            });
+          } catch(_err) {}
+        }, 50);
+      }
+    };
+  }
+})();
+"""
+
+
+def _patch_bus_javascript_contacts(source: str) -> str:
+    """Aktualisiert die Buskontakte in Anzeige, Notfallplan und Druckansicht."""
+    source = str(source or "")
+    if not source:
+        return source
+
+    # Bekannte frühere Schreibweisen/Fehleinträge der Becker-Tours-Nummer.
+    for old_number in (
+        "0172-5825596",
+        "0172 - 5825596",
+        "0172 5825596",
+    ):
+        source = source.replace(old_number, "0172-5829596")
+
+    source = source.replace('label:"Becker Tours (Chef)"', 'label:"Jens Becker (Becker Tours)"')
+    source = source.replace('kopf:"Handynummer Chef Becker Tours"', 'kopf:"Handynummer Jens Becker"')
+    source = source.replace('kopf:"Firma Becker Tours informieren"', 'kopf:"Jens Becker von Becker Tours informieren"')
+
+    # Daniel Bock direkt nach Jens Becker in der Kontaktleiste ergänzen.
+    source = re.sub(
+        r'(\{\s*label:"Jens Becker \(Becker Tours\)",\s*nummer:"0172-5829596"\s*\},)(?!\s*\{\s*label:"Daniel Bock)',
+        r'\1\n  { label:"Daniel Bock (nächsthöherer Ansprechpartner)", nummer:"0170-6653968", email:"daniel.bock@123bus.de" },',
+        source,
+        count=1,
+    )
+
+    # Daniel als nächste Eskalationsstufe in beiden relevanten Notfallszenarien.
+    source = re.sub(
+        r'(\{\s*kopf:"Handynummer Jens Becker",\s*nummer:"0172-5829596",\s*punkte:\[[^\]]*\]\s*\},)(?!\s*\{\s*kopf:"Daniel Bock)',
+        r'\1\n      { kopf:"Daniel Bock – nächsthöherer Ansprechpartner", nummer:"0170-6653968", email:"daniel.bock@123bus.de", punkte:["falls Jens Becker nicht erreicht wird"] },',
+        source,
+        count=1,
+    )
+    source = re.sub(
+        r'(\{\s*kopf:"Jens Becker von Becker Tours informieren",\s*nummer:"0172-5829596",\s*punkte:\[[^\]]*\]\s*\},)(?!\s*\{\s*kopf:"Daniel Bock)',
+        r'\1\n      { kopf:"Daniel Bock – nächsthöherer Ansprechpartner", nummer:"0170-6653968", email:"daniel.bock@123bus.de", punkte:["falls Jens Becker nicht erreicht wird"] },',
+        source,
+        count=1,
+    )
+
+    # E-Mail in der normalen Kontaktansicht anzeigen.
+    contact_phone_line = """    html += "<a href='tel:"+busTel(k.nummer)+"' style='font-size:17px;font-weight:900;color:#1e6091;text-decoration:none;font-variant-numeric:tabular-nums'>"+busEsc(k.nummer)+"</a>";"""
+    if "if(k.email)" not in source and contact_phone_line in source:
+        source = source.replace(
+            contact_phone_line,
+            contact_phone_line + """\n    if(k.email) html += "<a href='mailto:"+busEsc(k.email)+"' style='display:block;margin-top:3px;font-size:11px;font-weight:800;color:#64748b;text-decoration:none;word-break:break-all'>"+busEsc(k.email)+"</a>";""",
+            1,
+        )
+
+    step_phone_line = """      if(st.nummer) html += "<a href='tel:"+busTel(st.nummer)+"' style='display:inline-block;margin-top:3px;font-size:13px;font-weight:900;color:"+sz.farbe+";text-decoration:none;font-variant-numeric:tabular-nums'>"+busEsc(st.nummer)+"</a>";"""
+    if "if(st.email)" not in source and step_phone_line in source:
+        source = source.replace(
+            step_phone_line,
+            step_phone_line + """\n      if(st.email) html += "<a href='mailto:"+busEsc(st.email)+"' style='display:block;margin-top:2px;font-size:11px;font-weight:800;color:"+sz.farbe+";text-decoration:none;word-break:break-all'>"+busEsc(st.email)+"</a>";""",
+            1,
+        )
+
+    # E-Mail auch im PDF/Druck ausgeben.
+    pdf_contacts_old = """  BUS_KONTAKTE.forEach(function(k){ b += "<div><b>"+busEsc(k.label)+"</b><span>"+busEsc(k.nummer)+"</span></div>"; });"""
+    pdf_contacts_new = """  BUS_KONTAKTE.forEach(function(k){ b += "<div><b>"+busEsc(k.label)+"</b><span>"+busEsc(k.nummer)+"</span>"+(k.email?"<small style='display:block;margin-top:1mm;font-size:6.5pt;font-weight:800;color:#64748b'>"+busEsc(k.email)+"</small>":"")+"</div>"; });"""
+    source = source.replace(pdf_contacts_old, pdf_contacts_new, 1)
+
+    pdf_step_phone = """      if(st.nummer) b += " <span class='num' style='color:"+sz.farbe+"'>"+busEsc(st.nummer)+"</span>";"""
+    if "if(st.email) b +=" not in source and pdf_step_phone in source:
+        source = source.replace(
+            pdf_step_phone,
+            pdf_step_phone + """\n      if(st.email) b += " <span style='display:block;margin-top:.5mm;font-size:7pt;font-weight:800;color:"+sz.farbe+"'>"+busEsc(st.email)+"</span>";""",
+            1,
+        )
+
+    # Laufzeit-Sicherung: funktioniert auch dann, wenn der ausgelagerte Baustein
+    # später leicht anders formatiert wird.
+    if "Buskontakte: Jens Becker + Eskalationsstufe Daniel Bock" not in source:
+        source += "\n" + _BUS_CONTACT_RUNTIME_PATCH
+    return source
+
 # _static_payload_text("_JS_ARZT") wurde fuer Cloud-Stabilitaet nach nfc_assets ausgelagert.
 
 # _static_payload_text("_JS_VERSP") wurde fuer Cloud-Stabilitaet nach nfc_assets ausgelagert.
@@ -4418,7 +4636,7 @@ def _dashboard_javascript_parts() -> dict:
         'knapp': _JS_KNAPP,
         'sped': _static_payload_text("_JS_SPED"),
         'fabew': _static_payload_text("_JS_FABEW"),
-        'bus': _static_payload_text("_JS_BUS"),
+        'bus': _patch_bus_javascript_contacts(_static_payload_text("_JS_BUS")),
         'arzt': _static_payload_text("_JS_ARZT"),
         'versp': _static_payload_text("_JS_VERSP"),
         'wa': _static_payload_text("_JS_WA"),
